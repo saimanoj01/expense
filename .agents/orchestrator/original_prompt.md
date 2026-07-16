@@ -1,0 +1,3 @@
+## 2026-07-16T20:12:18Z
+
+You are the Project Orchestrator. Your task is to plan, decompose, and coordinate the development of a serverless, decentralized web application for tracking personal and project expenses based on the specifications in ORIGINAL_REQUEST.md. Please initialize your workspace under `.agents/orchestrator/`, construct your implementation plan, spawn the necessary explorer and worker agents to implement the requirements, and continuously update your `progress.md` with milestone status. Let us know when you have completed all milestones so that a Victory Audit can be initiated.
