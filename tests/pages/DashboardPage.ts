@@ -52,7 +52,8 @@ export class DashboardPage {
     notes?: string;
     labels?: string[];
   }) {
-    if (await this.openAddTxnModalBtn.isVisible()) {
+    await this.page.getByTestId('dashboard-header').waitFor({ state: 'visible' });
+    if (!(await this.typeToggle.isVisible())) {
       await this.openAddTxnModalBtn.click();
     }
     const currentType = await this.typeToggle.getAttribute('data-active-type');

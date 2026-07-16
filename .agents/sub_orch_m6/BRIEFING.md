@@ -27,5 +27,12 @@
 
 ## Team Roster
 - **28cc841f-c556-47ea-bc07-a55d53ec37c4**: `teamwork_preview_worker` — Phase 1 E2E Test Run & Fix Worker — completed (93/93 tests passed 100%, clean build)
-- **4ddaaccf-d629-433c-b457-db7ea3434358**: `teamwork_preview_challenger` — Phase 2 Adversarial Challenger 1 (Auth/Cloud/Concurrency) — in-progress
-- **a1051175-59a1-4255-b6bb-3a28e83968f9**: `teamwork_preview_challenger` — Phase 2 Adversarial Challenger 2 (CSV/Charts/Locking/XSS) — in-progress
+- **4ddaaccf-d629-433c-b457-db7ea3434358**: `teamwork_preview_challenger` — Phase 2 Adversarial Challenger 1 (Auth/Cloud/Concurrency) — completed (7 adversarial tests in `tier5_adversarial_part1.spec.ts`)
+- **a1051175-59a1-4255-b6bb-3a28e83968f9**: `teamwork_preview_challenger` — Phase 2 Adversarial Challenger 2 (CSV/Charts/Locking/XSS) — completed (10 adversarial tests in `tier5_adversarial_part2.spec.ts`)
+- **bb3032d2-9a5a-4f42-bbe4-ce0054e3b8a6**: `teamwork_preview_worker` — Phase 2 Tier 5 Adversarial Integration & Bugfix Worker — completed (110/110 E2E tests passed 100%, clean build)
+- **5b660931-17c6-4278-a27c-e424bc84aabd**: `teamwork_preview_reviewer` — Phase 2 Reviewer 1 — completed (REQUEST_CHANGES: refactor AuthContext token check)
+- **3db716c5-352e-4a48-9365-1bf86e22d887**: `teamwork_preview_reviewer` — Phase 2 Reviewer 2 — completed (PASS: 110/110 tests passed 100%, clean build)
+- **e7d2190e-8425-485d-a80c-50b1c43f8a6d**: `teamwork_preview_auditor` — Phase 2 Forensic Auditor — completed (CLEAN verdict, 110/110 passed)
+- **8510ce08-78c6-4863-870f-c7861a0a8347**: `teamwork_preview_worker` — Phase 2 Review Fix Worker — completed (110/110 passed after AuthContext refactor)
+- **b5e2c0a7-e0b9-4ed3-9517-5fd68dbbe8f9**: `teamwork_preview_reviewer` — Phase 2 Final Gate Reviewer — in-progress
+- **d16d86db-9b63-4094-bd0a-dff1baf0584c**: `teamwork_preview_auditor` — Phase 2 Final Gate Forensic Auditor — in-progress

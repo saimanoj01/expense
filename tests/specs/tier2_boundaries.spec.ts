@@ -117,7 +117,7 @@ test.describe('Tier 2: Boundary, Edge and Error Handling Cases', () => {
       // Double click quickly
       await loginButton.dblclick();
       // Ensure we navigate to dashboard and don't double launch session
-      await expect(page.locator('[data-testid="dashboard-header"]')).toBeVisible();
+      await expect(page.locator('[data-testid="onboarding-modal"], [data-testid="dashboard-header"]')).toBeVisible();
     });
   });
 

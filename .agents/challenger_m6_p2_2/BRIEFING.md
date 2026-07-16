@@ -11,13 +11,13 @@
 
 ## Attack Surface
 - **Hypotheses tested**:
-  - CSV import malformed headers, formula/CSV injection (`=cmd|' /C calc'!A0`, `@+=-`), unicode/BOM handling, malformed quotes, missing required columns, extra columns, empty rows.
-  - SHA-256 deduplication collisions/boundaries (duplicate CSV rows, identical amounts/dates/descriptions across different files or same file, whitespace or casing sensitivity in hash calculation).
-  - Month locking invariant enforcement (UI and storage-level lock enforcement: adding/editing/deleting expenses, importing CSV into locked month, updating budgets in locked month).
-  - SVG chart division by zero/extreme numbers (totalBudget=0, totalSpent=0, negative numbers, extremely large values, NaN/Infinity handling in SVG paths/bars).
-  - XSS / Malicious input handling (`<script>alert(1)</script>`, `<img src=x onerror=alert(1)>`, HTML entities in category/description/notes).
-- **Vulnerabilities found**: Pending investigation.
-- **Untested angles**: Focus on areas uncovered by `tier1_features.spec.ts` - `tier4_scenarios.spec.ts` and `tier5_adversarial.spec.ts` / existing tests.
+  - CSV import malformed headers, formula/CSV injection, RFC 4180 quoted headers/fields (`"Dinner, drinks"`), BOM/quotes handling (`"Date"`).
+  - SHA-256 deduplication collisions/boundaries (within-batch duplicates in same CSV import bypass deduplication; capitalization differences bypass deduplication).
+  - Month locking invariant enforcement (UI All Months view exposes edit/delete buttons for locked months; storage layer `saveBudgets` lacks lock enforcement).
+  - SVG chart division by zero/extreme numbers (`Math.min(...) || 10` renders bars of height 10 and 5 when budget=0 and spent=0).
+  - XSS / Malicious input handling (special characters pollute `data-testid` attributes; transaction `notes` field persisted but omitted from UI row rendering).
+- **Vulnerabilities found**: 10 empirical gaps confirmed and documented in `gap_report.md`. Executable Playwright tests written in `tests/specs/tier5_adversarial_part2.spec.ts` (10/10 passing on Chromium).
+- **Untested angles**: Focus was exclusively on Tier 5 Part 2 white-box adversarial gaps uncovered by Tier 1-4 suites.
 
 ## Loaded Skills
 - **Source**: `/google/src/files/head/depot/google3/research/omega/teamwork/playbooks/test_coverage_audit/SKILL.md` (File not found; noted for handoff report per protocol).

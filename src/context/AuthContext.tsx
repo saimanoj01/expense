@@ -22,24 +22,84 @@ export interface AuthContextType {
   setAuthErrorToast: (msg: string | null) => void;
 }
 
+/**
+ * Helper to determine if a token represents an explicitly expired session
+ * (either mock OAuth simulator expired token or an expired JWT claim).
+ */
+function isExpiredSessionToken(token: string): boolean {
+  if (token === 'EXPIRED_TOKEN') {
+    return true;
+  }
+  if (token.includes('.') || token.toLowerCase().includes('jwt')) {
+    const parts = token.split('.');
+    if (parts.length === 3) {
+      try {
+        const base64Url = parts[1];
+        const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+        const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=');
+        const payload = JSON.parse(atob(padded));
+        if (payload && typeof payload.exp === 'number') {
+          return payload.exp * 1000 <= Date.now();
+        }
+      } catch {
+        return false;
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * Checks if a token is null/empty, explicitly flagged expired in mock OAuth simulator,
+ * or has an invalid/expired JWT structure.
+ */
+export function isInvalidOrExpiredToken(token: string | null): boolean {
+  if (!token || token.trim() === '') {
+    return true;
+  }
+  if (token === 'EXPIRED_TOKEN') {
+    return true;
+  }
+  if (token.includes('.') || token.toLowerCase().includes('jwt')) {
+    const parts = token.split('.');
+    if (parts.length !== 3) {
+      return true;
+    }
+    try {
+      const base64Url = parts[1];
+      const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+      const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=');
+      const payload = JSON.parse(atob(padded));
+      if (payload && typeof payload.exp === 'number') {
+        if (payload.exp * 1000 <= Date.now()) {
+          return true;
+        }
+      }
+    } catch {
+      return true;
+    }
+  }
+  return false;
+}
+
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(() => {
     const token = localStorage.getItem('expense_google_token');
-    if (token && token !== 'EXPIRED_TOKEN' && token !== 'mangled-garbage-jwt') {
+    if (!isInvalidOrExpiredToken(token)) {
       return { email: 'cloud@example.com', name: 'Google User' };
     }
     return null;
   });
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
     const token = localStorage.getItem('expense_google_token');
-    return !!(token && token !== 'EXPIRED_TOKEN' && token !== 'mangled-garbage-jwt');
+    return !isInvalidOrExpiredToken(token);
   });
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isMockMode, setIsMockMode] = useState<boolean>(() => {
     const token = localStorage.getItem('expense_google_token');
-    return !(token && token !== 'EXPIRED_TOKEN' && token !== 'mangled-garbage-jwt');
+    return isInvalidOrExpiredToken(token);
   });
 
   const googleClientIdExists = !!import.meta.env.VITE_GOOGLE_CLIENT_ID;
@@ -50,18 +110,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     const googleToken = localStorage.getItem('expense_google_token');
 
-    if (googleToken === 'EXPIRED_TOKEN') {
+    if (googleToken && isInvalidOrExpiredToken(googleToken)) {
       localStorage.removeItem('expense_google_token');
-      setShowSessionExpiredModal(true);
-      setUser(null);
-      setIsAuthenticated(false);
-      setIsLoading(false);
-      return;
-    } else if (googleToken === 'mangled-garbage-jwt') {
-      localStorage.removeItem('expense_google_token');
+      if (isExpiredSessionToken(googleToken)) {
+        setShowSessionExpiredModal(true);
+        setUser(null);
+        setIsAuthenticated(false);
+        setIsLoading(false);
+        return;
+      }
     }
 
-    if (googleToken && googleToken !== 'EXPIRED_TOKEN' && googleToken !== 'mangled-garbage-jwt') {
+    if (!isInvalidOrExpiredToken(googleToken)) {
       setIsMockMode(false);
       setUser({ email: 'cloud@example.com', name: 'Google User' });
       setIsAuthenticated(true);
@@ -69,16 +129,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return;
     }
 
-    const handleHashAuth = () => {
+    const handleHashAuth = async () => {
       const hash = window.location.hash;
       if (hash.includes('access_token=')) {
-        const params = new URLSearchParams(hash.substring(1));
+        const cleanHash = hash.includes('#access_token=') ? hash.split('#access_token=')[1] : hash.substring(1);
+        const params = new URLSearchParams(cleanHash);
         const token = params.get('access_token');
         if (token) {
           localStorage.setItem('expense_google_token', token);
           localStorage.setItem('pref_mock_mode', 'false');
           setIsMockMode(false);
-          setUser({ email: 'cloud@example.com', name: 'Google User' });
+          try {
+            const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+              headers: { Authorization: `Bearer ${token}` }
+            });
+            if (res.ok) {
+              const info = await res.json();
+              setUser({ email: info.email || 'cloud@example.com', name: info.name || 'Google User', picture: info.picture });
+            } else {
+              setUser({ email: 'cloud@example.com', name: 'Google User' });
+            }
+          } catch {
+            setUser({ email: 'cloud@example.com', name: 'Google User' });
+          }
           setIsAuthenticated(true);
           window.location.hash = '';
         }
@@ -92,6 +165,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   useEffect(() => {
+    const googleToken = localStorage.getItem('expense_google_token');
+    if (!isInvalidOrExpiredToken(googleToken)) {
+      return;
+    }
     const savedMockMode = localStorage.getItem('pref_mock_mode');
     let parsedUser = null;
     const savedUser = localStorage.getItem('expense_mock_session');
@@ -154,11 +231,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     setIsLoading(true);
     try {
-      // Future Google Identity Services OAuth Implicit flow integration (Milestone 4)
-      console.log("Google login placeholder triggered.");
+      const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+      const redirectUri = window.location.origin + window.location.pathname;
+      const scopes = [
+        'https://www.googleapis.com/auth/drive.file',
+        'https://www.googleapis.com/auth/spreadsheets',
+        'https://www.googleapis.com/auth/gmail.send',
+        'email',
+        'profile'
+      ].join(' ');
+
+      const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?` + new URLSearchParams({
+        client_id: clientId,
+        redirect_uri: redirectUri,
+        response_type: 'token',
+        scope: scopes,
+        include_granted_scopes: 'true',
+        prompt: 'select_account'
+      }).toString();
+
+      window.location.href = authUrl;
     } catch (err) {
       console.error("Google login failed:", err);
-    } finally {
       setIsLoading(false);
     }
   };
