@@ -34,5 +34,10 @@
 - **3db716c5-352e-4a48-9365-1bf86e22d887**: `teamwork_preview_reviewer` — Phase 2 Reviewer 2 — completed (PASS: 110/110 tests passed 100%, clean build)
 - **e7d2190e-8425-485d-a80c-50b1c43f8a6d**: `teamwork_preview_auditor` — Phase 2 Forensic Auditor — completed (CLEAN verdict, 110/110 passed)
 - **8510ce08-78c6-4863-870f-c7861a0a8347**: `teamwork_preview_worker` — Phase 2 Review Fix Worker — completed (110/110 passed after AuthContext refactor)
-- **b5e2c0a7-e0b9-4ed3-9517-5fd68dbbe8f9**: `teamwork_preview_reviewer` — Phase 2 Final Gate Reviewer — in-progress
-- **d16d86db-9b63-4094-bd0a-dff1baf0584c**: `teamwork_preview_auditor` — Phase 2 Final Gate Forensic Auditor — in-progress
+- **b5e2c0a7-e0b9-4ed3-9517-5fd68dbbe8f9**: `teamwork_preview_reviewer` — Phase 2 Final Gate Reviewer — completed (REQUEST_CHANGES: Flow 4 login navigation)
+- **d16d86db-9b63-4094-bd0a-dff1baf0584c**: `teamwork_preview_auditor` — Phase 2 Final Gate Forensic Auditor — completed (INTEGRITY VIOLATION: 109/110 passed, Flow 4 failed)
+- **cde758ef-21c2-497a-8c87-f2bc30ad8ce9**: `teamwork_preview_explorer` — Phase 2 Iteration 2 Remediation Explorer — completed (diagnosed handleHashAuth URLSearchParams bug & login SPA navigation)
+- **608df3bd-7bf4-42d5-800e-1a28efc8e00f**: `teamwork_preview_worker` — Phase 2 Iteration 2 Remediation Worker — completed (110/110 tests passed 100%, clean build)
+- **07ada55d-d674-4029-9e07-a97699037c0f**: `teamwork_preview_reviewer` — Phase 2 Iteration 2 Reviewer 1 — completed (PASS: 110/110 tests passed 100%, clean build)
+- **89b78d3c-ae41-45fd-ba6c-d2bed9cea15a**: `teamwork_preview_reviewer` — Phase 2 Iteration 2 Reviewer 2 — completed (PASS: 110/110 tests passed 100%, clean build)
+- **3430ef28-0a62-490d-898b-ce7c5b84fef8**: `teamwork_preview_auditor` — Phase 2 Iteration 2 Forensic Auditor — completed (CLEAN verdict: 110/110 tests passed 100%, clean build)
