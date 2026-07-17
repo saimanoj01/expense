@@ -295,7 +295,7 @@ function AppInner() {
     const sortedDates = Object.keys(dateMap).sort();
     if (sortedDates.length === 0) return '';
     if (sortedDates.length === 1) {
-      return 'M 30 100 L 270 100';
+      return 'M 30 105 Q 150 90, 270 105';
     }
     const maxAmt = Math.max(...Object.values(dateMap), 1);
     const width = 300;

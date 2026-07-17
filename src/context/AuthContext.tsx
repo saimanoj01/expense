@@ -110,7 +110,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return isInvalidOrExpiredToken(token);
   });
 
-  const getClientId = () => import.meta.env.VITE_GOOGLE_CLIENT_ID || (typeof window !== 'undefined' ? (window as any).VITE_GOOGLE_CLIENT_ID : undefined);
+  const getClientId = () => 
+    import.meta.env.VITE_GOOGLE_CLIENT_ID || 
+    (typeof window !== 'undefined' ? (window as any).VITE_GOOGLE_CLIENT_ID : undefined) ||
+    localStorage.getItem('custom_google_client_id') ||
+    undefined;
   const googleClientIdExists = !!getClientId();
 
   const [showSessionExpiredModal, setShowSessionExpiredModal] = useState<boolean>(false);
@@ -255,14 +259,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [googleClientIdExists]);
 
   const login = async () => {
-    if (!googleClientIdExists) {
-      console.warn("No VITE_GOOGLE_CLIENT_ID configured. Falling back to Mock Login.");
-      loginAsMock();
-      return;
+    let clientId = getClientId();
+    if (!clientId) {
+      const input = window.prompt("To sign in with your real Google account, please enter your Google OAuth Client ID (or click Cancel to use Demo mode):");
+      if (input && input.trim()) {
+        clientId = input.trim();
+        localStorage.setItem('custom_google_client_id', clientId);
+      } else {
+        console.warn("No Google Client ID provided. Falling back to Mock Login.");
+        loginAsMock();
+        return;
+      }
     }
     setIsLoading(true);
     try {
-      const clientId = getClientId();
       const redirectUri = window.location.origin + window.location.pathname;
       const csrfState = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2);
       sessionStorage.setItem('oauth_csrf_state', csrfState);
@@ -285,13 +295,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         prompt: 'select_account'
       }).toString();
 
-      if (
-        (typeof window !== 'undefined' && (window as any).VITE_GOOGLE_CLIENT_ID) ||
-        (typeof window !== 'undefined' && (window as any).__PLAYWRIGHT__) ||
+      const isPlaywrightTest = typeof window !== 'undefined' && (
+        (window as any).__PLAYWRIGHT__ === true ||
         (typeof navigator !== 'undefined' && navigator.userAgent.includes('Playwright')) ||
-        window.location.hostname === 'localhost' ||
-        window.location.hostname === '127.0.0.1'
-      ) {
+        (window as any).VITE_GOOGLE_CLIENT_ID !== undefined
+      );
+
+      if (isPlaywrightTest) {
         console.log('Playwright test environment detected; awaiting SPA hashchange callback for OAuth.');
         setIsLoading(false);
       } else {
