@@ -38,6 +38,7 @@ export interface MonthlyLock {
 export interface StorageAdapter {
   getProjects(): Promise<Project[]>;
   createProject(name: string): Promise<Project>;
+  saveProject(project: Project): Promise<Project>;
 
   getCategories(projectId: string): Promise<Category[]>;
   saveCategory(projectId: string, category: Category): Promise<Category>;
@@ -278,6 +279,22 @@ export class LocalStorageAdapter implements StorageAdapter {
     return newProject;
   }
 
+  async saveProject(project: Project): Promise<Project> {
+    const projects = await this.getProjects();
+    const idx = projects.findIndex(p => p.id === project.id);
+    if (idx >= 0) {
+      projects[idx] = project;
+    } else {
+      projects.push(project);
+    }
+    try {
+      localStorage.setItem('expense_projects', JSON.stringify(projects));
+    } catch (e) {
+      throw new Error('Local storage quota exceeded. Unable to save project.');
+    }
+    return project;
+  }
+
   async getTransactions(projectId: string): Promise<Transaction[]> {
     const raw = localStorage.getItem(`expense_txs_${projectId}`);
     if (!raw) return [];
@@ -483,6 +500,15 @@ export class GoogleSheetsAdapter implements StorageAdapter {
       }).catch(() => {});
     } catch (e) {}
     return proj;
+  }
+  async saveProject(project: Project): Promise<Project> {
+    const idx = this.projects.findIndex(p => p.id === project.id);
+    if (idx >= 0) {
+      this.projects[idx] = project;
+    } else {
+      this.projects.push(project);
+    }
+    return project;
   }
   async getCategories(projectId: string): Promise<Category[]> {
     return this.categoriesMap.get(projectId) || [...DEFAULT_CATEGORIES];

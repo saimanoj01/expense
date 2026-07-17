@@ -20,6 +20,30 @@ async function computeTxHash(date: string, description: string, amount: number, 
   return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
+function parseCsvLine(line: string): string[] {
+  const result: string[] = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    if (char === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        current += '"';
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (char === ',' && !inQuotes) {
+      result.push(current.trim());
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+  result.push(current.trim());
+  return result;
+}
+
 function AppInner() {
   const { user, isAuthenticated, isMockMode, login, loginAsMock, logout, toggleMockMode, googleClientIdExists, showSessionExpiredModal, setShowSessionExpiredModal, authErrorToast, setAuthErrorToast } = useAuth();
   const { 
@@ -105,6 +129,7 @@ function AppInner() {
     description: string;
     amount: number;
     type: 'income' | 'expense';
+    category?: string;
     hash: string;
     isDuplicate: boolean;
     isLockedMonth?: boolean;
@@ -238,6 +263,51 @@ function AppInner() {
     });
     return items;
   }, [categories, budgets, filteredTransactions]);
+
+  const availableMonths = useMemo(() => {
+    const monthsSet = new Set<string>(['2026-05', '2026-06', '2026-07']);
+    transactions.forEach(t => {
+      if (t.date && t.date.length >= 7) monthsSet.add(t.date.substring(0, 7));
+    });
+    locks.forEach(l => {
+      if (l.month) monthsSet.add(l.month);
+    });
+    return Array.from(monthsSet).sort();
+  }, [transactions, locks]);
+
+  const availableTags = useMemo(() => {
+    const tagSet = new Set<string>(['groceries', 'utilities', 'salary', 'dining-out']);
+    transactions.forEach(t => {
+      (t.labels || []).forEach(l => {
+        if (l && l.trim()) tagSet.add(l.trim().toLowerCase());
+      });
+    });
+    return Array.from(tagSet);
+  }, [transactions]);
+
+  const trendPathData = useMemo(() => {
+    const expenses = filteredTransactions.filter(t => t.type === 'expense');
+    if (expenses.length === 0) return '';
+    const dateMap: { [date: string]: number } = {};
+    expenses.forEach(t => {
+      dateMap[t.date] = (dateMap[t.date] || 0) + t.amount;
+    });
+    const sortedDates = Object.keys(dateMap).sort();
+    if (sortedDates.length === 0) return '';
+    if (sortedDates.length === 1) {
+      return 'M 30 100 L 270 100';
+    }
+    const maxAmt = Math.max(...Object.values(dateMap), 1);
+    const width = 300;
+    const height = 150;
+    const padding = 20;
+    const points = sortedDates.map((date, idx) => {
+      const x = padding + (idx / (sortedDates.length - 1)) * (width - 2 * padding);
+      const y = height - padding - (dateMap[date] / maxAmt) * (height - 2 * padding);
+      return `${x.toFixed(1)} ${y.toFixed(1)}`;
+    });
+    return `M ${points.join(' L ')}`;
+  }, [filteredTransactions]);
 
   // Handle Save Transaction (Add or Edit)
   const handleSaveTransaction = async (e: React.FormEvent) => {
@@ -416,7 +486,8 @@ function AppInner() {
     };
     try {
       // Print HTML Report Email in console for collaborators immediately
-      const ccList = (activeProject.collaborators || []).join(', ');
+      const collabs = Array.from(new Set([...(activeProject.collaborators || []), ...collaboratorList]));
+      const ccList = collabs.join(', ');
       const formattedTotal = totalExpenses.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
       console.log(`Gmail API Mock: Sending Monthly Lock Report for ${selectedMonth} to ${ccList} <html><body><h1>Monthly Report: ${selectedMonth}</h1><p>Total Expenses: $${formattedTotal}</p></body></html>`);
 
@@ -479,7 +550,7 @@ function AppInner() {
     setCsvError(null);
     const file = e.target.files?.[0];
     if (!file) return;
-    if (!file.name.endsWith('.csv') && file.type === 'application/pdf') {
+    if (!file.name.toLowerCase().endsWith('.csv')) {
       setCsvError('Unable to parse CSV file');
       setShowCsvWizard(true);
       return;
@@ -496,16 +567,16 @@ function AppInner() {
       setShowCsvWizard(true);
       return;
     }
-    const headers = lines[0].split(',').map(s => s.trim());
-    const rows = lines.slice(1).map(line => line.split(',').map(s => s.trim()));
+    const headers = parseCsvLine(lines[0]);
+    const rows = lines.slice(1).map(line => parseCsvLine(line));
     setCsvRawHeaders(headers);
     setCsvRawRows(rows);
 
-    // Auto mapping guesses for standard names only
-    setMapDateCol(headers.find(h => /^date$/i.test(h)) || '');
-    setMapDescCol(headers.find(h => /^description$|^desc$|^payee$/i.test(h)) || '');
-    setMapAmountCol(headers.find(h => /^amount$/i.test(h)) || '');
-    setMapTypeCol(headers.find(h => /^type$/i.test(h)) || '');
+    // Auto mapping guesses for standard names
+    setMapDateCol(headers.find((h: string) => /^date$/i.test(h)) || '');
+    setMapDescCol(headers.find((h: string) => /^description$|^desc$|^payee$/i.test(h)) || '');
+    setMapAmountCol(headers.find((h: string) => /^amount$/i.test(h)) || '');
+    setMapTypeCol(headers.find((h: string) => /^type$/i.test(h)) || '');
     setCsvStep(1);
     setShowCsvWizard(true);
   };
@@ -520,6 +591,7 @@ function AppInner() {
     const descIdx = csvRawHeaders.indexOf(mapDescCol);
     const amtIdx = csvRawHeaders.indexOf(mapAmountCol);
     const typeIdx = csvRawHeaders.indexOf(mapTypeCol);
+    const catIdx = csvRawHeaders.findIndex(h => /^category$/i.test(h));
 
     const existingHashes = new Set(transactions.map(t => t.hash));
     const items: typeof parsedCsvItems = [];
@@ -529,6 +601,7 @@ function AppInner() {
       const rawDesc = row[descIdx] || 'Imported Transaction';
       let rawAmt = parseFloat(row[amtIdx] || '0') || 0;
       let rawType: 'income' | 'expense' = 'expense';
+      const rawCat = catIdx > -1 && row[catIdx] ? row[catIdx] : '';
 
       if (typeIdx > -1) {
         const inflowVal = parseFloat(row[typeIdx] || '0');
@@ -555,6 +628,7 @@ function AppInner() {
         description: rawDesc,
         amount: rawAmt,
         type: rawType,
+        category: rawCat,
         hash,
         isDuplicate: isDup,
         isLockedMonth,
@@ -570,10 +644,18 @@ function AppInner() {
     if (!activeProject || !storageAdapter) return;
     const toImport = parsedCsvItems.filter(i => i.selected);
     for (const item of toImport) {
+      // Find matching category or fall back to default
+      const rawCat = (item as any).category || '';
+      const matched = categories.find(c => 
+        c.id.toLowerCase() === rawCat.toLowerCase() || 
+        c.name.toLowerCase() === rawCat.toLowerCase()
+      );
+      const categoryId = matched ? matched.id : (categories[0]?.id || 'food');
+
       const newTxn: Transaction = {
         id: crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2),
         date: item.date,
-        category: 'Food',
+        category: categoryId,
         amount: item.amount,
         type: item.type,
         description: item.description,
@@ -902,9 +984,12 @@ function AppInner() {
                   className="py-1.5 px-3 rounded-lg border border-border bg-background text-xs font-semibold"
                 >
                   <option value="all">All Months</option>
-                  <option value="2026-05">May 2026</option>
-                  <option value="2026-06">June 2026</option>
-                  <option value="2026-07">July 2026</option>
+                  {availableMonths.map(m => {
+                    const [y, mon] = m.split('-');
+                    const dateObj = new Date(parseInt(y, 10), parseInt(mon, 10) - 1, 1);
+                    const label = isNaN(dateObj.getTime()) ? m : dateObj.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+                    return <option key={m} value={m}>{label}</option>;
+                  })}
                 </select>
 
                 {/* Lock Status & Action */}
@@ -1049,7 +1134,7 @@ function AppInner() {
                   <h3 className="font-bold text-sm uppercase tracking-wider text-muted-foreground">Transactions</h3>
                   <div className="flex items-center gap-1.5 flex-wrap">
                     {/* Common quick filter tags */}
-                    {['groceries', 'utilities', 'salary', 'dining-out'].map(tag => (
+                    {availableTags.map(tag => (
                       <button
                         key={tag}
                         data-testid={`filter-tag-${tag}`}
@@ -1319,14 +1404,18 @@ function AppInner() {
 
               <div className="p-6 rounded-xl border border-border bg-accent/5 flex flex-col items-center gap-4">
                 <span className="text-sm text-muted-foreground font-semibold">Spending Trend</span>
-                <svg className="w-full h-48" data-testid="chart-svg-trend">
+                <svg className="w-full h-48" data-testid="chart-svg-trend" viewBox="0 0 300 192">
                   <rect width="100%" height="100%" fill="rgba(255,255,255,0.02)" rx="8" />
                   {filteredTransactions.length === 0 && (
                     <text x="50%" y="50%" textAnchor="middle" fill="currentColor" className="no-data-text text-muted-foreground text-xs">
                       No data available
                     </text>
                   )}
-                  <path d="M 30 130 C 100 80, 200 120, 300 50" fill="transparent" stroke="currentColor" strokeWidth="3" className="text-primary" />
+                  {trendPathData ? (
+                    <path d={trendPathData} fill="none" stroke="currentColor" strokeWidth="3" className="text-primary" />
+                  ) : (
+                    <path d="M 30 130 C 100 80, 200 120, 300 50" fill="none" stroke="currentColor" strokeWidth="3" className="text-primary/40" />
+                  )}
                 </svg>
               </div>
             </div>
@@ -1602,11 +1691,16 @@ function AppInner() {
               />
               <button
                 data-testid="collaborator-submit-btn"
-                onClick={() => {
-                  if (collaboratorEmail.trim()) {
-                    setCollaboratorList(prev => [...prev, collaboratorEmail.trim()]);
-                    if (activeProject) {
-                      activeProject.collaborators = [...(activeProject.collaborators || []), collaboratorEmail.trim()];
+                onClick={async () => {
+                  const email = collaboratorEmail.trim();
+                  if (email && activeProject && storageAdapter) {
+                    const newCollabs = Array.from(new Set([...(activeProject.collaborators || []), email]));
+                    setCollaboratorList(newCollabs);
+                    const updatedProj = { ...activeProject, collaborators: newCollabs };
+                    try {
+                      await storageAdapter.saveProject(updatedProj);
+                    } catch (err) {
+                      console.error("Failed to save project collaborators:", err);
                     }
                     setCollaboratorEmail('');
                     showToast('Collaborator added');

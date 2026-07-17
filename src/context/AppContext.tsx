@@ -38,11 +38,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [isMockMode]);
 
   useEffect(() => {
-    (window as any).expenseStorage = storageAdapter;
+    if (import.meta.env.DEV || (typeof window !== 'undefined' && (window as any).__PLAYWRIGHT__)) {
+      (window as any).expenseStorage = storageAdapter;
+    }
   }, [storageAdapter]);
 
   // Load projects list when user becomes authenticated or storage adapter changes
-  const loadProjects = async () => {
+  const loadProjects = React.useCallback(async () => {
     if (!isAuthenticated) return;
     setIsLoading(true);
     setError(null);
@@ -72,7 +74,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [isAuthenticated, storageAdapter]);
 
   useEffect(() => {
     if (authIsLoading) return;
@@ -84,7 +86,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setCurrentView('project-selector');
       setIsLoading(false);
     }
-  }, [isAuthenticated, authIsLoading, storageAdapter]);
+  }, [isAuthenticated, authIsLoading, loadProjects]);
 
   const selectProject = (projectId: string | null) => {
     if (!projectId) {

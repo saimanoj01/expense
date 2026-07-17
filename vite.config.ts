@@ -14,9 +14,9 @@ export default defineConfig({
     port: 3000,
     host: true,
   },
-  base: './',
+  base: process.env.VITE_BASE_PATH || './',
   build: {
     outDir: 'dist',
-    sourcemap: true,
+    sourcemap: false,
   },
 });

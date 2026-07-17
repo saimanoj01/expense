@@ -84,11 +84,19 @@ export function isInvalidOrExpiredToken(token: string | null): boolean {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const getPersistedGoogleUser = (): User => {
+  const saved = localStorage.getItem('expense_google_user');
+  if (saved) {
+    try { return JSON.parse(saved); } catch {}
+  }
+  return { email: 'cloud@example.com', name: 'Google User' };
+};
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(() => {
     const token = localStorage.getItem('expense_google_token');
     if (!isInvalidOrExpiredToken(token)) {
-      return { email: 'cloud@example.com', name: 'Google User' };
+      return getPersistedGoogleUser();
     }
     return null;
   });
@@ -108,11 +116,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [showSessionExpiredModal, setShowSessionExpiredModal] = useState<boolean>(false);
   const [authErrorToast, setAuthErrorToast] = useState<string | null>(null);
 
+  // Auto-clear authErrorToast after 4 seconds
+  useEffect(() => {
+    if (authErrorToast) {
+      const timer = setTimeout(() => setAuthErrorToast(null), 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [authErrorToast]);
+
   useEffect(() => {
     const googleToken = localStorage.getItem('expense_google_token');
 
     if (googleToken && isInvalidOrExpiredToken(googleToken)) {
       localStorage.removeItem('expense_google_token');
+      localStorage.removeItem('expense_google_user');
       if (isExpiredSessionToken(googleToken)) {
         setShowSessionExpiredModal(true);
         setUser(null);
@@ -124,7 +141,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     if (!isInvalidOrExpiredToken(googleToken)) {
       setIsMockMode(false);
-      setUser({ email: 'cloud@example.com', name: 'Google User' });
+      setUser(getPersistedGoogleUser());
       setIsAuthenticated(true);
       setIsLoading(false);
       return;
@@ -136,29 +153,42 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const cleanHash = hash.substring(hash.indexOf('access_token='));
         const params = new URLSearchParams(cleanHash);
         const token = params.get('access_token');
+        const returnedState = params.get('state');
+        const storedState = sessionStorage.getItem('oauth_csrf_state');
+
+        if (storedState && returnedState && storedState !== returnedState) {
+          console.error("OAuth state mismatch: potential CSRF attack");
+          setAuthErrorToast("Authentication error: Invalid CSRF state");
+          setIsLoading(false);
+          return;
+        }
+        sessionStorage.removeItem('oauth_csrf_state');
+
         if (token) {
           localStorage.setItem('expense_google_token', token);
           localStorage.setItem('pref_mock_mode', 'false');
           setIsMockMode(false);
+          let userProfile: User = { email: 'cloud@example.com', name: 'Google User' };
           try {
             const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
               headers: { Authorization: `Bearer ${token}` }
             });
             if (res.ok) {
               const info = await res.json();
-              setUser({ email: info.email || 'cloud@example.com', name: info.name || 'Google User', picture: info.picture });
-            } else {
-              setUser({ email: 'cloud@example.com', name: 'Google User' });
+              userProfile = { email: info.email || 'cloud@example.com', name: info.name || 'Google User', picture: info.picture };
             }
           } catch {
-            setUser({ email: 'cloud@example.com', name: 'Google User' });
+            // Network fallback
           }
+          localStorage.setItem('expense_google_user', JSON.stringify(userProfile));
+          setUser(userProfile);
           setIsAuthenticated(true);
           window.location.hash = '';
         }
       } else if (hash.includes('error=access_denied')) {
         setAuthErrorToast('Access Denied');
       }
+      setIsLoading(false);
     };
     handleHashAuth();
     window.addEventListener('hashchange', handleHashAuth);
@@ -234,6 +264,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       const clientId = getClientId();
       const redirectUri = window.location.origin + window.location.pathname;
+      const csrfState = typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2);
+      sessionStorage.setItem('oauth_csrf_state', csrfState);
+
       const scopes = [
         'https://www.googleapis.com/auth/drive.file',
         'https://www.googleapis.com/auth/spreadsheets',
@@ -247,6 +280,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         redirect_uri: redirectUri,
         response_type: 'token',
         scope: scopes,
+        state: csrfState,
         include_granted_scopes: 'true',
         prompt: 'select_account'
       }).toString();
@@ -287,9 +321,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logout = async () => {
     setIsLoading(true);
+    const googleToken = localStorage.getItem('expense_google_token');
+    if (googleToken) {
+      try {
+        fetch(`https://oauth2.googleapis.com/revoke?token=${encodeURIComponent(googleToken)}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+        }).catch(() => {});
+      } catch {
+        // Ignore revocation network errors
+      }
+    }
+    localStorage.removeItem('expense_google_token');
+    localStorage.removeItem('expense_google_user');
+    localStorage.removeItem('expense_mock_session');
     setUser(null);
     setIsAuthenticated(false);
-    localStorage.removeItem('expense_mock_session');
     setIsLoading(false);
   };
 
