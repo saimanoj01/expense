@@ -614,7 +614,7 @@ function AppInner() {
     const toImport = parsedCsvItems.filter(i => i.selected);
     for (const item of toImport) {
       // Find matching category or fall back to default
-      const rawCat = (item as any).category || '';
+      const rawCat = item.category || '';
       const matched = categories.find(c => 
         c.id.toLowerCase() === rawCat.toLowerCase() || 
         c.name.toLowerCase() === rawCat.toLowerCase()

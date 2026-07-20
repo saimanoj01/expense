@@ -668,17 +668,51 @@ export class GoogleSheetsAdapter implements StorageAdapter {
 
   async saveTransaction(projectId: string, transaction: Transaction): Promise<Transaction> {
     await this.ensureCache(projectId);
+    const locks = await this.getLocks(projectId);
+
+    // Enforce lock check on target month
+    const txnMonth = transaction.date.substring(0, 7);
+    const isTargetLocked = locks.some(lock => lock.month === txnMonth && lock.locked);
+    if (isTargetLocked) {
+      throw new Error(`Cannot write to locked month ${txnMonth}`);
+    }
+
+    if (!transaction.id) {
+      transaction.id = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 9);
+    }
+
     const txs = this.cache[projectId].transactions;
     const idx = txs.findIndex(t => t.id === transaction.id);
-    if (idx > -1) txs[idx] = transaction;
-    else txs.push(transaction);
+    if (idx > -1) {
+      const originalTx = txs[idx];
+      const originalMonth = originalTx.date.substring(0, 7);
+      const isOriginalLocked = locks.some(lock => lock.month === originalMonth && lock.locked);
+      if (isOriginalLocked) {
+        throw new Error(`Cannot modify transaction. The original month ${originalMonth} is locked.`);
+      }
+      txs[idx] = transaction;
+    } else {
+      txs.push(transaction);
+    }
     await this.saveTransactionsToSheet(projectId, txs);
     return transaction;
   }
 
   async deleteTransaction(projectId: string, transactionId: string): Promise<void> {
     await this.ensureCache(projectId);
-    this.cache[projectId].transactions = this.cache[projectId].transactions.filter(t => t.id !== transactionId);
+    const txs = this.cache[projectId].transactions;
+    const txIndex = txs.findIndex(t => t.id === transactionId);
+    if (txIndex === -1) return;
+
+    // Enforce lock check
+    const locks = await this.getLocks(projectId);
+    const txMonth = txs[txIndex].date.substring(0, 7);
+    const isLocked = locks.some(lock => lock.month === txMonth && lock.locked);
+    if (isLocked) {
+      throw new Error(`Cannot delete transaction. The month ${txMonth} is locked.`);
+    }
+
+    this.cache[projectId].transactions = txs.filter(t => t.id !== transactionId);
     await this.saveTransactionsToSheet(projectId, this.cache[projectId].transactions);
   }
 
