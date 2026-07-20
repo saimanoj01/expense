@@ -474,99 +474,257 @@ export class LocalStorageAdapter implements StorageAdapter {
   }
 }
 
-// GoogleSheetsAdapter stub
 export class GoogleSheetsAdapter implements StorageAdapter {
-  private projects: Project[] = [{ id: 'cloud_proj', name: 'Google Drive Project' }];
-  private categoriesMap: Map<string, Category[]> = new Map();
-  private transactionsMap: Map<string, Transaction[]> = new Map();
-  private budgetsMap: Map<string, Budget[]> = new Map();
-  private locksMap: Map<string, MonthlyLock[]> = new Map();
+  private getToken: () => string | null;
+
+  // In-memory cache for fast reads
+  private projectsCache: Project[] | null = null;
+  private cache: Record<string, {
+    transactions: Transaction[];
+    categories: Category[];
+    budgets: Budget[];
+    locks: MonthlyLock[];
+  }> = {};
+
+  constructor(getToken: () => string | null) {
+    this.getToken = getToken;
+  }
+
+  private async fetchApi(url: string, options: RequestInit = {}) {
+    const token = this.getToken();
+    if (!token) throw new Error('Not authenticated');
+    const headers = new Headers(options.headers || {});
+    headers.set('Authorization', `Bearer ${token}`);
+    if (!headers.has('Content-Type') && options.method !== 'GET') {
+      headers.set('Content-Type', 'application/json');
+    }
+    const response = await fetch(url, { ...options, headers });
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`API Error ${response.status}: ${errorText}`);
+    }
+    return response.json();
+  }
 
   async getProjects(): Promise<Project[]> {
-    return [...this.projects];
-  }
-  async createProject(name: string): Promise<Project> {
-    const proj: Project = {
-      id: name.toLowerCase().replace(/[^a-z0-9]/g, '-') || Math.random().toString(36).substring(2, 9),
-      name
-    };
-    this.projects.push(proj);
-    // Background Google Sheets API call for cloud sync verification
+    if (this.projectsCache) return this.projectsCache;
+    
+    const raw = localStorage.getItem('expense_google_projects');
+    let localProjects: Project[] = raw ? JSON.parse(raw) : [];
+
+    // Optionally check Drive API to discover lost spreadsheets
     try {
-      fetch('https://sheets.googleapis.com/v4/spreadsheets', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ properties: { title: name } })
-      }).catch(() => {});
-    } catch (e) {}
-    return proj;
-  }
-  async saveProject(project: Project): Promise<Project> {
-    const idx = this.projects.findIndex(p => p.id === project.id);
-    if (idx >= 0) {
-      this.projects[idx] = project;
-    } else {
-      this.projects.push(project);
+      const driveRes = await this.fetchApi("https://www.googleapis.com/drive/v3/files?q=name+contains+'Nebula+Expense'+and+mimeType='application/vnd.google-apps.spreadsheet'&fields=files(id,name)");
+      const driveFiles = driveRes.files || [];
+      
+      let changed = false;
+      for (const file of driveFiles) {
+        const projName = file.name.replace('Nebula Expense - ', '').trim();
+        if (!localProjects.find(p => p.spreadsheetId === file.id)) {
+          localProjects.push({
+            id: file.id,
+            name: projName,
+            spreadsheetId: file.id
+          });
+          changed = true;
+        }
+      }
+      if (changed) {
+        localStorage.setItem('expense_google_projects', JSON.stringify(localProjects));
+      }
+    } catch (e) {
+      console.warn("Drive discovery failed:", e);
     }
+    
+    this.projectsCache = localProjects;
+    return localProjects;
+  }
+
+  async createProject(name: string): Promise<Project> {
+    const spreadsheet = await this.fetchApi('https://sheets.googleapis.com/v4/spreadsheets', {
+      method: 'POST',
+      body: JSON.stringify({
+        properties: { title: `Nebula Expense - ${name}` },
+        sheets: [
+          { properties: { title: 'Transactions' } },
+          { properties: { title: 'Categories' } },
+          { properties: { title: 'Budgets' } },
+          { properties: { title: 'Locks' } }
+        ]
+      })
+    });
+
+    const newProject: Project = {
+      id: spreadsheet.spreadsheetId,
+      name,
+      spreadsheetId: spreadsheet.spreadsheetId
+    };
+
+    const projects = await this.getProjects();
+    projects.push(newProject);
+    this.projectsCache = projects;
+    localStorage.setItem('expense_google_projects', JSON.stringify(projects));
+
+    this.cache[newProject.id] = {
+      transactions: [],
+      categories: [...DEFAULT_CATEGORIES],
+      budgets: [],
+      locks: []
+    };
+    
+    await this.saveCategoriesToSheet(newProject.id, this.cache[newProject.id].categories);
+    return newProject;
+  }
+
+  async saveProject(project: Project): Promise<Project> {
+    const projects = await this.getProjects();
+    const idx = projects.findIndex(p => p.id === project.id);
+    if (idx >= 0) projects[idx] = project;
+    else projects.push(project);
+    this.projectsCache = projects;
+    localStorage.setItem('expense_google_projects', JSON.stringify(projects));
     return project;
   }
-  async getCategories(projectId: string): Promise<Category[]> {
-    return this.categoriesMap.get(projectId) || [...DEFAULT_CATEGORIES];
+
+  private async ensureCache(projectId: string) {
+    if (this.cache[projectId]) return;
+    const project = (await this.getProjects()).find(p => p.id === projectId);
+    if (!project || !project.spreadsheetId) throw new Error("Project not found or missing spreadsheet ID");
+
+    const res = await this.fetchApi(`https://sheets.googleapis.com/v4/spreadsheets/${project.spreadsheetId}/values:batchGet?ranges=Transactions!A:I&ranges=Categories!A:D&ranges=Budgets!A:B&ranges=Locks!A:C`);
+    
+    const parseJSON = (str: string) => { try { return JSON.parse(str); } catch { return str; } };
+
+    const txRows = res.valueRanges?.[0]?.values || [];
+    const catRows = res.valueRanges?.[1]?.values || [];
+    const bgRows = res.valueRanges?.[2]?.values || [];
+    const lockRows = res.valueRanges?.[3]?.values || [];
+
+    const transactions: Transaction[] = txRows.slice(1).map((r: any[]) => ({
+      id: r[0], date: r[1], category: r[2], amount: parseFloat(r[3]), type: r[4], description: r[5], notes: r[6] || '', labels: parseJSON(r[7] || '[]'), hash: r[8] || ''
+    })).filter((t: any) => t.id);
+
+    let categories: Category[] = catRows.slice(1).map((r: any[]) => ({
+      id: r[0], name: r[1], color: r[2], emoji: r[3]
+    })).filter((c: any) => c.id);
+    
+    if (categories.length === 0) categories = [...DEFAULT_CATEGORIES];
+
+    const budgets: Budget[] = bgRows.slice(1).map((r: any[]) => ({
+      category: r[0], amount: parseFloat(r[1])
+    })).filter((b: any) => b.category);
+
+    const locks: MonthlyLock[] = lockRows.slice(1).map((r: any[]) => ({
+      month: r[0], locked: r[1] === 'true' || r[1] === 'TRUE', lockedAt: r[2] || undefined
+    })).filter((l: any) => l.month);
+
+    this.cache[projectId] = { transactions, categories, budgets, locks };
   }
-  async saveCategory(projectId: string, category: Category): Promise<Category> {
-    const list = await this.getCategories(projectId);
-    const idx = list.findIndex(c => c.id === category.id);
-    if (idx > -1) list[idx] = category;
-    else list.push(category);
-    this.categoriesMap.set(projectId, list);
-    return category;
+
+  private async writeSheet(projectId: string, range: string, values: any[][]) {
+    const project = (await this.getProjects()).find(p => p.id === projectId);
+    if (!project || !project.spreadsheetId) throw new Error("Project not found");
+
+    const sheetName = range.split('!')[0];
+    
+    // Clear existing data
+    await this.fetchApi(`https://sheets.googleapis.com/v4/spreadsheets/${project.spreadsheetId}/values/${sheetName}:clear`, { method: 'POST' });
+    
+    // Write new data
+    await this.fetchApi(`https://sheets.googleapis.com/v4/spreadsheets/${project.spreadsheetId}/values/${range}?valueInputOption=USER_ENTERED`, {
+      method: 'PUT',
+      body: JSON.stringify({ values })
+    });
   }
-  async deleteCategory(projectId: string, categoryId: string): Promise<void> {
-    const list = await this.getCategories(projectId);
-    this.categoriesMap.set(projectId, list.filter(c => c.id !== categoryId));
+
+  private async saveTransactionsToSheet(projectId: string, txs: Transaction[]) {
+    const header = ['id', 'date', 'category', 'amount', 'type', 'description', 'notes', 'labels', 'hash'];
+    const rows = txs.map(t => [t.id, t.date, t.category, t.amount, t.type, t.description, t.notes, JSON.stringify(t.labels), t.hash]);
+    await this.writeSheet(projectId, 'Transactions!A:I', [header, ...rows]);
   }
+
+  private async saveCategoriesToSheet(projectId: string, cats: Category[]) {
+    const header = ['id', 'name', 'color', 'emoji'];
+    const rows = cats.map(c => [c.id, c.name, c.color, c.emoji]);
+    await this.writeSheet(projectId, 'Categories!A:D', [header, ...rows]);
+  }
+
+  private async saveBudgetsToSheet(projectId: string, budgets: Budget[]) {
+    const header = ['category', 'amount'];
+    const rows = budgets.map(b => [b.category, b.amount]);
+    await this.writeSheet(projectId, 'Budgets!A:B', [header, ...rows]);
+  }
+
+  private async saveLocksToSheet(projectId: string, locks: MonthlyLock[]) {
+    const header = ['month', 'locked', 'lockedAt'];
+    const rows = locks.map(l => [l.month, String(l.locked), l.lockedAt || '']);
+    await this.writeSheet(projectId, 'Locks!A:C', [header, ...rows]);
+  }
+
   async getTransactions(projectId: string): Promise<Transaction[]> {
-    return this.transactionsMap.get(projectId) || [];
+    await this.ensureCache(projectId);
+    return this.cache[projectId].transactions;
   }
+
   async saveTransaction(projectId: string, transaction: Transaction): Promise<Transaction> {
-    const list = await this.getTransactions(projectId);
-    const idx = list.findIndex(t => t.id === transaction.id);
-    if (idx > -1) list[idx] = transaction;
-    else list.push(transaction);
-    this.transactionsMap.set(projectId, list);
-    // Background Google Sheets API calls for spreadsheet init and values append verification
-    try {
-      fetch('https://sheets.googleapis.com/v4/spreadsheets', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ properties: { title: 'Drive Sync Project' } })
-      }).catch(() => {});
-      fetch('https://sheets.googleapis.com/v4/spreadsheets/sheet-drive-xyz-999/values/Sheet1!A1:append?valueInputOption=USER_ENTERED', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ values: [[transaction.date, transaction.description, transaction.amount]] })
-      }).catch(() => {});
-    } catch (e) {}
+    await this.ensureCache(projectId);
+    const txs = this.cache[projectId].transactions;
+    const idx = txs.findIndex(t => t.id === transaction.id);
+    if (idx > -1) txs[idx] = transaction;
+    else txs.push(transaction);
+    await this.saveTransactionsToSheet(projectId, txs);
     return transaction;
   }
+
   async deleteTransaction(projectId: string, transactionId: string): Promise<void> {
-    const list = await this.getTransactions(projectId);
-    this.transactionsMap.set(projectId, list.filter(t => t.id !== transactionId));
+    await this.ensureCache(projectId);
+    this.cache[projectId].transactions = this.cache[projectId].transactions.filter(t => t.id !== transactionId);
+    await this.saveTransactionsToSheet(projectId, this.cache[projectId].transactions);
   }
+
+  async getCategories(projectId: string): Promise<Category[]> {
+    await this.ensureCache(projectId);
+    return this.cache[projectId].categories;
+  }
+
+  async saveCategory(projectId: string, category: Category): Promise<Category> {
+    await this.ensureCache(projectId);
+    const cats = this.cache[projectId].categories;
+    const idx = cats.findIndex(c => c.id === category.id);
+    if (idx > -1) cats[idx] = category;
+    else cats.push(category);
+    await this.saveCategoriesToSheet(projectId, cats);
+    return category;
+  }
+
+  async deleteCategory(projectId: string, categoryId: string): Promise<void> {
+    await this.ensureCache(projectId);
+    this.cache[projectId].categories = this.cache[projectId].categories.filter(c => c.id !== categoryId);
+    await this.saveCategoriesToSheet(projectId, this.cache[projectId].categories);
+  }
+
   async getBudgets(projectId: string): Promise<Budget[]> {
-    return this.budgetsMap.get(projectId) || [];
+    await this.ensureCache(projectId);
+    return this.cache[projectId].budgets;
   }
+
   async saveBudgets(projectId: string, budgets: Budget[]): Promise<void> {
-    this.budgetsMap.set(projectId, budgets);
+    await this.ensureCache(projectId);
+    this.cache[projectId].budgets = budgets;
+    await this.saveBudgetsToSheet(projectId, budgets);
   }
+
   async getLocks(projectId: string): Promise<MonthlyLock[]> {
-    return this.locksMap.get(projectId) || [];
+    await this.ensureCache(projectId);
+    return this.cache[projectId].locks;
   }
+
   async saveLock(projectId: string, lock: MonthlyLock): Promise<void> {
-    const list = await this.getLocks(projectId);
-    const idx = list.findIndex(l => l.month === lock.month);
-    if (idx > -1) list[idx] = lock;
-    else list.push(lock);
-    this.locksMap.set(projectId, list);
+    await this.ensureCache(projectId);
+    const locks = this.cache[projectId].locks;
+    const idx = locks.findIndex(l => l.month === lock.month);
+    if (idx > -1) locks[idx] = lock;
+    else locks.push(lock);
+    await this.saveLocksToSheet(projectId, locks);
   }
 }

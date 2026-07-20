@@ -33,7 +33,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (isMockMode) {
       return new LocalStorageAdapter();
     } else {
-      return new GoogleSheetsAdapter();
+      return new GoogleSheetsAdapter(() => localStorage.getItem('expense_google_token'));
     }
   }, [isMockMode]);
 

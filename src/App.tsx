@@ -151,28 +151,6 @@ function AppInner() {
       setLocks([]);
       return;
     }
-    if (activeProject.spreadsheetId === 'sheets-123') {
-      try {
-        const resp = await fetch('/spreadsheets/sheets-123');
-        if (resp.status === 404) setShowSpreadsheetNotFoundModal(true);
-      } catch (e) {
-        setShowSpreadsheetNotFoundModal(true);
-      }
-    }
-    if (activeProject.spreadsheetId === 'sheet-456') {
-      showToast('Rate limit exceeded. Retrying...');
-    }
-    if ((activeProject as any).version === 1) {
-      try {
-        const resp = await fetch(`/metadata/${activeProject.id}`);
-        if (resp.ok) {
-          const data = await resp.json();
-          if (data.version && data.version > (activeProject as any).version) {
-            setShowConflictModal(true);
-          }
-        }
-      } catch (e) {}
-    }
     try {
       const txs = await storageAdapter.getTransactions(activeProject.id);
       const bgs = await storageAdapter.getBudgets(activeProject.id);
@@ -382,7 +360,7 @@ function AppInner() {
     setTxnNotes('');
     setTxnLabels('');
     setTxnDate(`${selectedMonth}-15`);
-    setTxnCategory(categories[0]?.name || 'Food');
+    setTxnCategory(categories[0]?.id || 'food');
     setShowTxnModal(true);
   };
 
@@ -493,19 +471,10 @@ function AppInner() {
 
       await storageAdapter.saveLock(activeProject.id, lockRecord);
       await refreshProjectData();
-
-      // Check email dispatch endpoint
-      try {
-        const resp = await fetch('/gmail/v1/users/me/messages/send');
-        if (resp.status === 408) {
-          await storageAdapter.saveLock(activeProject.id, { month: selectedMonth, locked: false });
-          await refreshProjectData();
-          setAuthErrorToast('Lock failed: email report could not send');
-          return;
-        }
-      } catch (e) {}
-
-      showToast(`Month ${selectedMonth} locked and report dispatched`);
+      const mailtoLink = `mailto:${ccList}?subject=Monthly Lock Report: ${selectedMonth}&body=Monthly Report: ${selectedMonth}%0A%0ATotal Expenses: $${formattedTotal}`;
+      console.log(`Lock Report Generated: ${mailtoLink}`);
+      
+      showToast(`Month ${selectedMonth} locked. Report generated.`);
     } catch (err: any) {
       alert(err.message || 'Failed to lock month');
     }
@@ -1489,7 +1458,7 @@ function AppInner() {
                   className="w-full px-3 py-2 rounded-lg border border-border bg-background mt-1 text-sm focus:outline-none focus:border-primary"
                 >
                   {categories.map(c => (
-                    <option key={c.id} value={c.name}>
+                    <option key={c.id} value={c.id}>
                       {c.emoji} {c.name}
                     </option>
                   ))}

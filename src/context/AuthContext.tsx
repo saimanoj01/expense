@@ -22,14 +22,7 @@ export interface AuthContextType {
   setAuthErrorToast: (msg: string | null) => void;
 }
 
-/**
- * Helper to determine if a token represents an explicitly expired session
- * (either mock OAuth simulator expired token or an expired JWT claim).
- */
-function isExpiredSessionToken(token: string): boolean {
-  if (token === 'EXPIRED_TOKEN') {
-    return true;
-  }
+function parseJwtExp(token: string): number | null {
   if (token.includes('.') || token.toLowerCase().includes('jwt')) {
     const parts = token.split('.');
     if (parts.length === 3) {
@@ -39,12 +32,27 @@ function isExpiredSessionToken(token: string): boolean {
         const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=');
         const payload = JSON.parse(atob(padded));
         if (payload && typeof payload.exp === 'number') {
-          return payload.exp * 1000 <= Date.now();
+          return payload.exp * 1000;
         }
       } catch {
-        return false;
+        return null;
       }
     }
+  }
+  return null;
+}
+
+/**
+ * Helper to determine if a token represents an explicitly expired session
+ * (either mock OAuth simulator expired token or an expired JWT claim).
+ */
+function isExpiredSessionToken(token: string): boolean {
+  if (token === 'EXPIRED_TOKEN') {
+    return true;
+  }
+  const exp = parseJwtExp(token);
+  if (exp !== null) {
+    return exp <= Date.now();
   }
   return false;
 }
@@ -60,26 +68,19 @@ export function isInvalidOrExpiredToken(token: string | null): boolean {
   if (token === 'EXPIRED_TOKEN') {
     return true;
   }
+  
   if (token.includes('.') || token.toLowerCase().includes('jwt')) {
     const parts = token.split('.');
     if (parts.length !== 3) {
-      return true;
+      return true; // invalid structure
     }
-    try {
-      const base64Url = parts[1];
-      const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-      const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=');
-      const payload = JSON.parse(atob(padded));
-      if (payload && typeof payload.exp === 'number') {
-        if (payload.exp * 1000 <= Date.now()) {
-          return true;
-        }
-      }
-    } catch {
-      return true;
+    const exp = parseJwtExp(token);
+    if (exp !== null) {
+      return exp <= Date.now();
     }
   }
-  return false;
+  
+  return false; // Not a JWT, treat as valid arbitrary token
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -280,7 +281,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const scopes = [
         'https://www.googleapis.com/auth/drive.file',
         'https://www.googleapis.com/auth/spreadsheets',
-        'https://www.googleapis.com/auth/gmail.send',
         'email',
         'profile'
       ].join(' ');

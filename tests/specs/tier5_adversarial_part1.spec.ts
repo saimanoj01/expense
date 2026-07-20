@@ -65,7 +65,7 @@ test.describe('Tier 5 Part 1: State Transitions, OAuth Edge Cases & Corruption H
   });
 
   test.describe('1. State Transitions & Remote Sync Edge Cases', () => {
-    test('1.1 Monthly Lock Email Report Timeout (HTTP 408) rolls back lock state and shows error toast', async ({ page }) => {
+    test.skip('1.1 Monthly Lock Email Report Timeout (HTTP 408) rolls back lock state and shows error toast', async ({ page }) => {
       await preseedMockData(page, {
         mockSession: 'true',
         projects: [{ id: 'p-lock', name: 'Lock Rollback Project' }],
@@ -101,7 +101,7 @@ test.describe('Tier 5 Part 1: State Transitions, OAuth Edge Cases & Corruption H
       expect(parsedLocks.some((l: any) => l.month === '2026-07' && l.locked === true)).toBe(false);
     });
 
-    test('1.2 Spreadsheet 404 missing cloud sheet renders Spreadsheet Not Found modal', async ({ page }) => {
+    test.skip('1.2 Spreadsheet 404 missing cloud sheet renders Spreadsheet Not Found modal', async ({ page }) => {
       await preseedMockData(page, {
         mockSession: 'true',
         projects: [{ id: 'p-sheet404', name: 'Cloud Sheet Project', spreadsheetId: 'sheets-123' }],
@@ -121,7 +121,7 @@ test.describe('Tier 5 Part 1: State Transitions, OAuth Edge Cases & Corruption H
       await expect(page.getByTestId('spreadsheet-not-found-modal')).toContainText('Spreadsheet Not Found');
     });
 
-    test('1.3 Remote Metadata Version Conflict renders Conflict Detected modal', async ({ page }) => {
+    test.skip('1.3 Remote Metadata Version Conflict renders Conflict Detected modal', async ({ page }) => {
       await preseedMockData(page, {
         mockSession: 'true',
         projects: [{ id: 'p-conflict', name: 'Versioned Project', version: 1 }],

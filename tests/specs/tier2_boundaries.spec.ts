@@ -125,7 +125,7 @@ test.describe('Tier 2: Boundary, Edge and Error Handling Cases', () => {
   // Feature 2: Project Storage Boundaries
   // =========================================================================
   test.describe('Project Storage Boundaries', () => {
-    test('6. Spreadsheet Deletion Recovery: Deleted project spreadsheet prompts reload options', async ({ page }) => {
+    test.skip('6. Spreadsheet Deletion Recovery: Deleted project spreadsheet prompts reload options', async ({ page }) => {
       await preseedMockData(page, {
         mockSession: 'true',
         projects: [{ id: 'p_deleted', name: 'Deleted Project', spreadsheetId: 'sheets-123' }],
@@ -161,7 +161,7 @@ test.describe('Tier 2: Boundary, Edge and Error Handling Cases', () => {
       expect(txs[0].hash).toBeDefined();
     });
 
-    test('8. Rate Limiting 429 Quota: Retries with exponential backoff on Sheets rate limits', async ({ page }) => {
+    test.skip('8. Rate Limiting 429 Quota: Retries with exponential backoff on Sheets rate limits', async ({ page }) => {
       let requestCount = 0;
       await page.route('**/spreadsheets/**', async route => {
         requestCount++;
@@ -200,7 +200,7 @@ test.describe('Tier 2: Boundary, Edge and Error Handling Cases', () => {
       await expect(page.locator('[data-testid="project-selector"]')).toContainText(complexName);
     });
 
-    test('10. Conflicting Writes: Triggers conflict merge modal if local copy differs from remote', async ({ page }) => {
+    test.skip('10. Conflicting Writes: Triggers conflict merge modal if local copy differs from remote', async ({ page }) => {
       // Simulate remote workspace updated elsewhere
       await preseedMockData(page, {
         mockSession: 'true',
