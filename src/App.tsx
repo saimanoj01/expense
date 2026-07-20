@@ -12,7 +12,7 @@ import {
 
 // Compute SHA-256 hash for deduplication
 async function computeTxHash(date: string, description: string, amount: number, type: string): Promise<string> {
-  const payload = `${date}|${description.trim()}|${amount}|${type}`;
+  const payload = `${date}|${description.trim().toLowerCase()}|${amount.toFixed(2)}|${type}`;
   const encoder = new TextEncoder();
   const data = encoder.encode(payload);
   const hashBuffer = await crypto.subtle.digest('SHA-256', data);
@@ -201,6 +201,28 @@ function AppInner() {
     });
   }, [transactions, selectedMonth, selectedTagFilter]);
 
+  // Duplicate transaction detector across all transactions
+  const duplicateTxnIds = useMemo(() => {
+    const dups = new Set<string>();
+    for (let i = 0; i < transactions.length; i++) {
+      for (let j = i + 1; j < transactions.length; j++) {
+        const t1 = transactions[i];
+        const t2 = transactions[j];
+        const sameHash = Boolean(t1.hash && t2.hash && t1.hash === t2.hash);
+        const sameFields = t1.date === t2.date && 
+          t1.description.trim().toLowerCase() === t2.description.trim().toLowerCase() && 
+          Math.abs(t1.amount - t2.amount) < 0.001 && 
+          t1.type === t2.type;
+
+        if (sameHash || sameFields) {
+          dups.add(t1.id);
+          dups.add(t2.id);
+        }
+      }
+    }
+    return dups;
+  }, [transactions]);
+
   // KPI Calculations
   const totalBudget = useMemo(() => budgets.reduce((sum, b) => sum + b.amount, 0), [budgets]);
   const totalExpenses = useMemo(() => filteredTransactions
@@ -338,6 +360,16 @@ function AppInner() {
       hash
     };
 
+    const isDup = transactions.some(t => 
+      t.id !== targetId && (
+        (t.hash && t.hash === hash) || 
+        (t.date === txnDate && 
+         t.description.trim().toLowerCase() === txnDescription.trim().toLowerCase() && 
+         Math.abs(t.amount - amtNum) < 0.001 && 
+         t.type === txnType)
+      )
+    );
+
     try {
       await storageAdapter.saveTransaction(activeProject.id, newTxn);
       await refreshProjectData();
@@ -347,7 +379,13 @@ function AppInner() {
       setTxnDescription('');
       setTxnNotes('');
       setTxnLabels('');
-      showToast(editingTxnId ? 'Transaction updated successfully' : 'Transaction added successfully');
+      if (editingTxnId) {
+        showToast('Transaction updated successfully');
+      } else if (isDup) {
+        showToast('Transaction added (Flagged as duplicate entry)');
+      } else {
+        showToast('Transaction added successfully');
+      }
     } catch (err: any) {
       alert(err.message || 'Failed to save transaction');
     }
@@ -1117,6 +1155,11 @@ function AppInner() {
                         #{tag}
                       </button>
                     ))}
+                    {duplicateTxnIds.size > 0 && (
+                      <span className="text-[10px] py-0.5 px-2 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30 font-semibold" title="Duplicate transactions present">
+                        ⚠️ {duplicateTxnIds.size} Duplicate{duplicateTxnIds.size > 1 ? 's' : ''} Flagged
+                      </span>
+                    )}
                     {selectedTagFilter && (
                       <button 
                         onClick={() => setSelectedTagFilter(null)}
@@ -1149,16 +1192,27 @@ function AppInner() {
                               {catObj?.emoji || '📦'}
                             </span>
                             <div>
-                              <p className="text-sm font-bold text-foreground">{txn.description}</p>
-                              <div className="flex items-center gap-2 mt-0.5">
-                                <span data-testid="transaction-date-row" className="text-[10px] text-muted-foreground">{txn.date}</span>
-                                {txn.labels.map(l => (
-                                  <span key={l} className="text-[10px] py-0.5 px-1.5 rounded bg-accent/30 text-muted-foreground">
-                                    #{l}
-                                  </span>
-                                ))}
+                                <div className="flex items-center gap-2">
+                                  <p className="text-sm font-bold text-foreground">{txn.description}</p>
+                                  {duplicateTxnIds.has(txn.id) && (
+                                    <span 
+                                      data-testid="duplicate-badge"
+                                      className="text-[10px] py-0.5 px-1.5 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30 font-semibold"
+                                      title="Duplicate transaction detected"
+                                    >
+                                      ⚠️ Duplicate
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-2 mt-0.5">
+                                  <span data-testid="transaction-date-row" className="text-[10px] text-muted-foreground">{txn.date}</span>
+                                  {txn.labels.map(l => (
+                                    <span key={l} className="text-[10px] py-0.5 px-1.5 rounded bg-accent/30 text-muted-foreground">
+                                      #{l}
+                                    </span>
+                                  ))}
+                                </div>
                               </div>
-                            </div>
                           </div>
 
                           <div className="flex items-center gap-3">
