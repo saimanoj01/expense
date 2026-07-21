@@ -46,6 +46,7 @@ export interface StorageAdapter {
 
   getTransactions(projectId: string): Promise<Transaction[]>;
   saveTransaction(projectId: string, transaction: Transaction): Promise<Transaction>;
+  saveTransactions(projectId: string, transactions: Transaction[]): Promise<Transaction[]>;
   deleteTransaction(projectId: string, transactionId: string): Promise<void>;
 
   getBudgets(projectId: string): Promise<Budget[]>;
@@ -365,6 +366,43 @@ export class LocalStorageAdapter implements StorageAdapter {
       throw new Error('Local storage quota exceeded. Unable to save transaction.');
     }
     return transaction;
+  }
+
+  async saveTransactions(projectId: string, newTransactions: Transaction[]): Promise<Transaction[]> {
+    const transactions = await this.getTransactions(projectId);
+    const locks = await this.getLocks(projectId);
+
+    for (const transaction of newTransactions) {
+      const txnMonth = transaction.date.substring(0, 7);
+      const isTargetLocked = locks.some(lock => lock.month === txnMonth && lock.locked);
+      if (isTargetLocked) {
+        throw new Error(`Cannot write to locked month ${txnMonth}`);
+      }
+
+      if (!transaction.id) {
+        transaction.id = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 9);
+      }
+
+      const existingIndex = transactions.findIndex(t => t.id === transaction.id);
+      if (existingIndex > -1) {
+        const originalTx = transactions[existingIndex];
+        const originalMonth = originalTx.date.substring(0, 7);
+        const isOriginalLocked = locks.some(lock => lock.month === originalMonth && lock.locked);
+        if (isOriginalLocked) {
+          throw new Error(`Cannot modify transaction. The original month ${originalMonth} is locked.`);
+        }
+        transactions[existingIndex] = transaction;
+      } else {
+        transactions.push(transaction);
+      }
+    }
+
+    try {
+      localStorage.setItem(`expense_txs_${projectId}`, JSON.stringify(transactions));
+    } catch (e) {
+      throw new Error('Local storage quota exceeded. Unable to save transactions.');
+    }
+    return newTransactions;
   }
 
   async deleteTransaction(projectId: string, transactionId: string): Promise<void> {
@@ -696,6 +734,40 @@ export class GoogleSheetsAdapter implements StorageAdapter {
     }
     await this.saveTransactionsToSheet(projectId, txs);
     return transaction;
+  }
+
+  async saveTransactions(projectId: string, newTransactions: Transaction[]): Promise<Transaction[]> {
+    await this.ensureCache(projectId);
+    const locks = await this.getLocks(projectId);
+    const txs = this.cache[projectId].transactions;
+
+    for (const transaction of newTransactions) {
+      const txnMonth = transaction.date.substring(0, 7);
+      const isTargetLocked = locks.some(lock => lock.month === txnMonth && lock.locked);
+      if (isTargetLocked) {
+        throw new Error(`Cannot write to locked month ${txnMonth}`);
+      }
+
+      if (!transaction.id) {
+        transaction.id = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 9);
+      }
+
+      const idx = txs.findIndex(t => t.id === transaction.id);
+      if (idx > -1) {
+        const originalTx = txs[idx];
+        const originalMonth = originalTx.date.substring(0, 7);
+        const isOriginalLocked = locks.some(lock => lock.month === originalMonth && lock.locked);
+        if (isOriginalLocked) {
+          throw new Error(`Cannot modify transaction. The original month ${originalMonth} is locked.`);
+        }
+        txs[idx] = transaction;
+      } else {
+        txs.push(transaction);
+      }
+    }
+
+    await this.saveTransactionsToSheet(projectId, txs);
+    return newTransactions;
   }
 
   async deleteTransaction(projectId: string, transactionId: string): Promise<void> {

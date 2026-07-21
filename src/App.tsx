@@ -144,6 +144,8 @@ function AppInner() {
   const [showDuplicateWarningModal, setShowDuplicateWarningModal] = useState<boolean>(false);
   const [pendingDuplicateTxn, setPendingDuplicateTxn] = useState<Transaction | null>(null);
   const [showCsvDuplicateWarningModal, setShowCsvDuplicateWarningModal] = useState<boolean>(false);
+  const [selectedTxnIds, setSelectedTxnIds] = useState<Set<string>>(new Set());
+  const [showBulkDeleteConfirmModal, setShowBulkDeleteConfirmModal] = useState<boolean>(false);
 
   // Load project details
   const refreshProjectData = async () => {
@@ -429,9 +431,51 @@ function AppInner() {
     try {
       await storageAdapter.deleteTransaction(activeProject.id, id);
       await refreshProjectData();
+      setSelectedTxnIds(prev => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
       showToast('Transaction deleted');
     } catch (err: any) {
       alert(err.message || 'Failed to delete transaction');
+    }
+  };
+
+  const toggleSelectTxn = (id: string) => {
+    setSelectedTxnIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const isAllSelected = filteredTransactions.length > 0 && filteredTransactions.every(t => selectedTxnIds.has(t.id));
+
+  const toggleSelectAllTxns = () => {
+    if (isAllSelected) {
+      setSelectedTxnIds(new Set());
+    } else {
+      setSelectedTxnIds(new Set(filteredTransactions.map(t => t.id)));
+    }
+  };
+
+  const handleExecuteBulkDelete = async () => {
+    if (!activeProject || !storageAdapter || selectedTxnIds.size === 0) return;
+    const idsToDelete = Array.from(selectedTxnIds);
+    let count = 0;
+    try {
+      for (const id of idsToDelete) {
+        await storageAdapter.deleteTransaction(activeProject.id, id);
+        count++;
+      }
+      await refreshProjectData();
+      setSelectedTxnIds(new Set());
+      setShowBulkDeleteConfirmModal(false);
+      showToast(`Successfully deleted ${count} transaction${count > 1 ? 's' : ''}`);
+    } catch (err: any) {
+      alert(err.message || 'Failed to delete selected transactions');
     }
   };
 
@@ -662,8 +706,9 @@ function AppInner() {
   const executeCommitCsvImport = async () => {
     if (!activeProject || !storageAdapter) return;
     const toImport = parsedCsvItems.filter(i => i.selected);
-    for (const item of toImport) {
-      // Find matching category or fall back to default
+    if (toImport.length === 0) return;
+
+    const newTxns: Transaction[] = toImport.map(item => {
       const rawCat = item.category || '';
       const matched = categories.find(c => 
         c.id.toLowerCase() === rawCat.toLowerCase() || 
@@ -671,7 +716,7 @@ function AppInner() {
       );
       const categoryId = matched ? matched.id : (categories[0]?.id || 'food');
 
-      const newTxn: Transaction = {
+      return {
         id: crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2),
         date: item.date,
         category: categoryId,
@@ -682,8 +727,9 @@ function AppInner() {
         labels: ['imported'],
         hash: item.hash
       };
-      await storageAdapter.saveTransaction(activeProject.id, newTxn);
-    }
+    });
+
+    await storageAdapter.saveTransactions(activeProject.id, newTxns);
     await refreshProjectData();
     setShowCsvWizard(false);
     setShowCsvDuplicateWarningModal(false);
@@ -1161,7 +1207,32 @@ function AppInner() {
               {/* Left Column: Transactions List & Tag Filters */}
               <div className="lg:col-span-2 p-6 rounded-xl border border-border bg-accent/5 flex flex-col gap-4 text-left">
                 <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/40 pb-3">
-                  <h3 className="font-bold text-sm uppercase tracking-wider text-muted-foreground">Transactions</h3>
+                  <div className="flex items-center gap-3">
+                    <h3 className="font-bold text-sm uppercase tracking-wider text-muted-foreground">Transactions</h3>
+                    {filteredTransactions.length > 0 && !isCurrentMonthLocked && (
+                      <label className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          data-testid="select-all-txns-checkbox"
+                          checked={isAllSelected}
+                          onChange={toggleSelectAllTxns}
+                          className="accent-primary cursor-pointer h-3.5 w-3.5 rounded"
+                        />
+                        <span>Select All</span>
+                      </label>
+                    )}
+                    {selectedTxnIds.size > 0 && !isCurrentMonthLocked && (
+                      <button
+                        data-testid="bulk-delete-btn"
+                        type="button"
+                        onClick={() => setShowBulkDeleteConfirmModal(true)}
+                        className="px-2.5 py-1 rounded-lg bg-rose-500/20 text-rose-300 border border-rose-500/40 hover:bg-rose-500/30 text-xs font-bold flex items-center gap-1.5 transition-all"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        Delete Selected ({selectedTxnIds.size})
+                      </button>
+                    )}
+                  </div>
                   <div className="flex items-center gap-1.5 flex-wrap">
                     {/* Common quick filter tags */}
                     {availableTags.map(tag => (
@@ -1204,9 +1275,20 @@ function AppInner() {
                         <div
                           key={txn.id}
                           data-testid="transaction-row"
-                          className="p-3.5 rounded-xl border border-border bg-background flex items-center justify-between gap-4 hover:border-primary/40 transition-colors"
+                          className={`p-3.5 rounded-xl border flex items-center justify-between gap-4 transition-colors ${
+                            selectedTxnIds.has(txn.id) ? 'border-primary/60 bg-primary/5' : 'border-border bg-background hover:border-primary/40'
+                          }`}
                         >
                           <div className="flex items-center gap-3 text-left">
+                            {!isCurrentMonthLocked && (
+                              <input
+                                type="checkbox"
+                                data-testid={`select-txn-checkbox-${txn.id}`}
+                                checked={selectedTxnIds.has(txn.id)}
+                                onChange={() => toggleSelectTxn(txn.id)}
+                                className="accent-primary cursor-pointer h-4 w-4 rounded"
+                              />
+                            )}
                             <span 
                               data-testid={`category-badge-${catObj?.name || txn.category}`}
                               className="h-9 w-9 rounded-lg flex items-center justify-center text-base"
@@ -2091,6 +2173,44 @@ function AppInner() {
                 className="px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-slate-950 text-xs font-bold shadow-lg shadow-amber-500/20 transition-colors"
               >
                 Yes, Import Duplicates
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showBulkDeleteConfirmModal && (
+        <div data-testid="bulk-delete-modal" className="fixed inset-0 z-50 bg-black/70 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="glass-card max-w-md w-full p-6 rounded-2xl animate-slide-up border border-rose-500/40 text-left">
+            <div className="flex items-center gap-3 text-rose-400 mb-3">
+              <span className="h-10 w-10 rounded-full bg-rose-500/20 flex items-center justify-center text-xl font-bold">🗑️</span>
+              <div>
+                <h3 className="font-bold text-base text-foreground">Delete Selected Transactions</h3>
+                <p className="text-xs text-muted-foreground">Are you sure you want to permanently delete these entries?</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-muted-foreground my-4 p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-300">
+              You are about to delete <strong className="font-bold text-rose-200">{selectedTxnIds.size}</strong> transaction{selectedTxnIds.size > 1 ? 's' : ''}. This operation cannot be undone.
+            </p>
+
+            <div className="flex items-center justify-end gap-3">
+              <button
+                data-testid="bulk-delete-cancel-btn"
+                type="button"
+                onClick={() => setShowBulkDeleteConfirmModal(false)}
+                className="px-4 py-2 rounded-lg border border-border hover:bg-accent/40 text-xs font-semibold text-foreground transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                data-testid="bulk-delete-confirm-btn"
+                type="button"
+                onClick={handleExecuteBulkDelete}
+                className="px-4 py-2 rounded-lg bg-rose-500 hover:bg-rose-600 text-white text-xs font-bold shadow-lg shadow-rose-500/20 transition-colors flex items-center gap-1.5"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                Delete All Selected ({selectedTxnIds.size})
               </button>
             </div>
           </div>
