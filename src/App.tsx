@@ -141,6 +141,9 @@ function AppInner() {
 
   const [showSpreadsheetNotFoundModal, setShowSpreadsheetNotFoundModal] = useState<boolean>(false);
   const [showConflictModal, setShowConflictModal] = useState<boolean>(false);
+  const [showDuplicateWarningModal, setShowDuplicateWarningModal] = useState<boolean>(false);
+  const [pendingDuplicateTxn, setPendingDuplicateTxn] = useState<Transaction | null>(null);
+  const [showCsvDuplicateWarningModal, setShowCsvDuplicateWarningModal] = useState<boolean>(false);
 
   // Load project details
   const refreshProjectData = async () => {
@@ -309,6 +312,25 @@ function AppInner() {
     return `M ${points.join(' L ')}`;
   }, [filteredTransactions]);
 
+  const executeSaveTransaction = async (txnToSave: Transaction) => {
+    if (!activeProject || !storageAdapter) return;
+    try {
+      await storageAdapter.saveTransaction(activeProject.id, txnToSave);
+      await refreshProjectData();
+      setShowTxnModal(false);
+      setShowDuplicateWarningModal(false);
+      setPendingDuplicateTxn(null);
+      setEditingTxnId(null);
+      setTxnAmount('');
+      setTxnDescription('');
+      setTxnNotes('');
+      setTxnLabels('');
+      showToast(editingTxnId ? 'Transaction updated successfully' : 'Transaction saved successfully');
+    } catch (err: any) {
+      alert(err.message || 'Failed to save transaction');
+    }
+  };
+
   // Handle Save Transaction (Add or Edit)
   const handleSaveTransaction = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -370,25 +392,13 @@ function AppInner() {
       )
     );
 
-    try {
-      await storageAdapter.saveTransaction(activeProject.id, newTxn);
-      await refreshProjectData();
-      setShowTxnModal(false);
-      setEditingTxnId(null);
-      setTxnAmount('');
-      setTxnDescription('');
-      setTxnNotes('');
-      setTxnLabels('');
-      if (editingTxnId) {
-        showToast('Transaction updated successfully');
-      } else if (isDup) {
-        showToast('Transaction added (Flagged as duplicate entry)');
-      } else {
-        showToast('Transaction added successfully');
-      }
-    } catch (err: any) {
-      alert(err.message || 'Failed to save transaction');
+    if (isDup && !editingTxnId) {
+      setPendingDuplicateTxn(newTxn);
+      setShowDuplicateWarningModal(true);
+      return;
     }
+
+    await executeSaveTransaction(newTxn);
   };
 
   const handleOpenAddTxn = () => {
@@ -601,6 +611,7 @@ function AppInner() {
     const catIdx = csvRawHeaders.findIndex(h => /^category$/i.test(h));
 
     const existingHashes = new Set(transactions.map(t => t.hash));
+    const seenHashesInBatch = new Set<string>();
     const items: typeof parsedCsvItems = [];
 
     for (const row of csvRawRows) {
@@ -620,12 +631,13 @@ function AppInner() {
         }
       }
       const hash = await computeTxHash(rawDate, rawDesc, rawAmt, rawType);
-      const isDup = existingHashes.has(hash) || transactions.some(t => 
+      const isDup = seenHashesInBatch.has(hash) || existingHashes.has(hash) || transactions.some(t => 
         t.date === rawDate && 
         t.description.trim().toLowerCase() === rawDesc.trim().toLowerCase() && 
         Math.abs(t.amount - rawAmt) < 0.001 && 
         t.type === rawType
       );
+      seenHashesInBatch.add(hash);
 
       const monthStr = rawDate.substring(0, 7);
       const isLockedMonth = locks.some((l: MonthlyLock) => l.locked && l.month === monthStr);
@@ -647,7 +659,7 @@ function AppInner() {
     setCsvStep(2);
   };
 
-  const handleCommitCsvImport = async () => {
+  const executeCommitCsvImport = async () => {
     if (!activeProject || !storageAdapter) return;
     const toImport = parsedCsvItems.filter(i => i.selected);
     for (const item of toImport) {
@@ -674,7 +686,18 @@ function AppInner() {
     }
     await refreshProjectData();
     setShowCsvWizard(false);
+    setShowCsvDuplicateWarningModal(false);
     showToast(`Imported ${toImport.length} transactions`);
+  };
+
+  const handleCommitCsvImport = async () => {
+    const toImport = parsedCsvItems.filter(i => i.selected);
+    const duplicateSelected = toImport.filter(i => i.isDuplicate);
+    if (duplicateSelected.length > 0) {
+      setShowCsvDuplicateWarningModal(true);
+      return;
+    }
+    await executeCommitCsvImport();
   };
 
   // Pie chart calculation
@@ -1962,6 +1985,114 @@ function AppInner() {
             <h3 className="font-bold text-base text-rose-400 mb-2">Conflict Detected</h3>
             <p className="text-xs text-muted-foreground mb-4">Remote changes differ from local copy.</p>
             <button onClick={() => setShowConflictModal(false)} className="px-5 py-2 rounded-lg bg-primary text-primary-foreground text-xs font-bold">Resolve</button>
+          </div>
+        </div>
+      )}
+
+      {showDuplicateWarningModal && pendingDuplicateTxn && (
+        <div data-testid="duplicate-warning-modal" className="fixed inset-0 z-50 bg-black/70 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="glass-card max-w-md w-full p-6 rounded-2xl animate-slide-up border border-amber-500/40 text-left">
+            <div className="flex items-center gap-3 text-amber-400 mb-3">
+              <span className="h-10 w-10 rounded-full bg-amber-500/20 flex items-center justify-center text-xl font-bold">⚠️</span>
+              <div>
+                <h3 className="font-bold text-base text-foreground">Duplicate Transaction Detected</h3>
+                <p className="text-xs text-muted-foreground">An identical transaction already exists in this project.</p>
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-xl bg-accent/30 border border-border/60 my-4 text-xs space-y-1.5 font-mono">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Date:</span>
+                <span className="font-semibold text-foreground">{pendingDuplicateTxn.date}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Description:</span>
+                <span className="font-semibold text-foreground">{pendingDuplicateTxn.description}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Amount:</span>
+                <span className={`font-bold ${pendingDuplicateTxn.type === 'income' ? 'text-emerald-400' : 'text-rose-400'}`}>
+                  {pendingDuplicateTxn.type === 'income' ? '+' : '-'}${pendingDuplicateTxn.amount.toFixed(2)}
+                </span>
+              </div>
+            </div>
+
+            <p className="text-xs text-muted-foreground mb-5">
+              Are you sure you want to proceed and save this entry anyway?
+            </p>
+
+            <div className="flex items-center justify-end gap-3">
+              <button
+                data-testid="duplicate-modal-cancel-btn"
+                type="button"
+                onClick={() => {
+                  setShowDuplicateWarningModal(false);
+                  setPendingDuplicateTxn(null);
+                }}
+                className="px-4 py-2 rounded-lg border border-border hover:bg-accent/40 text-xs font-semibold text-foreground transition-colors"
+              >
+                Cancel / Edit
+              </button>
+              <button
+                data-testid="duplicate-modal-confirm-btn"
+                type="button"
+                onClick={() => executeSaveTransaction(pendingDuplicateTxn)}
+                className="px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-slate-950 text-xs font-bold shadow-lg shadow-amber-500/20 transition-colors"
+              >
+                Yes, Save Duplicate
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showCsvDuplicateWarningModal && (
+        <div data-testid="csv-duplicate-warning-modal" className="fixed inset-0 z-50 bg-black/70 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="glass-card max-w-md w-full p-6 rounded-2xl animate-slide-up border border-amber-500/40 text-left">
+            <div className="flex items-center gap-3 text-amber-400 mb-3">
+              <span className="h-10 w-10 rounded-full bg-amber-500/20 flex items-center justify-center text-xl font-bold">⚠️</span>
+              <div>
+                <h3 className="font-bold text-base text-foreground">Duplicate CSV Transactions Detected</h3>
+                <p className="text-xs text-muted-foreground">
+                  {parsedCsvItems.filter(i => i.selected && i.isDuplicate).length} selected entry(s) match existing transactions or duplicates in this file.
+                </p>
+              </div>
+            </div>
+
+            <div className="max-h-40 overflow-y-auto custom-scrollbar my-4 p-3 rounded-xl bg-accent/30 border border-border/60 text-xs space-y-2 font-mono">
+              {parsedCsvItems.filter(i => i.selected && i.isDuplicate).map((item, idx) => (
+                <div key={idx} className="flex justify-between border-b border-border/40 pb-1 last:border-0 last:pb-0">
+                  <span className="text-muted-foreground">{item.date}</span>
+                  <span className="font-semibold text-foreground truncate max-w-[150px]">{item.description}</span>
+                  <span className={item.type === 'income' ? 'text-emerald-400 font-bold' : 'text-rose-400 font-bold'}>
+                    {item.type === 'income' ? '+' : '-'}${item.amount.toFixed(2)}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            <p className="text-xs text-muted-foreground mb-5">
+              Do you still want to proceed and import these duplicate entries into your project?
+            </p>
+
+            <div className="flex items-center justify-end gap-3">
+              <button
+                data-testid="csv-duplicate-modal-cancel-btn"
+                type="button"
+                onClick={() => setShowCsvDuplicateWarningModal(false)}
+                className="px-4 py-2 rounded-lg border border-border hover:bg-accent/40 text-xs font-semibold text-foreground transition-colors"
+              >
+                Cancel / Review CSV
+              </button>
+              <button
+                data-testid="csv-duplicate-modal-confirm-btn"
+                type="button"
+                onClick={() => executeCommitCsvImport()}
+                className="px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-600 text-slate-950 text-xs font-bold shadow-lg shadow-amber-500/20 transition-colors"
+              >
+                Yes, Import Duplicates
+              </button>
+            </div>
           </div>
         </div>
       )}
