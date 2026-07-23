@@ -64,13 +64,16 @@ export function TransactionList({
                 <div className="relative flex items-center">
                   <select
                     defaultValue=""
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onClick={(e) => e.stopPropagation()}
                     onChange={(e) => {
                       if (e.target.value) {
                         handleExecuteBulkCategoryUpdate(selectedTxnIds, e.target.value);
                         e.target.value = '';
                       }
                     }}
-                    className="px-3 py-1.5 bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 rounded-lg text-sm font-bold transition-colors cursor-pointer outline-none"
+                    className="px-3 py-1.5 bg-card/80 border border-border text-foreground hover:bg-card rounded-lg text-xs sm:text-sm font-bold transition-colors cursor-pointer outline-none relative z-20"
                   >
                     <option value="" disabled className="bg-card text-card-foreground">Set Category ({selectedTxnIds.size})...</option>
                     {categories.map(c => (

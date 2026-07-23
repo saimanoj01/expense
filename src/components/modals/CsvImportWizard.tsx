@@ -208,24 +208,40 @@ export function CsvImportWizard({
                           <td className="p-3 whitespace-nowrap">{item.date}</td>
                           <td className="p-3 font-medium">{item.description}</td>
                           <td className="p-3">
-                            <select
-                              value={item.category}
-                              onChange={(e) => {
-                                const newCat = e.target.value;
-                                setParsedCsvItems(prev => {
-                                  const next = [...prev];
-                                  next[idx].category = newCat;
-                                  return next;
-                                });
-                              }}
-                              className="bg-card/70 border border-border/70 rounded-lg px-2.5 py-1 text-xs font-semibold focus:ring-1 focus:ring-primary outline-none"
-                            >
-                              {categories.map(c => (
-                                <option key={c.id} value={c.id} className="bg-card text-card-foreground">
-                                  {c.emoji} {c.name}
-                                </option>
-                              ))}
-                            </select>
+                            {(() => {
+                              const itemCatId = categories.some(c => c.id === item.category)
+                                ? item.category
+                                : (categories[0]?.id || 'misc');
+
+                              return (
+                                <select
+                                  value={itemCatId}
+                                  onPointerDown={(e) => e.stopPropagation()}
+                                  onMouseDown={(e) => e.stopPropagation()}
+                                  onClick={(e) => e.stopPropagation()}
+                                  onChange={(e) => {
+                                    const newCat = e.target.value;
+                                    setParsedCsvItems(prev => {
+                                      const next = [...prev];
+                                      next[idx].category = newCat;
+                                      return next;
+                                    });
+                                  }}
+                                  className="bg-card border border-border/70 text-foreground rounded-lg px-2.5 py-1 text-xs font-semibold focus:ring-1 focus:ring-primary outline-none cursor-pointer"
+                                >
+                                  {categories.map(c => (
+                                    <option key={c.id} value={c.id} className="bg-card text-card-foreground">
+                                      {c.emoji} {c.name}
+                                    </option>
+                                  ))}
+                                  {!categories.some(c => c.id === itemCatId) && (
+                                    <option value={itemCatId} className="bg-card text-card-foreground">
+                                      🏷️ {itemCatId}
+                                    </option>
+                                  )}
+                                </select>
+                              );
+                            })()}
                           </td>
                           <td className={`p-3 text-right font-bold tabular-nums ${item.type === 'income' ? 'text-emerald-500' : item.type === 'transfer' ? 'text-blue-400 font-medium' : ''}`}>
                             {item.type === 'income' ? '+' : item.type === 'transfer' ? '↔ ' : '-'}${item.amount.toLocaleString(undefined, {minimumFractionDigits: 2})}

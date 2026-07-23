@@ -226,19 +226,34 @@ export function TransactionModal({
                 </span>
               )}
             </div>
-            <select
-              data-testid="transaction-category-select"
-              value={txnCategory} 
-              onChange={e => {
-                setTxnCategory(e.target.value);
-                setUserManuallySelectedCategory(true);
-              }}
-              className="w-full bg-card/50 border border-border rounded-xl px-4 py-2.5 font-medium focus:ring-2 focus:ring-primary outline-none transition-all"
-            >
-              {categories.map(c => (
-                <option key={c.id} value={c.id} className="bg-card text-card-foreground">{c.emoji} {c.name}</option>
-              ))}
-            </select>
+            {(() => {
+              const validCategory = categories.some(c => c.id === txnCategory)
+                ? txnCategory
+                : (categories[0]?.id || 'misc');
+
+              return (
+                <select
+                  data-testid="transaction-category-select"
+                  value={validCategory} 
+                  onChange={e => {
+                    setTxnCategory(e.target.value);
+                    setUserManuallySelectedCategory(true);
+                  }}
+                  className="w-full bg-card border border-border rounded-xl px-4 py-2.5 font-medium text-foreground focus:ring-2 focus:ring-primary outline-none transition-all cursor-pointer"
+                >
+                  {categories.map(c => (
+                    <option key={c.id} value={c.id} className="bg-card text-card-foreground font-medium">
+                      {c.emoji} {c.name}
+                    </option>
+                  ))}
+                  {!categories.some(c => c.id === validCategory) && (
+                    <option value={validCategory} className="bg-card text-card-foreground font-medium">
+                      🏷️ {validCategory}
+                    </option>
+                  )}
+                </select>
+              );
+            })()}
           </div>
 
           <div>
