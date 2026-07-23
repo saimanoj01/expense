@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Upload, Check, X, Sparkles, Loader2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { CsvItem } from '../../hooks/useCsvImport';
-import { Category } from '../../services/storage';
+import { Category, DEFAULT_CATEGORIES } from '../../services/storage';
 import { classifyTransactionsWithLLM } from '../../services/llmCategorizer';
 
 interface CsvImportWizardProps {
@@ -209,16 +209,18 @@ export function CsvImportWizard({
                           <td className="p-3 font-medium">{item.description}</td>
                           <td className="p-3">
                             {(() => {
-                              const itemCatId = categories.some(c => c.id === item.category)
+                              const allCategoriesMap = new Map<string, Category>();
+                              DEFAULT_CATEGORIES.forEach(c => allCategoriesMap.set(c.id, c));
+                              categories.forEach(c => allCategoriesMap.set(c.id, c));
+                              const allCats = Array.from(allCategoriesMap.values());
+
+                              const itemCatId = allCats.some(c => c.id === item.category)
                                 ? item.category
-                                : (categories[0]?.id || 'misc');
+                                : (allCats[0]?.id || 'misc');
 
                               return (
                                 <select
                                   value={itemCatId}
-                                  onPointerDown={(e) => e.stopPropagation()}
-                                  onMouseDown={(e) => e.stopPropagation()}
-                                  onClick={(e) => e.stopPropagation()}
                                   onChange={(e) => {
                                     const newCat = e.target.value;
                                     setParsedCsvItems(prev => {
@@ -229,16 +231,11 @@ export function CsvImportWizard({
                                   }}
                                   className="bg-card border border-border/70 text-foreground rounded-lg px-2.5 py-1 text-xs font-semibold focus:ring-1 focus:ring-primary outline-none cursor-pointer"
                                 >
-                                  {categories.map(c => (
+                                  {allCats.map(c => (
                                     <option key={c.id} value={c.id} className="bg-card text-card-foreground">
                                       {c.emoji} {c.name}
                                     </option>
                                   ))}
-                                  {!categories.some(c => c.id === itemCatId) && (
-                                    <option value={itemCatId} className="bg-card text-card-foreground">
-                                      🏷️ {itemCatId}
-                                    </option>
-                                  )}
                                 </select>
                               );
                             })()}

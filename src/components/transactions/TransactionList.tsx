@@ -1,6 +1,7 @@
 import { Search, Filter, Trash2, X } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Transaction, Category } from '../../services/storage';
+import { useMemo } from 'react';
+import { Transaction, Category, DEFAULT_CATEGORIES } from '../../services/storage';
 import { TransactionItem } from './TransactionItem';
 
 interface TransactionListProps {
@@ -38,6 +39,13 @@ export function TransactionList({
 }: TransactionListProps) {
   const isAllSelected = transactions.length > 0 && transactions.every(t => selectedTxnIds.has(t.id));
 
+  const allCategories = useMemo(() => {
+    const map = new Map<string, Category>();
+    DEFAULT_CATEGORIES.forEach(c => map.set(c.id, c));
+    categories.forEach(c => map.set(c.id, c));
+    return Array.from(map.values());
+  }, [categories]);
+
   return (
     <div className="glass-card rounded-2xl flex flex-col min-h-[350px] max-h-[600px] h-[55vh]">
       <div className="p-4 border-b border-border/50 flex items-center justify-between bg-card/30 rounded-t-2xl">
@@ -64,19 +72,16 @@ export function TransactionList({
                 <div className="relative flex items-center">
                   <select
                     defaultValue=""
-                    onPointerDown={(e) => e.stopPropagation()}
-                    onMouseDown={(e) => e.stopPropagation()}
-                    onClick={(e) => e.stopPropagation()}
                     onChange={(e) => {
                       if (e.target.value) {
                         handleExecuteBulkCategoryUpdate(selectedTxnIds, e.target.value);
                         e.target.value = '';
                       }
                     }}
-                    className="px-3 py-1.5 bg-card/80 border border-border text-foreground hover:bg-card rounded-lg text-xs sm:text-sm font-bold transition-colors cursor-pointer outline-none relative z-20"
+                    className="px-3 py-1.5 bg-card/80 border border-border text-foreground hover:bg-card rounded-lg text-xs sm:text-sm font-bold transition-colors cursor-pointer outline-none shadow-sm"
                   >
                     <option value="" disabled className="bg-card text-card-foreground">Set Category ({selectedTxnIds.size})...</option>
-                    {categories.map(c => (
+                    {allCategories.map(c => (
                       <option key={c.id} value={c.id} className="bg-card text-card-foreground">
                         {c.emoji} {c.name}
                       </option>

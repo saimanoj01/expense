@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Save, Sparkles } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { Category, Transaction } from '../../services/storage';
+import { Category, Transaction, DEFAULT_CATEGORIES } from '../../services/storage';
 import { computeTxHash } from '../../utils/crypto';
 import { suggestCategory, detectTransactionType } from '../../utils/categorizer';
 
@@ -227,9 +227,14 @@ export function TransactionModal({
               )}
             </div>
             {(() => {
-              const validCategory = categories.some(c => c.id === txnCategory)
+              const allCategoriesMap = new Map<string, Category>();
+              DEFAULT_CATEGORIES.forEach(c => allCategoriesMap.set(c.id, c));
+              categories.forEach(c => allCategoriesMap.set(c.id, c));
+              const allCats = Array.from(allCategoriesMap.values());
+
+              const validCategory = allCats.some(c => c.id === txnCategory)
                 ? txnCategory
-                : (categories[0]?.id || 'misc');
+                : (allCats[0]?.id || 'misc');
 
               return (
                 <select
@@ -241,16 +246,11 @@ export function TransactionModal({
                   }}
                   className="w-full bg-card border border-border rounded-xl px-4 py-2.5 font-medium text-foreground focus:ring-2 focus:ring-primary outline-none transition-all cursor-pointer"
                 >
-                  {categories.map(c => (
+                  {allCats.map(c => (
                     <option key={c.id} value={c.id} className="bg-card text-card-foreground font-medium">
                       {c.emoji} {c.name}
                     </option>
                   ))}
-                  {!categories.some(c => c.id === validCategory) && (
-                    <option value={validCategory} className="bg-card text-card-foreground font-medium">
-                      🏷️ {validCategory}
-                    </option>
-                  )}
                 </select>
               );
             })()}

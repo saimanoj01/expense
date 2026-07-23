@@ -1,6 +1,6 @@
 import { Edit2, Trash2 } from 'lucide-react';
-import { motion } from 'framer-motion';
-import { Transaction, Category } from '../../services/storage';
+import { useMemo } from 'react';
+import { Transaction, Category, DEFAULT_CATEGORIES } from '../../services/storage';
 
 interface TransactionItemProps {
   transaction: Transaction;
@@ -27,17 +27,19 @@ export function TransactionItem({
   handleCategoryChange,
   setSelectedTagFilter
 }: TransactionItemProps) {
-  const cat = categories.find(c => c.id === transaction.category) || categories.find(c => c.name.toLowerCase() === transaction.category.toLowerCase());
-  const activeCatId = cat?.id || (categories.some(c => c.id === transaction.category) ? transaction.category : categories[0]?.id || 'misc');
+  const allCategories = useMemo(() => {
+    const map = new Map<string, Category>();
+    DEFAULT_CATEGORIES.forEach(c => map.set(c.id, c));
+    categories.forEach(c => map.set(c.id, c));
+    return Array.from(map.values());
+  }, [categories]);
+
+  const cat = allCategories.find(c => c.id === transaction.category) || allCategories.find(c => c.name.toLowerCase() === transaction.category.toLowerCase());
+  const activeCatId = cat?.id || (allCategories.some(c => c.id === transaction.category) ? transaction.category : 'misc');
 
   return (
-    <motion.div 
-      layout
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, scale: 0.95 }}
-      whileHover={{ scale: 1.005 }}
-      className={`group flex items-center justify-between p-4 bg-card/40 hover:bg-card/80 border-b border-border/50 last:border-0 transition-all ${
+    <div 
+      className={`group flex items-center justify-between p-4 bg-card/40 hover:bg-card/80 border-b border-border/50 last:border-0 transition-all rounded-xl ${
         isSelected ? 'bg-primary/5' : ''
       } ${isDuplicate ? 'bg-destructive/10' : ''}`}
     >
@@ -47,7 +49,7 @@ export function TransactionItem({
             type="checkbox"
             checked={isSelected}
             onChange={() => toggleSelectTxn(transaction.id)}
-            className="w-4 h-4 rounded bg-background border-border text-primary focus:ring-primary focus:ring-offset-background"
+            className="w-4 h-4 rounded bg-background border-border text-primary focus:ring-primary focus:ring-offset-background cursor-pointer"
           />
         )}
         
@@ -81,27 +83,18 @@ export function TransactionItem({
               <select
                 data-testid={`transaction-category-select-${transaction.id}`}
                 value={activeCatId}
-                onPointerDown={(e) => e.stopPropagation()}
-                onMouseDown={(e) => e.stopPropagation()}
-                onClick={(e) => e.stopPropagation()}
                 onChange={(e) => {
-                  e.stopPropagation();
                   if (handleCategoryChange) {
                     handleCategoryChange(transaction, e.target.value);
                   }
                 }}
-                className="bg-card/70 hover:bg-card border border-border/60 hover:border-primary/50 text-foreground rounded px-2 py-0.5 text-xs font-semibold outline-none transition-all cursor-pointer relative z-20"
+                className="bg-card/80 hover:bg-card border border-border/70 text-foreground rounded px-2 py-0.5 text-xs font-semibold outline-none cursor-pointer transition-colors shadow-sm"
               >
-                {categories.map(c => (
-                  <option key={c.id} value={c.id} className="bg-card text-card-foreground">
+                {allCategories.map(c => (
+                  <option key={c.id} value={c.id} className="bg-card text-card-foreground py-1">
                     {c.emoji} {c.name}
                   </option>
                 ))}
-                {!categories.some(c => c.id === activeCatId) && (
-                  <option value={activeCatId} className="bg-card text-card-foreground">
-                    🏷️ {transaction.category}
-                  </option>
-                )}
               </select>
             )}
             {transaction.labels && transaction.labels.length > 0 && (
@@ -150,6 +143,6 @@ export function TransactionItem({
           </div>
         )}
       </div>
-    </motion.div>
+    </div>
   );
 }
