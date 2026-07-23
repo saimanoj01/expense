@@ -23,7 +23,7 @@ export interface AuthContextType {
 }
 
 function parseJwtExp(token: string): number | null {
-  if (token.includes('.') || token.toLowerCase().includes('jwt')) {
+  if (token.startsWith('eyJ') || token.toLowerCase().includes('jwt')) {
     const parts = token.split('.');
     if (parts.length === 3) {
       try {
@@ -69,10 +69,11 @@ export function isInvalidOrExpiredToken(token: string | null): boolean {
     return true;
   }
   
-  if (token.includes('.') || token.toLowerCase().includes('jwt')) {
+  // JWT tokens start with 'eyJ' (base64 for {"alg":...) or explicitly contain 'jwt'
+  if (token.startsWith('eyJ') || token.toLowerCase().includes('jwt')) {
     const parts = token.split('.');
     if (parts.length !== 3) {
-      return true; // invalid structure
+      return true; // invalid JWT structure
     }
     const exp = parseJwtExp(token);
     if (exp !== null) {
@@ -80,7 +81,8 @@ export function isInvalidOrExpiredToken(token: string | null): boolean {
     }
   }
   
-  return false; // Not a JWT, treat as valid arbitrary token
+  // Opaque Google OAuth access tokens (e.g. ya29.a0AX...) are valid
+  return false;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
