@@ -2,13 +2,13 @@ import { useState } from 'react';
 import { parseCsvLine, standardizeDate } from '../utils/csv';
 import { computeTxHash } from '../utils/crypto';
 import { Transaction, MonthlyLock, Category } from '../services/storage';
-import { suggestCategory } from '../utils/categorizer';
+import { suggestCategory, detectTransactionType } from '../utils/categorizer';
 
 export interface CsvItem {
   date: string;
   description: string;
   amount: number;
-  type: 'income' | 'expense';
+  type: 'income' | 'expense' | 'transfer';
   category: string;
   hash: string;
   isDuplicate: boolean;
@@ -94,7 +94,7 @@ export function useCsvImport(
       const rawDate = standardizeDate(row[dateIdx] || new Date().toISOString().substring(0, 10));
       const rawDesc = row[descIdx] || 'Imported Transaction';
       let rawAmt = parseFloat(row[amtIdx] || '0') || 0;
-      let rawType: 'income' | 'expense' = 'expense';
+      let rawType: 'income' | 'expense' | 'transfer' = detectTransactionType(rawDesc, typeIdx > -1 ? row[typeIdx] : '');
       const rawCat = catIdx > -1 && row[catIdx] ? row[catIdx] : '';
 
       if (typeIdx > -1) {
@@ -104,6 +104,8 @@ export function useCsvImport(
           rawAmt = inflowVal;
         } else if (/income/i.test(row[typeIdx] || '')) {
           rawType = 'income';
+        } else if (/transfer|payment/i.test(row[typeIdx] || '')) {
+          rawType = 'transfer';
         }
       }
       const hash = await computeTxHash(rawDate, rawDesc, rawAmt, rawType);

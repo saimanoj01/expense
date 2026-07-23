@@ -6,9 +6,10 @@ interface KpiGridProps {
   totalExpenses: number;
   totalIncome: number;
   budgetRemaining: number;
+  totalTransfers?: number;
 }
 
-export function KpiGrid({ totalBudget, totalExpenses, totalIncome, budgetRemaining }: KpiGridProps) {
+export function KpiGrid({ totalBudget, totalExpenses, totalIncome, budgetRemaining, totalTransfers = 0 }: KpiGridProps) {
   const formatCurrency = (val: number) => 
     val.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
 
@@ -51,13 +52,20 @@ export function KpiGrid({ totalBudget, totalExpenses, totalIncome, budgetRemaini
         <div className="absolute top-0 right-0 p-4 opacity-10 transform group-hover:scale-110 transition-transform duration-500">
           <TrendingDown className="w-16 h-16 text-destructive" />
         </div>
-        <div className="flex items-center gap-3 mb-2">
-          <div className="p-2.5 rounded-xl bg-destructive/10 text-destructive">
-            <TrendingDown className="w-5 h-5" />
+        <div className="flex items-center justify-between gap-3 mb-2">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-xl bg-destructive/10 text-destructive">
+              <TrendingDown className="w-5 h-5" />
+            </div>
+            <h3 className="text-sm font-medium text-muted-foreground">Total Expenses</h3>
           </div>
-          <h3 className="text-sm font-medium text-muted-foreground">Total Expenses</h3>
         </div>
         <div className="text-3xl font-bold tracking-tight text-destructive" data-testid="kpi-total-expenses">{formatCurrency(totalExpenses)}</div>
+        {totalTransfers > 0 && (
+          <p className="text-[11px] text-muted-foreground/80 mt-1 font-medium">
+            Excludes {formatCurrency(totalTransfers)} in Transfers/Payments
+          </p>
+        )}
       </motion.div>
 
       <motion.div variants={item} className="glass-card p-6 rounded-2xl relative overflow-hidden group">

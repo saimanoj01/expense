@@ -92,6 +92,10 @@ export function useTransactions(
     .filter(t => t.type === 'income')
     .reduce((sum, t) => sum + t.amount, 0), [filteredTransactions]);
 
+  const totalTransfers = useMemo(() => filteredTransactions
+    .filter(t => t.type === 'transfer')
+    .reduce((sum, t) => sum + t.amount, 0), [filteredTransactions]);
+
   const availableMonths = useMemo(() => {
     const monthsSet = new Set<string>(['2026-05', '2026-06', '2026-07']);
     transactions.forEach(t => {
@@ -345,6 +349,7 @@ export function useTransactions(
     duplicateTxnIds,
     totalExpenses,
     totalIncome,
+    totalTransfers,
     availableMonths,
     availableTags,
     trendPathData,

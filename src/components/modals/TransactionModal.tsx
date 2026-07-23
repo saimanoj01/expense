@@ -3,7 +3,7 @@ import { X, Save, Sparkles } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Category, Transaction } from '../../services/storage';
 import { computeTxHash } from '../../utils/crypto';
-import { suggestCategory } from '../../utils/categorizer';
+import { suggestCategory, detectTransactionType } from '../../utils/categorizer';
 
 interface TransactionModalProps {
   showTxnModal: boolean;
@@ -28,7 +28,7 @@ export function TransactionModal({
   setPendingDuplicateTxn,
   setShowDuplicateWarningModal
 }: TransactionModalProps) {
-  const [txnType, setTxnType] = useState<'income' | 'expense'>('expense');
+  const [txnType, setTxnType] = useState<'income' | 'expense' | 'transfer'>('expense');
   const [txnAmount, setTxnAmount] = useState('');
   const [txnDate, setTxnDate] = useState('');
   const [txnCategory, setTxnCategory] = useState('');
@@ -140,7 +140,7 @@ export function TransactionModal({
         </div>
         
         <form onSubmit={handleSaveTransaction} className="space-y-4">
-          <div className="flex gap-4 p-1 bg-card/50 rounded-xl border border-border/50" data-testid="transaction-type-toggle" data-active-type={txnType}>
+          <div className="flex gap-2 p-1 bg-card/50 rounded-xl border border-border/50" data-testid="transaction-type-toggle" data-active-type={txnType}>
             <button
               type="button"
               className={`flex-1 py-2 rounded-lg font-bold text-sm transition-all ${txnType === 'expense' ? 'bg-destructive text-destructive-foreground shadow-md' : 'text-muted-foreground hover:text-foreground'}`}
@@ -154,6 +154,13 @@ export function TransactionModal({
               onClick={() => setTxnType('income')}
             >
               Income
+            </button>
+            <button
+              type="button"
+              className={`flex-1 py-2 rounded-lg font-bold text-sm transition-all ${txnType === 'transfer' ? 'bg-blue-600 text-white shadow-md' : 'text-muted-foreground hover:text-foreground'}`}
+              onClick={() => setTxnType('transfer')}
+            >
+              Transfer
             </button>
           </div>
           
@@ -193,13 +200,19 @@ export function TransactionModal({
               onChange={e => {
                 const val = e.target.value;
                 setTxnDescription(val);
-                if (!userManuallySelectedCategory && !editingTxnId) {
-                  const suggested = suggestCategory(val, '', categories);
-                  if (suggested) setTxnCategory(suggested);
+                if (!editingTxnId) {
+                  const detectedType = detectTransactionType(val);
+                  if (detectedType === 'transfer') {
+                    setTxnType('transfer');
+                  }
+                  if (!userManuallySelectedCategory) {
+                    const suggested = suggestCategory(val, '', categories);
+                    if (suggested) setTxnCategory(suggested);
+                  }
                 }
               }}
               className={`w-full bg-card/50 border rounded-xl px-4 py-2.5 font-medium focus:ring-2 focus:ring-primary outline-none transition-all ${descError ? 'border-destructive focus:ring-destructive' : 'border-border'}`}
-              placeholder="What was this for? (e.g. Whole Foods, Netflix)"
+              placeholder="What was this for? (e.g. Credit Card Payment, Whole Foods)"
             />
             {descError && <p className="text-destructive text-xs mt-1 font-bold">{descError}</p>}
           </div>

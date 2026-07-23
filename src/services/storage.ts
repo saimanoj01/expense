@@ -3,7 +3,7 @@ export interface Transaction {
   date: string;        // ISO 8601 Date String (YYYY-MM-DD)
   category: string;    // ID of the Category
   amount: number;      // Numeric amount (positive float)
-  type: 'income' | 'expense';
+  type: 'income' | 'expense' | 'transfer';
   description: string; // Brief description/payee name
   notes: string;       // Extended details/comments
   labels: string[];    // Array of tags/labels

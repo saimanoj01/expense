@@ -59,7 +59,11 @@ export function TransactionItem({
         
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <h4 className="font-semibold truncate">{transaction.description}</h4>
+            {transaction.type === 'transfer' && (
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/10 text-blue-400 border border-blue-500/20 uppercase tracking-wider flex items-center gap-1">
+                ↔️ Transfer
+              </span>
+            )}
             {isDuplicate && (
               <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-destructive/20 text-destructive uppercase tracking-wider border border-destructive/20">
                 Duplicate
@@ -111,9 +115,9 @@ export function TransactionItem({
       
       <div className="flex items-center gap-4 pl-4 flex-shrink-0">
         <div className={`font-bold tabular-nums text-right ${
-          transaction.type === 'income' ? 'text-emerald-500' : ''
+          transaction.type === 'income' ? 'text-emerald-500' : transaction.type === 'transfer' ? 'text-blue-400 font-semibold' : ''
         }`}>
-          {transaction.type === 'income' ? '+' : '-'}${transaction.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          {transaction.type === 'income' ? '+' : transaction.type === 'transfer' ? '↔ ' : '-'}${transaction.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
         </div>
         
         {!isLockedMonth && (

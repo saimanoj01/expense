@@ -14,6 +14,51 @@ const CATEGORY_KEYWORDS: Record<string, string[]> = {
   misc: ['amazon', 'target', 'walmart', 'store', 'shop']
 };
 
+const TRANSFER_KEYWORDS = [
+  'credit card payment',
+  'payment thank you',
+  'payment - thank you',
+  'chase credit crd',
+  'amex epayment',
+  'citi autopay',
+  'autopay payment',
+  'card payment',
+  'online payment',
+  'bank transfer',
+  'account transfer',
+  'transfer to',
+  'transfer from',
+  'cc payment',
+  'auto pay'
+];
+
+/**
+ * Detects if a transaction description or raw type string matches a transfer/credit card payment pattern.
+ */
+export function detectTransactionType(
+  description: string,
+  rawType?: string
+): 'income' | 'expense' | 'transfer' {
+  const cleanDesc = (description || '').toLowerCase().trim();
+  const cleanRawType = (rawType || '').toLowerCase().trim();
+
+  if (cleanRawType.includes('transfer')) {
+    return 'transfer';
+  }
+
+  for (const kw of TRANSFER_KEYWORDS) {
+    if (cleanDesc.includes(kw)) {
+      return 'transfer';
+    }
+  }
+
+  if (cleanRawType.includes('income') || cleanRawType.includes('deposit')) {
+    return 'income';
+  }
+
+  return 'expense';
+}
+
 /**
  * Suggests the best category ID based on transaction description and optional raw CSV category string.
  */
@@ -47,8 +92,7 @@ export function suggestCategory(
     }
   }
 
-  // 3. Fallback: return 'food' or 'misc' or first available category
+  // 3. Fallback: return 'misc' or first available category
   if (availableCategories.some(c => c.id === 'misc')) return 'misc';
-  if (availableCategories.some(c => c.id === 'food')) return 'food';
   return availableCategories[0]?.id || 'misc';
 }

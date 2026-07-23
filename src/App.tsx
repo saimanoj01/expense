@@ -212,6 +212,7 @@ function AppInner() {
               totalBudget={budgetHooks.totalBudget}
               totalExpenses={txnHooks.totalExpenses}
               totalIncome={txnHooks.totalIncome}
+              totalTransfers={txnHooks.totalTransfers}
               budgetRemaining={budgetHooks.totalBudget - txnHooks.totalExpenses}
             />
 
