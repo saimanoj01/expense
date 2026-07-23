@@ -326,8 +326,18 @@ export class LocalStorageAdapter implements StorageAdapter {
           t.hash = `${t.date}-${t.description}-${t.amount}-${t.type}`;
           needsRepair = true;
         }
-        if (!t.labels) {
-          t.labels = [];
+        if (!Array.isArray(t.labels)) {
+          const rawL: unknown = t.labels;
+          if (typeof rawL === 'string' && rawL.trim()) {
+            try {
+              const parsedL = JSON.parse(rawL);
+              t.labels = Array.isArray(parsedL) ? parsedL : [rawL.trim()];
+            } catch {
+              t.labels = [rawL.trim()];
+            }
+          } else {
+            t.labels = [];
+          }
           needsRepair = true;
         }
         if (t.notes === undefined) {

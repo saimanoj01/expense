@@ -35,6 +35,19 @@ function formatShortDate(dateStr: string): string {
   return dateStr;
 }
 
+const ensureLabelsArray = (labels: any): string[] => {
+  if (Array.isArray(labels)) return labels;
+  if (typeof labels === 'string' && labels.trim()) {
+    try {
+      const parsed = JSON.parse(labels);
+      if (Array.isArray(parsed)) return parsed;
+    } catch {
+      return [labels.trim()];
+    }
+  }
+  return [];
+};
+
 export function useTransactions(
   storageAdapter: any,
   activeProject: any,
@@ -50,7 +63,7 @@ export function useTransactions(
     return transactions.filter(t => {
       const monthMatches = (t.date || '').startsWith(selectedMonth);
       if (!monthMatches && selectedMonth !== 'all') return false;
-      if (selectedTagFilter && !(t.labels || []).includes(selectedTagFilter)) return false;
+      if (selectedTagFilter && !ensureLabelsArray(t.labels).includes(selectedTagFilter)) return false;
       return true;
     });
   }, [transactions, selectedMonth, selectedTagFilter]);
@@ -110,7 +123,7 @@ export function useTransactions(
   const availableTags = useMemo(() => {
     const tagSet = new Set<string>(['groceries', 'utilities', 'salary', 'dining-out']);
     transactions.forEach(t => {
-      (t.labels || []).forEach(l => {
+      ensureLabelsArray(t.labels).forEach(l => {
         if (l && l.trim()) tagSet.add(l.trim().toLowerCase());
       });
     });

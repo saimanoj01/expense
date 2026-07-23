@@ -115,7 +115,7 @@ export function TransactionItem({
                 })}
               </select>
             )}
-            {transaction.labels && transaction.labels.length > 0 && (
+            {Array.isArray(transaction.labels) && transaction.labels.length > 0 && (
               <>
                 <span className="w-1 h-1 rounded-full bg-border" />
                 <div className="flex items-center gap-1">

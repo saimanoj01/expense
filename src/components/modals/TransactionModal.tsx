@@ -50,8 +50,8 @@ export function TransactionModal({
       setTxnCategory(initialData?.category || categories[0]?.id || 'food');
       setTxnSubCategory(initialData?.subCategory || null);
       setTxnDescription(initialData?.description || '');
-      setTxnNotes(initialData?.notes || '');
-      setTxnLabels((initialData?.labels || []).join(', '));
+      const rawLabels = Array.isArray(initialData?.labels) ? initialData.labels : typeof initialData?.labels === 'string' ? [initialData.labels] : [];
+      setTxnLabels(rawLabels.join(', '));
       setUserManuallySelectedCategory(!!editingTxnId);
       setAmountError(null);
       setDateError(null);
