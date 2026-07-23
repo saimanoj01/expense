@@ -57,7 +57,7 @@ test.describe('Tier 6: Category Dropdown & Transfer Regressions', () => {
 
     const rowSelect = page.getByTestId('transaction-category-select-t1');
     await expect(rowSelect).toBeVisible();
-    await rowSelect.selectOption('utilities');
+    await rowSelect.selectOption('utilities|');
 
     // Verify localStorage updated
     const updatedTxsStr = await page.evaluate(() => window.localStorage.getItem('expense_txs_p1'));
@@ -119,5 +119,29 @@ test.describe('Tier 6: Category Dropdown & Transfer Regressions', () => {
 
     const toggleContainer = page.getByTestId('transaction-type-toggle');
     await expect(toggleContainer).toHaveAttribute('data-active-type', 'transfer');
+  });
+
+  test('45. Inline Sub-Category Select: Assigning a sub-category updates transaction subCategory field in localStorage', async ({ page }) => {
+    await preseedMockData(page, {
+      mockSession: 'true',
+      projects: [{ id: 'p1', name: 'My Project' }],
+      activeProjectId: 'p1',
+      transactions: {
+        p1: [
+          { id: 't1', date: '2026-07-01', amount: 45.00, category: 'food', type: 'expense', description: 'Safeway Supermarket', notes: '', labels: [], hash: 'h1' }
+        ]
+      }
+    });
+    await appPage.goto();
+
+    const rowSelect = page.getByTestId('transaction-category-select-t1');
+    await expect(rowSelect).toBeVisible();
+    await rowSelect.selectOption('food|food-groceries');
+
+    const updatedTxsStr = await page.evaluate(() => window.localStorage.getItem('expense_txs_p1'));
+    expect(updatedTxsStr).not.toBeNull();
+    const txs = JSON.parse(updatedTxsStr!);
+    expect(txs[0].category).toBe('food');
+    expect(txs[0].subCategory).toBe('food-groceries');
   });
 });
