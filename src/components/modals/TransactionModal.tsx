@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { X, Save } from 'lucide-react';
+import { X, Save, Sparkles } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Category, Transaction } from '../../services/storage';
 import { computeTxHash } from '../../utils/crypto';
+import { suggestCategory } from '../../utils/categorizer';
 
 interface TransactionModalProps {
   showTxnModal: boolean;
@@ -34,6 +35,7 @@ export function TransactionModal({
   const [txnDescription, setTxnDescription] = useState('');
   const [txnNotes, setTxnNotes] = useState('');
   const [txnLabels, setTxnLabels] = useState('');
+  const [userManuallySelectedCategory, setUserManuallySelectedCategory] = useState(false);
   
   const [amountError, setAmountError] = useState<string | null>(null);
   const [dateError, setDateError] = useState<string | null>(null);
@@ -48,11 +50,12 @@ export function TransactionModal({
       setTxnDescription(initialData?.description || '');
       setTxnNotes(initialData?.notes || '');
       setTxnLabels((initialData?.labels || []).join(', '));
+      setUserManuallySelectedCategory(!!editingTxnId);
       setAmountError(null);
       setDateError(null);
       setDescError(null);
     }
-  }, [showTxnModal, initialData, categories]);
+  }, [showTxnModal, initialData, categories, editingTxnId]);
 
   if (!showTxnModal) return null;
 
@@ -182,28 +185,47 @@ export function TransactionModal({
           </div>
           
           <div>
-            <label className="block text-sm font-bold text-muted-foreground mb-1">Category *</label>
+            <label className="block text-sm font-bold text-muted-foreground mb-1">Description *</label>
+            <input 
+              type="text" required
+              data-testid="transaction-desc-input"
+              value={txnDescription} 
+              onChange={e => {
+                const val = e.target.value;
+                setTxnDescription(val);
+                if (!userManuallySelectedCategory && !editingTxnId) {
+                  const suggested = suggestCategory(val, '', categories);
+                  if (suggested) setTxnCategory(suggested);
+                }
+              }}
+              className={`w-full bg-card/50 border rounded-xl px-4 py-2.5 font-medium focus:ring-2 focus:ring-primary outline-none transition-all ${descError ? 'border-destructive focus:ring-destructive' : 'border-border'}`}
+              placeholder="What was this for? (e.g. Whole Foods, Netflix)"
+            />
+            {descError && <p className="text-destructive text-xs mt-1 font-bold">{descError}</p>}
+          </div>
+
+          <div>
+            <div className="flex justify-between items-center mb-1">
+              <label className="block text-sm font-bold text-muted-foreground">Category *</label>
+              {!userManuallySelectedCategory && txnDescription.trim() && (
+                <span className="text-[11px] text-primary font-semibold flex items-center gap-1">
+                  <Sparkles className="w-3 h-3" /> Auto-suggested
+                </span>
+              )}
+            </div>
             <select
               data-testid="transaction-category-select"
-              value={txnCategory} onChange={e => setTxnCategory(e.target.value)}
+              value={txnCategory} 
+              onChange={e => {
+                setTxnCategory(e.target.value);
+                setUserManuallySelectedCategory(true);
+              }}
               className="w-full bg-card/50 border border-border rounded-xl px-4 py-2.5 font-medium focus:ring-2 focus:ring-primary outline-none transition-all"
             >
               {categories.map(c => (
                 <option key={c.id} value={c.id} className="bg-card text-card-foreground">{c.emoji} {c.name}</option>
               ))}
             </select>
-          </div>
-          
-          <div>
-            <label className="block text-sm font-bold text-muted-foreground mb-1">Description *</label>
-            <input 
-              type="text" required
-              data-testid="transaction-desc-input"
-              value={txnDescription} onChange={e => setTxnDescription(e.target.value)}
-              className={`w-full bg-card/50 border rounded-xl px-4 py-2.5 font-medium focus:ring-2 focus:ring-primary outline-none transition-all ${descError ? 'border-destructive focus:ring-destructive' : 'border-border'}`}
-              placeholder="What was this for?"
-            />
-            {descError && <p className="text-destructive text-xs mt-1 font-bold">{descError}</p>}
           </div>
 
           <div>

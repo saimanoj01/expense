@@ -254,6 +254,8 @@ function AppInner() {
               toggleSelectAllTxns={toggleSelectAllTxns}
               handleEditTxn={handleEditTxn}
               handleDeleteTxn={id => txnHooks.handleDeleteTxn(id, () => setSelectedTxnIds(prev => { const n = new Set(prev); n.delete(id); return n; }))}
+              handleCategoryChange={(txn, newCatId) => txnHooks.executeSaveTransaction({ ...txn, category: newCatId }, true)}
+              handleExecuteBulkCategoryUpdate={(selectedIds, catId) => txnHooks.handleExecuteBulkCategoryUpdate(selectedIds, catId, () => setSelectedTxnIds(new Set()))}
               setShowBulkDeleteConfirmModal={setShowBulkDeleteConfirmModal}
             />
           </>
@@ -323,7 +325,7 @@ function AppInner() {
 
       <AnimatePresence>
         {csvHooks.showCsvWizard && (
-          <CsvImportWizard {...csvHooks} />
+          <CsvImportWizard {...csvHooks} categories={budgetHooks.categories} />
         )}
       </AnimatePresence>
       

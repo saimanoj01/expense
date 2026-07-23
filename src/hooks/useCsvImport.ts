@@ -2,13 +2,14 @@ import { useState } from 'react';
 import { parseCsvLine, standardizeDate } from '../utils/csv';
 import { computeTxHash } from '../utils/crypto';
 import { Transaction, MonthlyLock, Category } from '../services/storage';
+import { suggestCategory } from '../utils/categorizer';
 
 export interface CsvItem {
   date: string;
   description: string;
   amount: number;
   type: 'income' | 'expense';
-  category?: string;
+  category: string;
   hash: string;
   isDuplicate: boolean;
   isLockedMonth?: boolean;
@@ -33,6 +34,7 @@ export function useCsvImport(
   const [mapDescCol, setMapDescCol] = useState<string>('');
   const [mapAmountCol, setMapAmountCol] = useState<string>('');
   const [mapTypeCol, setMapTypeCol] = useState<string>('');
+  const [mapCategoryCol, setMapCategoryCol] = useState<string>('');
   const [parsedCsvItems, setParsedCsvItems] = useState<CsvItem[]>([]);
   const [csvError, setCsvError] = useState<string | null>(null);
   const [showCsvDuplicateWarningModal, setShowCsvDuplicateWarningModal] = useState(false);
@@ -67,6 +69,7 @@ export function useCsvImport(
     setMapDescCol(headers.find((h: string) => /^description$|^desc$|^payee$/i.test(h)) || '');
     setMapAmountCol(headers.find((h: string) => /^amount$/i.test(h)) || '');
     setMapTypeCol(headers.find((h: string) => /^type$/i.test(h)) || '');
+    setMapCategoryCol(headers.find((h: string) => /^category$|^cat$/i.test(h)) || '');
     setCsvStep(1);
     setShowCsvWizard(true);
   };
@@ -81,7 +84,7 @@ export function useCsvImport(
     const descIdx = csvRawHeaders.indexOf(mapDescCol);
     const amtIdx = csvRawHeaders.indexOf(mapAmountCol);
     const typeIdx = csvRawHeaders.indexOf(mapTypeCol);
-    const catIdx = csvRawHeaders.findIndex(h => /^category$/i.test(h));
+    const catIdx = csvRawHeaders.indexOf(mapCategoryCol);
 
     const existingHashes = new Set(transactions.map(t => t.hash));
     const seenHashesInBatch = new Set<string>();
@@ -115,12 +118,14 @@ export function useCsvImport(
       const monthStr = rawDate.substring(0, 7);
       const isLockedMonth = locks.some((l: MonthlyLock) => l.locked && l.month === monthStr);
 
+      const suggestedCategory = suggestCategory(rawDesc, rawCat, categories);
+
       items.push({
         date: rawDate,
         description: rawDesc,
         amount: rawAmt,
         type: rawType,
-        category: rawCat,
+        category: suggestedCategory,
         hash,
         isDuplicate: isDup,
         isLockedMonth,
@@ -138,17 +143,10 @@ export function useCsvImport(
     if (toImport.length === 0) return;
 
     const newTxns: Transaction[] = toImport.map(item => {
-      const rawCat = item.category || '';
-      const matched = categories.find(c => 
-        c.id.toLowerCase() === rawCat.toLowerCase() || 
-        c.name.toLowerCase() === rawCat.toLowerCase()
-      );
-      const categoryId = matched ? matched.id : (categories[0]?.id || 'food');
-
       return {
         id: crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2),
         date: item.date,
-        category: categoryId,
+        category: item.category || categories[0]?.id || 'misc',
         amount: item.amount,
         type: item.type,
         description: item.description,
@@ -204,6 +202,8 @@ export function useCsvImport(
     setMapAmountCol,
     mapTypeCol,
     setMapTypeCol,
+    mapCategoryCol,
+    setMapCategoryCol,
     parsedCsvItems,
     setParsedCsvItems,
     csvError,

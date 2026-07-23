@@ -1,6 +1,9 @@
-import { Upload, Check, X } from 'lucide-react';
+import React, { useState } from 'react';
+import { Upload, Check, X, Sparkles, Loader2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { CsvItem } from '../../hooks/useCsvImport';
+import { Category } from '../../services/storage';
+import { classifyTransactionsWithLLM } from '../../services/llmCategorizer';
 
 interface CsvImportWizardProps {
   showCsvWizard: boolean;
@@ -11,11 +14,14 @@ interface CsvImportWizardProps {
   mapDescCol: string;
   mapAmountCol: string;
   mapTypeCol: string;
+  mapCategoryCol: string;
+  categories: Category[];
   parsedCsvItems: CsvItem[];
   setMapDateCol: (v: string) => void;
   setMapDescCol: (v: string) => void;
   setMapAmountCol: (v: string) => void;
   setMapTypeCol: (v: string) => void;
+  setMapCategoryCol: (v: string) => void;
   setParsedCsvItems: React.Dispatch<React.SetStateAction<CsvItem[]>>;
   setShowCsvWizard: (v: boolean) => void;
   handleCsvNextStep: () => void;
@@ -31,17 +37,42 @@ export function CsvImportWizard({
   mapDescCol,
   mapAmountCol,
   mapTypeCol,
+  mapCategoryCol,
+  categories,
   parsedCsvItems,
   setMapDateCol,
   setMapDescCol,
   setMapAmountCol,
   setMapTypeCol,
+  setMapCategoryCol,
   setParsedCsvItems,
   setShowCsvWizard,
   handleCsvNextStep,
   handleCommitCsvImport
 }: CsvImportWizardProps) {
+  const [isAiClassifying, setIsAiClassifying] = useState(false);
+
   if (!showCsvWizard) return null;
+
+  const handleRunAiClassification = async () => {
+    setIsAiClassifying(true);
+    try {
+      const itemsToClassify = parsedCsvItems.map((item, idx) => ({
+        id: String(idx),
+        description: item.description,
+        rawCategory: item.category
+      }));
+      const results = await classifyTransactionsWithLLM(itemsToClassify, categories);
+      setParsedCsvItems(prev => prev.map((item, idx) => {
+        const aiCategory = results[String(idx)];
+        return aiCategory ? { ...item, category: aiCategory } : item;
+      }));
+    } catch (e) {
+      console.error("AI classification failed:", e);
+    } finally {
+      setIsAiClassifying(false);
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm">
@@ -52,10 +83,17 @@ export function CsvImportWizard({
         className="glass-panel w-full max-w-4xl max-h-[90vh] rounded-2xl p-6 overflow-hidden flex flex-col shadow-2xl"
       >
         <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-bold flex items-center gap-2">
-            <Upload className="text-primary w-6 h-6" /> 
-            {csvStep === 1 ? 'Map Columns' : 'Preview Import'}
-          </h2>
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-xl bg-primary/10 text-primary">
+              <Upload className="w-6 h-6" />
+            </div>
+            <div>
+              <h2 className="text-2xl font-bold">
+                {csvStep === 1 ? 'Map Columns' : 'Preview Import & Categorize'}
+              </h2>
+              <p className="text-xs text-muted-foreground">Step {csvStep} of 2</p>
+            </div>
+          </div>
           <button onClick={() => setShowCsvWizard(false)} className="p-2 hover:bg-card rounded-lg text-muted-foreground hover:text-foreground transition-colors">
             <X className="w-6 h-6" />
           </button>
@@ -100,62 +138,114 @@ export function CsvImportWizard({
                     {csvRawHeaders.map(h => <option key={h} value={h} className="bg-card text-card-foreground">{h}</option>)}
                   </select>
                 </div>
+                <div>
+                  <label className="block text-sm font-bold text-muted-foreground mb-1">Category Column (Optional)</label>
+                  <select value={mapCategoryCol} data-testid="csv-map-col-category" onChange={e => setMapCategoryCol(e.target.value)} className="w-full bg-card/50 border border-border rounded-xl px-4 py-2 font-medium focus:ring-2 focus:ring-primary outline-none">
+                    <option value="" className="bg-card text-card-foreground">-- None -- (Uses smart auto-suggest)</option>
+                    {csvRawHeaders.map(h => <option key={h} value={h} className="bg-card text-card-foreground">{h}</option>)}
+                  </select>
+                </div>
               </div>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse" data-testid="csv-preview-table">
-                <thead>
-                  <tr className="border-b border-border/50 text-muted-foreground text-sm">
-                    <th className="p-3 font-medium">Import</th>
-                    <th className="p-3 font-medium">Date</th>
-                    <th className="p-3 font-medium">Description</th>
-                    <th className="p-3 font-medium text-right">Amount</th>
-                    <th className="p-3 font-medium">Type</th>
-                    <th className="p-3 font-medium">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="text-sm">
-                  {parsedCsvItems.map((item, idx) => {
-                    const isDisabled = item.isLockedMonth;
-                    return (
-                      <tr key={idx} className={`border-b border-border/20 ${item.isDuplicate ? 'bg-destructive/10' : ''} ${item.isLockedMonth ? 'opacity-50' : ''}`}>
-                        <td className="p-3">
-                          <input 
-                            type="checkbox" 
-                            disabled={isDisabled}
-                            checked={item.selected}
-                            onChange={(e) => {
-                              const checked = e.target.checked;
-                              setParsedCsvItems(prev => {
-                                const next = [...prev];
-                                next[idx].selected = checked;
-                                return next;
-                              });
-                            }}
-                            className="w-4 h-4 rounded bg-background border-border text-primary focus:ring-primary disabled:opacity-50"
-                          />
-                        </td>
-                        <td className="p-3 whitespace-nowrap">{item.date}</td>
-                        <td className="p-3">{item.description}</td>
-                        <td className={`p-3 text-right font-bold tabular-nums ${item.type === 'income' ? 'text-emerald-500' : ''}`}>
-                          {item.type === 'income' ? '+' : '-'}${item.amount.toLocaleString(undefined, {minimumFractionDigits: 2})}
-                        </td>
-                        <td className="p-3 uppercase text-[10px] tracking-wider font-bold">{item.type}</td>
-                        <td className="p-3">
-                          {item.isLockedMonth ? (
-                            <span className="text-destructive font-bold text-xs flex items-center gap-1"><X className="w-3 h-3"/> Locked Month</span>
-                          ) : item.isDuplicate ? (
-                            <span className="text-destructive font-bold text-xs flex items-center gap-1"><X className="w-3 h-3"/> Duplicate</span>
-                          ) : (
-                            <span className="text-emerald-500 font-bold text-xs flex items-center gap-1"><Check className="w-3 h-3"/> OK</span>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+            <div className="space-y-4">
+              <div className="flex justify-between items-center px-1">
+                <p className="text-xs text-muted-foreground">
+                  Review and tweak categories per item before committing import.
+                </p>
+                <button
+                  type="button"
+                  onClick={handleRunAiClassification}
+                  disabled={isAiClassifying}
+                  className="px-3 py-1.5 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 font-bold text-xs flex items-center gap-1.5 transition-all"
+                >
+                  {isAiClassifying ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" /> Classifying...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-3.5 h-3.5" /> Auto-Classify with AI
+                    </>
+                  )}
+                </button>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse" data-testid="csv-preview-table">
+                  <thead>
+                    <tr className="border-b border-border/50 text-muted-foreground text-sm">
+                      <th className="p-3 font-medium">Import</th>
+                      <th className="p-3 font-medium">Date</th>
+                      <th className="p-3 font-medium">Description</th>
+                      <th className="p-3 font-medium">Category</th>
+                      <th className="p-3 font-medium text-right">Amount</th>
+                      <th className="p-3 font-medium">Type</th>
+                      <th className="p-3 font-medium">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody className="text-sm">
+                    {parsedCsvItems.map((item, idx) => {
+                      const isDisabled = item.isLockedMonth;
+                      return (
+                        <tr key={idx} className={`border-b border-border/20 ${item.isDuplicate ? 'bg-destructive/10' : ''} ${item.isLockedMonth ? 'opacity-50' : ''}`}>
+                          <td className="p-3">
+                            <input 
+                              type="checkbox" 
+                              disabled={isDisabled}
+                              checked={item.selected}
+                              onChange={(e) => {
+                                const checked = e.target.checked;
+                                setParsedCsvItems(prev => {
+                                  const next = [...prev];
+                                  next[idx].selected = checked;
+                                  return next;
+                                });
+                              }}
+                              className="w-4 h-4 rounded bg-background border-border text-primary focus:ring-primary disabled:opacity-50"
+                            />
+                          </td>
+                          <td className="p-3 whitespace-nowrap">{item.date}</td>
+                          <td className="p-3 font-medium">{item.description}</td>
+                          <td className="p-3">
+                            <select
+                              value={item.category}
+                              onChange={(e) => {
+                                const newCat = e.target.value;
+                                setParsedCsvItems(prev => {
+                                  const next = [...prev];
+                                  next[idx].category = newCat;
+                                  return next;
+                                });
+                              }}
+                              className="bg-card/70 border border-border/70 rounded-lg px-2.5 py-1 text-xs font-semibold focus:ring-1 focus:ring-primary outline-none"
+                            >
+                              {categories.map(c => (
+                                <option key={c.id} value={c.id} className="bg-card text-card-foreground">
+                                  {c.emoji} {c.name}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                          <td className={`p-3 text-right font-bold tabular-nums ${item.type === 'income' ? 'text-emerald-500' : ''}`}>
+                            {item.type === 'income' ? '+' : '-'}${item.amount.toLocaleString(undefined, {minimumFractionDigits: 2})}
+                          </td>
+                          <td className="p-3 uppercase text-[10px] tracking-wider font-bold">{item.type}</td>
+                          <td className="p-3">
+                            {item.isLockedMonth ? (
+                              <span className="text-destructive font-bold text-xs flex items-center gap-1"><X className="w-3 h-3"/> Locked Month</span>
+                            ) : item.isDuplicate ? (
+                              <span className="text-destructive font-bold text-xs flex items-center gap-1"><X className="w-3 h-3"/> Duplicate</span>
+                            ) : (
+                              <span className="text-emerald-500 font-bold text-xs flex items-center gap-1"><Check className="w-3 h-3"/> OK</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </div>

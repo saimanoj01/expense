@@ -15,6 +15,8 @@ interface TransactionListProps {
   toggleSelectAllTxns: () => void;
   handleEditTxn: (txn: Transaction) => void;
   handleDeleteTxn: (id: string) => void;
+  handleCategoryChange?: (txn: Transaction, newCatId: string) => void;
+  handleExecuteBulkCategoryUpdate?: (selectedTxnIds: Set<string>, categoryId: string) => void;
   setShowBulkDeleteConfirmModal: (v: boolean) => void;
 }
 
@@ -30,6 +32,8 @@ export function TransactionList({
   toggleSelectAllTxns,
   handleEditTxn,
   handleDeleteTxn,
+  handleCategoryChange,
+  handleExecuteBulkCategoryUpdate,
   setShowBulkDeleteConfirmModal
 }: TransactionListProps) {
   const isAllSelected = transactions.length > 0 && transactions.every(t => selectedTxnIds.has(t.id));
@@ -53,16 +57,39 @@ export function TransactionList({
           )}
         </div>
         
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
           {selectedTxnIds.size > 0 && (
-            <motion.button
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              onClick={() => setShowBulkDeleteConfirmModal(true)}
-              className="flex items-center gap-2 px-3 py-1.5 bg-destructive/10 text-destructive border border-destructive/20 hover:bg-destructive/20 rounded-lg text-sm font-bold transition-colors"
-            >
-              <Trash2 className="w-4 h-4" /> Delete ({selectedTxnIds.size})
-            </motion.button>
+            <div className="flex items-center gap-2">
+              {handleExecuteBulkCategoryUpdate && (
+                <div className="relative flex items-center">
+                  <select
+                    defaultValue=""
+                    onChange={(e) => {
+                      if (e.target.value) {
+                        handleExecuteBulkCategoryUpdate(selectedTxnIds, e.target.value);
+                        e.target.value = '';
+                      }
+                    }}
+                    className="px-3 py-1.5 bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 rounded-lg text-sm font-bold transition-colors cursor-pointer outline-none"
+                  >
+                    <option value="" disabled className="bg-card text-card-foreground">Set Category ({selectedTxnIds.size})...</option>
+                    {categories.map(c => (
+                      <option key={c.id} value={c.id} className="bg-card text-card-foreground">
+                        {c.emoji} {c.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              <motion.button
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                onClick={() => setShowBulkDeleteConfirmModal(true)}
+                className="flex items-center gap-2 px-3 py-1.5 bg-destructive/10 text-destructive border border-destructive/20 hover:bg-destructive/20 rounded-lg text-sm font-bold transition-colors"
+              >
+                <Trash2 className="w-4 h-4" /> Delete ({selectedTxnIds.size})
+              </motion.button>
+            </div>
           )}
 
           {!isLockedMonth && transactions.length > 0 && (
@@ -104,6 +131,7 @@ export function TransactionList({
                 toggleSelectTxn={toggleSelectTxn}
                 handleEditTxn={handleEditTxn}
                 handleDeleteTxn={handleDeleteTxn}
+                handleCategoryChange={handleCategoryChange}
                 setSelectedTagFilter={setSelectedTagFilter}
               />
             ))

@@ -11,6 +11,7 @@ interface TransactionItemProps {
   toggleSelectTxn: (id: string) => void;
   handleEditTxn: (txn: Transaction) => void;
   handleDeleteTxn: (id: string) => void;
+  handleCategoryChange?: (txn: Transaction, newCatId: string) => void;
   setSelectedTagFilter: (tag: string | null) => void;
 }
 
@@ -23,6 +24,7 @@ export function TransactionItem({
   toggleSelectTxn,
   handleEditTxn,
   handleDeleteTxn,
+  handleCategoryChange,
   setSelectedTagFilter
 }: TransactionItemProps) {
   const cat = categories.find(c => c.id === transaction.category) || categories.find(c => c.name.toLowerCase() === transaction.category.toLowerCase());
@@ -67,7 +69,26 @@ export function TransactionItem({
           <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
             <span>{transaction.date}</span>
             <span className="w-1 h-1 rounded-full bg-border" />
-            <span className="truncate">{cat?.name || transaction.category}</span>
+            {isLockedMonth ? (
+              <span className="truncate">{cat?.name || transaction.category}</span>
+            ) : (
+              <select
+                value={cat?.id || transaction.category}
+                onChange={(e) => {
+                  e.stopPropagation();
+                  if (handleCategoryChange) {
+                    handleCategoryChange(transaction, e.target.value);
+                  }
+                }}
+                className="bg-transparent hover:bg-card/80 border border-transparent hover:border-border/60 rounded px-1.5 py-0.5 text-xs font-semibold text-muted-foreground hover:text-foreground outline-none transition-all cursor-pointer"
+              >
+                {categories.map(c => (
+                  <option key={c.id} value={c.id} className="bg-card text-card-foreground">
+                    {c.emoji} {c.name}
+                  </option>
+                ))}
+              </select>
+            )}
             {transaction.labels && transaction.labels.length > 0 && (
               <>
                 <span className="w-1 h-1 rounded-full bg-border" />

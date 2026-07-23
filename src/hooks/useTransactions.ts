@@ -315,6 +315,25 @@ export function useTransactions(
     }
   };
 
+  const handleExecuteBulkCategoryUpdate = async (selectedTxnIds: Set<string>, categoryId: string, onComplete?: () => void) => {
+    if (!activeProject || !storageAdapter || selectedTxnIds.size === 0 || !categoryId) return;
+    const updatedTxns: Transaction[] = [];
+    for (const t of transactions) {
+      if (selectedTxnIds.has(t.id)) {
+        updatedTxns.push({ ...t, category: categoryId });
+      }
+    }
+    if (updatedTxns.length === 0) return;
+    try {
+      await storageAdapter.saveTransactions(activeProject.id, updatedTxns);
+      await refreshTransactions();
+      if (onComplete) onComplete();
+      showToast(`Updated category for ${updatedTxns.length} transaction${updatedTxns.length > 1 ? 's' : ''}`);
+    } catch (err: any) {
+      alert(err.message || 'Failed to update categories');
+    }
+  };
+
   return {
     transactions,
     setTransactions,
@@ -335,5 +354,6 @@ export function useTransactions(
     executeSaveTransactions,
     handleDeleteTxn,
     handleExecuteBulkDelete,
+    handleExecuteBulkCategoryUpdate,
   };
 }
