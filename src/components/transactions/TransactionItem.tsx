@@ -11,7 +11,7 @@ interface TransactionItemProps {
   toggleSelectTxn: (id: string) => void;
   handleEditTxn: (txn: Transaction) => void;
   handleDeleteTxn: (id: string) => void;
-  handleCategoryChange?: (txn: Transaction, newCatId: string) => void;
+  handleCategoryChange?: (txn: Transaction, newCatId: string, newSubCatId?: string | null) => void;
   setSelectedTagFilter: (tag: string | null) => void;
 }
 
@@ -34,8 +34,13 @@ export function TransactionItem({
     return Array.from(map.values());
   }, [categories]);
 
-  const cat = allCategories.find(c => c.id === transaction.category) || allCategories.find(c => c.name.toLowerCase() === transaction.category.toLowerCase());
-  const activeCatId = cat?.id || (allCategories.some(c => c.id === transaction.category) ? transaction.category : 'misc');
+  const parentCats = useMemo(() => allCategories.filter(c => !c.parentId), [allCategories]);
+
+  const parentCat = allCategories.find(c => c.id === transaction.category) || allCategories.find(c => c.name.toLowerCase() === transaction.category.toLowerCase());
+  const subCat = transaction.subCategory ? allCategories.find(c => c.id === transaction.subCategory) : null;
+
+  const displayCat = subCat || parentCat;
+  const activeValue = `${parentCat?.id || 'misc'}|${subCat?.id || ''}`;
 
   return (
     <div 
@@ -55,9 +60,9 @@ export function TransactionItem({
         
         <div 
           className="w-10 h-10 rounded-xl flex items-center justify-center text-lg flex-shrink-0"
-          style={{ backgroundColor: `${cat?.color || '#38bdf8'}20`, color: cat?.color || '#38bdf8' }}
+          style={{ backgroundColor: `${displayCat?.color || '#38bdf8'}20`, color: displayCat?.color || '#38bdf8' }}
         >
-          {cat?.emoji || '🏷️'}
+          {displayCat?.emoji || '🏷️'}
         </div>
         
         <div className="min-w-0 flex-1">
@@ -78,23 +83,36 @@ export function TransactionItem({
             <span>{transaction.date}</span>
             <span className="w-1 h-1 rounded-full bg-border" />
             {isLockedMonth ? (
-              <span className="truncate">{cat?.name || transaction.category}</span>
+              <span className="truncate" title={subCat ? `${parentCat?.name} > ${subCat.name}` : parentCat?.name}>
+                {subCat ? `${parentCat?.emoji || ''} ${parentCat?.name} > ${subCat.emoji} ${subCat.name}` : (parentCat?.name || transaction.category)}
+              </span>
             ) : (
               <select
                 data-testid={`transaction-category-select-${transaction.id}`}
-                value={activeCatId}
+                value={activeValue}
                 onChange={(e) => {
                   if (handleCategoryChange) {
-                    handleCategoryChange(transaction, e.target.value);
+                    const [catId, subId] = e.target.value.split('|');
+                    handleCategoryChange(transaction, catId, subId || null);
                   }
                 }}
                 className="bg-card/80 hover:bg-card border border-border/70 text-foreground rounded px-2 py-0.5 text-xs font-semibold outline-none cursor-pointer transition-colors shadow-sm"
               >
-                {allCategories.map(c => (
-                  <option key={c.id} value={c.id} className="bg-card text-card-foreground py-1">
-                    {c.emoji} {c.name}
-                  </option>
-                ))}
+                {parentCats.map(p => {
+                  const subs = allCategories.filter(c => c.parentId === p.id);
+                  return (
+                    <optgroup key={p.id} label={`${p.emoji} ${p.name}`} className="bg-card font-bold text-muted-foreground">
+                      <option value={`${p.id}|`} className="bg-card text-card-foreground font-semibold">
+                        {p.emoji} {p.name} (General)
+                      </option>
+                      {subs.map(s => (
+                        <option key={s.id} value={`${p.id}|${s.id}`} className="bg-card text-card-foreground">
+                          {s.emoji} {s.name}
+                        </option>
+                      ))}
+                    </optgroup>
+                  );
+                })}
               </select>
             )}
             {transaction.labels && transaction.labels.length > 0 && (

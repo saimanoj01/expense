@@ -32,6 +32,7 @@ export function TransactionModal({
   const [txnAmount, setTxnAmount] = useState('');
   const [txnDate, setTxnDate] = useState('');
   const [txnCategory, setTxnCategory] = useState('');
+  const [txnSubCategory, setTxnSubCategory] = useState<string | null>(null);
   const [txnDescription, setTxnDescription] = useState('');
   const [txnNotes, setTxnNotes] = useState('');
   const [txnLabels, setTxnLabels] = useState('');
@@ -47,6 +48,7 @@ export function TransactionModal({
       setTxnAmount(initialData?.amount?.toString() || '');
       setTxnDate(initialData?.date || '');
       setTxnCategory(initialData?.category || categories[0]?.id || 'food');
+      setTxnSubCategory(initialData?.subCategory || null);
       setTxnDescription(initialData?.description || '');
       setTxnNotes(initialData?.notes || '');
       setTxnLabels((initialData?.labels || []).join(', '));
@@ -94,6 +96,7 @@ export function TransactionModal({
       id: targetId,
       date: txnDate,
       category: txnCategory,
+      subCategory: txnSubCategory,
       amount: amtNum,
       type: txnType,
       description: txnDescription,
@@ -231,26 +234,38 @@ export function TransactionModal({
               DEFAULT_CATEGORIES.forEach(c => allCategoriesMap.set(c.id, c));
               categories.forEach(c => allCategoriesMap.set(c.id, c));
               const allCats = Array.from(allCategoriesMap.values());
+              const parentCats = allCats.filter(c => !c.parentId);
 
-              const validCategory = allCats.some(c => c.id === txnCategory)
-                ? txnCategory
-                : (allCats[0]?.id || 'misc');
+              const validParent = parentCats.some(c => c.id === txnCategory) ? txnCategory : (parentCats[0]?.id || 'misc');
+              const activeValue = `${validParent}|${txnSubCategory || ''}`;
 
               return (
                 <select
                   data-testid="transaction-category-select"
-                  value={validCategory} 
+                  value={activeValue} 
                   onChange={e => {
-                    setTxnCategory(e.target.value);
+                    const [catId, subId] = e.target.value.split('|');
+                    setTxnCategory(catId);
+                    setTxnSubCategory(subId || null);
                     setUserManuallySelectedCategory(true);
                   }}
                   className="w-full bg-card border border-border rounded-xl px-4 py-2.5 font-medium text-foreground focus:ring-2 focus:ring-primary outline-none transition-all cursor-pointer"
                 >
-                  {allCats.map(c => (
-                    <option key={c.id} value={c.id} className="bg-card text-card-foreground font-medium">
-                      {c.emoji} {c.name}
-                    </option>
-                  ))}
+                  {parentCats.map(p => {
+                    const subs = allCats.filter(c => c.parentId === p.id);
+                    return (
+                      <optgroup key={p.id} label={`${p.emoji} ${p.name}`} className="bg-card font-bold text-muted-foreground">
+                        <option value={`${p.id}|`} className="bg-card text-card-foreground font-semibold">
+                          {p.emoji} {p.name} (General)
+                        </option>
+                        {subs.map(s => (
+                          <option key={s.id} value={`${p.id}|${s.id}`} className="bg-card text-card-foreground">
+                            {s.emoji} {s.name}
+                          </option>
+                        ))}
+                      </optgroup>
+                    );
+                  })}
                 </select>
               );
             })()}

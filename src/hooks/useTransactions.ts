@@ -319,12 +319,12 @@ export function useTransactions(
     }
   };
 
-  const handleExecuteBulkCategoryUpdate = async (selectedTxnIds: Set<string>, categoryId: string, onComplete?: () => void) => {
+  const handleExecuteBulkCategoryUpdate = async (selectedTxnIds: Set<string>, categoryId: string, subCategoryId?: string | null, onComplete?: () => void) => {
     if (!activeProject || !storageAdapter || selectedTxnIds.size === 0 || !categoryId) return;
     const updatedTxns: Transaction[] = [];
     for (const t of transactions) {
       if (selectedTxnIds.has(t.id)) {
-        updatedTxns.push({ ...t, category: categoryId });
+        updatedTxns.push({ ...t, category: categoryId, subCategory: subCategoryId || null });
       }
     }
     if (updatedTxns.length === 0) return;

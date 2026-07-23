@@ -255,8 +255,8 @@ function AppInner() {
               toggleSelectAllTxns={toggleSelectAllTxns}
               handleEditTxn={handleEditTxn}
               handleDeleteTxn={id => txnHooks.handleDeleteTxn(id, () => setSelectedTxnIds(prev => { const n = new Set(prev); n.delete(id); return n; }))}
-              handleCategoryChange={(txn, newCatId) => txnHooks.executeSaveTransaction({ ...txn, category: newCatId }, true)}
-              handleExecuteBulkCategoryUpdate={(selectedIds, catId) => txnHooks.handleExecuteBulkCategoryUpdate(selectedIds, catId, () => setSelectedTxnIds(new Set()))}
+              handleCategoryChange={(txn, newCatId, newSubCatId) => txnHooks.executeSaveTransaction({ ...txn, category: newCatId, subCategory: newSubCatId || null }, true)}
+              handleExecuteBulkCategoryUpdate={(selectedIds, catId, subCatId) => txnHooks.handleExecuteBulkCategoryUpdate(selectedIds, catId, subCatId, () => setSelectedTxnIds(new Set()))}
               setShowBulkDeleteConfirmModal={setShowBulkDeleteConfirmModal}
             />
           </>

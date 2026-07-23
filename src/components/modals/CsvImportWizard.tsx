@@ -15,15 +15,17 @@ interface CsvImportWizardProps {
   mapAmountCol: string;
   mapTypeCol: string;
   mapCategoryCol: string;
+  mapSubCategoryCol?: string;
   categories: Category[];
   parsedCsvItems: CsvItem[];
-  setMapDateCol: (v: string) => void;
-  setMapDescCol: (v: string) => void;
-  setMapAmountCol: (v: string) => void;
-  setMapTypeCol: (v: string) => void;
-  setMapCategoryCol: (v: string) => void;
+  setShowCsvWizard: (show: boolean) => void;
+  setMapDateCol: (col: string) => void;
+  setMapDescCol: (col: string) => void;
+  setMapAmountCol: (col: string) => void;
+  setMapTypeCol: (col: string) => void;
+  setMapCategoryCol: (col: string) => void;
+  setMapSubCategoryCol?: (col: string) => void;
   setParsedCsvItems: React.Dispatch<React.SetStateAction<CsvItem[]>>;
-  setShowCsvWizard: (v: boolean) => void;
   handleCsvNextStep: () => void;
   handleCommitCsvImport: () => void;
 }
@@ -38,15 +40,17 @@ export function CsvImportWizard({
   mapAmountCol,
   mapTypeCol,
   mapCategoryCol,
+  mapSubCategoryCol = '',
   categories,
   parsedCsvItems,
+  setShowCsvWizard,
   setMapDateCol,
   setMapDescCol,
   setMapAmountCol,
   setMapTypeCol,
   setMapCategoryCol,
+  setMapSubCategoryCol,
   setParsedCsvItems,
-  setShowCsvWizard,
   handleCsvNextStep,
   handleCommitCsvImport
 }: CsvImportWizardProps) {
@@ -145,6 +149,15 @@ export function CsvImportWizard({
                     {csvRawHeaders.map(h => <option key={h} value={h} className="bg-card text-card-foreground">{h}</option>)}
                   </select>
                 </div>
+                {setMapSubCategoryCol && (
+                  <div>
+                    <label className="block text-sm font-bold text-muted-foreground mb-1">Sub-Category Column (Optional)</label>
+                    <select value={mapSubCategoryCol} data-testid="csv-map-col-subcategory" onChange={e => setMapSubCategoryCol(e.target.value)} className="w-full bg-card/50 border border-border rounded-xl px-4 py-2 font-medium focus:ring-2 focus:ring-primary outline-none">
+                      <option value="" className="bg-card text-card-foreground">-- None --</option>
+                      {csvRawHeaders.map(h => <option key={h} value={h} className="bg-card text-card-foreground">{h}</option>)}
+                    </select>
+                  </div>
+                )}
               </div>
             </div>
           ) : (
@@ -213,29 +226,40 @@ export function CsvImportWizard({
                               DEFAULT_CATEGORIES.forEach(c => allCategoriesMap.set(c.id, c));
                               categories.forEach(c => allCategoriesMap.set(c.id, c));
                               const allCats = Array.from(allCategoriesMap.values());
+                              const parentCats = allCats.filter(c => !c.parentId);
 
-                              const itemCatId = allCats.some(c => c.id === item.category)
-                                ? item.category
-                                : (allCats[0]?.id || 'misc');
+                              const itemParent = parentCats.some(c => c.id === item.category) ? item.category : (parentCats[0]?.id || 'misc');
+                              const activeValue = `${itemParent}|${item.subCategory || ''}`;
 
                               return (
                                 <select
-                                  value={itemCatId}
+                                  value={activeValue}
                                   onChange={(e) => {
-                                    const newCat = e.target.value;
+                                    const [catId, subId] = e.target.value.split('|');
                                     setParsedCsvItems(prev => {
                                       const next = [...prev];
-                                      next[idx].category = newCat;
+                                      next[idx].category = catId;
+                                      next[idx].subCategory = subId || null;
                                       return next;
                                     });
                                   }}
                                   className="bg-card border border-border/70 text-foreground rounded-lg px-2.5 py-1 text-xs font-semibold focus:ring-1 focus:ring-primary outline-none cursor-pointer"
                                 >
-                                  {allCats.map(c => (
-                                    <option key={c.id} value={c.id} className="bg-card text-card-foreground">
-                                      {c.emoji} {c.name}
-                                    </option>
-                                  ))}
+                                  {parentCats.map(p => {
+                                    const subs = allCats.filter(c => c.parentId === p.id);
+                                    return (
+                                      <optgroup key={p.id} label={`${p.emoji} ${p.name}`} className="bg-card font-bold text-muted-foreground">
+                                        <option value={`${p.id}|`} className="bg-card text-card-foreground font-semibold">
+                                          {p.emoji} {p.name} (General)
+                                        </option>
+                                        {subs.map(s => (
+                                          <option key={s.id} value={`${p.id}|${s.id}`} className="bg-card text-card-foreground">
+                                            {s.emoji} {s.name}
+                                          </option>
+                                        ))}
+                                      </optgroup>
+                                    );
+                                  })}
                                 </select>
                               );
                             })()}

@@ -10,6 +10,7 @@ export interface CsvItem {
   amount: number;
   type: 'income' | 'expense' | 'transfer';
   category: string;
+  subCategory?: string | null;
   hash: string;
   isDuplicate: boolean;
   isLockedMonth?: boolean;
@@ -35,6 +36,7 @@ export function useCsvImport(
   const [mapAmountCol, setMapAmountCol] = useState<string>('');
   const [mapTypeCol, setMapTypeCol] = useState<string>('');
   const [mapCategoryCol, setMapCategoryCol] = useState<string>('');
+  const [mapSubCategoryCol, setMapSubCategoryCol] = useState<string>('');
   const [parsedCsvItems, setParsedCsvItems] = useState<CsvItem[]>([]);
   const [csvError, setCsvError] = useState<string | null>(null);
   const [showCsvDuplicateWarningModal, setShowCsvDuplicateWarningModal] = useState(false);
@@ -70,6 +72,7 @@ export function useCsvImport(
     setMapAmountCol(headers.find((h: string) => /^amount$/i.test(h)) || '');
     setMapTypeCol(headers.find((h: string) => /^type$/i.test(h)) || '');
     setMapCategoryCol(headers.find((h: string) => /^category$|^cat$/i.test(h)) || '');
+    setMapSubCategoryCol(headers.find((h: string) => /subcategory|sub_category|subcat/i.test(h)) || '');
     setCsvStep(1);
     setShowCsvWizard(true);
   };
@@ -85,6 +88,7 @@ export function useCsvImport(
     const amtIdx = csvRawHeaders.indexOf(mapAmountCol);
     const typeIdx = csvRawHeaders.indexOf(mapTypeCol);
     const catIdx = csvRawHeaders.indexOf(mapCategoryCol);
+    const subCatIdx = csvRawHeaders.indexOf(mapSubCategoryCol);
 
     const existingHashes = new Set(transactions.map(t => t.hash));
     const seenHashesInBatch = new Set<string>();
@@ -96,6 +100,7 @@ export function useCsvImport(
       let rawAmt = parseFloat(row[amtIdx] || '0') || 0;
       let rawType: 'income' | 'expense' | 'transfer' = detectTransactionType(rawDesc, typeIdx > -1 ? row[typeIdx] : '');
       const rawCat = catIdx > -1 && row[catIdx] ? row[catIdx] : '';
+      const rawSubCat = subCatIdx > -1 && row[subCatIdx] ? row[subCatIdx] : '';
 
       if (typeIdx > -1) {
         const inflowVal = parseFloat(row[typeIdx] || '0');
@@ -122,12 +127,19 @@ export function useCsvImport(
 
       const suggestedCategory = suggestCategory(rawDesc, rawCat, categories);
 
+      let matchedSubCat: string | null = null;
+      if (rawSubCat) {
+        const directSub = categories.find(c => c.parentId === suggestedCategory && (c.id.toLowerCase() === rawSubCat.toLowerCase() || c.name.toLowerCase() === rawSubCat.toLowerCase()));
+        if (directSub) matchedSubCat = directSub.id;
+      }
+
       items.push({
         date: rawDate,
         description: rawDesc,
         amount: rawAmt,
         type: rawType,
         category: suggestedCategory,
+        subCategory: matchedSubCat,
         hash,
         isDuplicate: isDup,
         isLockedMonth,
@@ -149,6 +161,7 @@ export function useCsvImport(
         id: crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2),
         date: item.date,
         category: item.category || categories[0]?.id || 'misc',
+        subCategory: item.subCategory || null,
         amount: item.amount,
         type: item.type,
         description: item.description,
@@ -206,6 +219,8 @@ export function useCsvImport(
     setMapTypeCol,
     mapCategoryCol,
     setMapCategoryCol,
+    mapSubCategoryCol,
+    setMapSubCategoryCol,
     parsedCsvItems,
     setParsedCsvItems,
     csvError,

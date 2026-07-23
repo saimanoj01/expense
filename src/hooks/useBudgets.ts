@@ -27,32 +27,77 @@ export function useBudgets(
   const totalBudget = useMemo(() => budgets.reduce((sum, b) => sum + b.amount, 0), [budgets]);
 
   const categorySummary = useMemo(() => {
-    const allCatNames = new Set<string>(categories.map(c => c.name));
-    budgets.forEach(b => {
-      if (!allCatNames.has(b.category) && !categories.some(c => c.id === b.category)) {
-        allCatNames.add(b.category);
-      }
-    });
+    // Identify top-level parent categories
+    const parentCats = categories.filter(c => !c.parentId);
 
-    const items: Array<{ id: string; name: string; emoji: string; color: string; budget: number; spent: number; percent: number }> = [];
-    allCatNames.forEach(name => {
-      const cat = categories.find(c => c.name === name || c.id === name);
-      const bObj = budgets.find(b => b.category === (cat?.id || name) || b.category === name);
-      const budgetAmt = bObj?.amount || 0;
-      const spent = filteredTransactions
-        .filter(t => (t.category === (cat?.id || name) || t.category.toLowerCase() === name.toLowerCase()) && t.type === 'expense')
+    const items: Array<{
+      id: string;
+      name: string;
+      emoji: string;
+      color: string;
+      budget: number;
+      spent: number;
+      percent: number;
+      subCategories: Array<{
+        id: string;
+        name: string;
+        emoji: string;
+        color: string;
+        budget: number;
+        spent: number;
+        percent: number;
+      }>;
+    }> = [];
+
+    parentCats.forEach(pCat => {
+      // Find sub-categories for this parent
+      const subCats = categories.filter(c => c.parentId === pCat.id);
+
+      const subCategorySummaries = subCats.map(sCat => {
+        const bObj = budgets.find(b => b.category === sCat.id || b.category === sCat.name);
+        const subBudget = bObj?.amount || 0;
+        const subSpent = filteredTransactions
+          .filter(t => t.type === 'expense' && (t.subCategory === sCat.id || (t.category === sCat.id && !t.subCategory)))
+          .reduce((sum, t) => sum + t.amount, 0);
+        const subPercent = subBudget > 0 ? Math.min(Math.round((subSpent / subBudget) * 100), 100) : 0;
+        return {
+          id: sCat.id,
+          name: sCat.name,
+          emoji: sCat.emoji,
+          color: sCat.color,
+          budget: subBudget,
+          spent: subSpent,
+          percent: subPercent
+        };
+      });
+
+      // Calculate direct parent spent (transactions assigned to parent without subCategory)
+      const directParentSpent = filteredTransactions
+        .filter(t => t.type === 'expense' && (t.category === pCat.id || t.category.toLowerCase() === pCat.name.toLowerCase()) && !t.subCategory)
         .reduce((sum, t) => sum + t.amount, 0);
-      const percent = budgetAmt > 0 ? Math.min(Math.round((spent / budgetAmt) * 100), 100) : 0;
+
+      // Roll up total parent spent
+      const totalParentSpent = directParentSpent + subCategorySummaries.reduce((sum, s) => sum + s.spent, 0);
+
+      // Calculate total parent budget (explicit parent budget or sum of sub-category budgets)
+      const parentBObj = budgets.find(b => b.category === pCat.id || b.category === pCat.name);
+      const subCategoryBudgetSum = subCategorySummaries.reduce((sum, s) => sum + s.budget, 0);
+      const parentBudget = parentBObj ? parentBObj.amount : subCategoryBudgetSum;
+
+      const parentPercent = parentBudget > 0 ? Math.min(Math.round((totalParentSpent / parentBudget) * 100), 100) : 0;
+
       items.push({
-        id: cat?.id || name,
-        name: cat?.name || name,
-        emoji: cat?.emoji || '🏷️',
-        color: cat?.color || '#a855f7',
-        budget: budgetAmt,
-        spent,
-        percent
+        id: pCat.id,
+        name: pCat.name,
+        emoji: pCat.emoji,
+        color: pCat.color,
+        budget: parentBudget,
+        spent: totalParentSpent,
+        percent: parentPercent,
+        subCategories: subCategorySummaries
       });
     });
+
     return items;
   }, [categories, budgets, filteredTransactions]);
 

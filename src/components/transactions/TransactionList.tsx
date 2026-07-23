@@ -16,8 +16,8 @@ interface TransactionListProps {
   toggleSelectAllTxns: () => void;
   handleEditTxn: (txn: Transaction) => void;
   handleDeleteTxn: (id: string) => void;
-  handleCategoryChange?: (txn: Transaction, newCatId: string) => void;
-  handleExecuteBulkCategoryUpdate?: (selectedTxnIds: Set<string>, categoryId: string) => void;
+  handleCategoryChange?: (txn: Transaction, newCatId: string, newSubCatId?: string | null) => void;
+  handleExecuteBulkCategoryUpdate?: (selectedTxnIds: Set<string>, categoryId: string, subCategoryId?: string | null) => void;
   setShowBulkDeleteConfirmModal: (v: boolean) => void;
 }
 
@@ -45,6 +45,8 @@ export function TransactionList({
     categories.forEach(c => map.set(c.id, c));
     return Array.from(map.values());
   }, [categories]);
+
+  const parentCats = useMemo(() => allCategories.filter(c => !c.parentId), [allCategories]);
 
   return (
     <div className="glass-card rounded-2xl flex flex-col min-h-[350px] max-h-[600px] h-[55vh]">
@@ -74,18 +76,29 @@ export function TransactionList({
                     defaultValue=""
                     onChange={(e) => {
                       if (e.target.value) {
-                        handleExecuteBulkCategoryUpdate(selectedTxnIds, e.target.value);
+                        const [catId, subId] = e.target.value.split('|');
+                        handleExecuteBulkCategoryUpdate(selectedTxnIds, catId, subId || null);
                         e.target.value = '';
                       }
                     }}
                     className="px-3 py-1.5 bg-card/80 border border-border text-foreground hover:bg-card rounded-lg text-xs sm:text-sm font-bold transition-colors cursor-pointer outline-none shadow-sm"
                   >
                     <option value="" disabled className="bg-card text-card-foreground">Set Category ({selectedTxnIds.size})...</option>
-                    {allCategories.map(c => (
-                      <option key={c.id} value={c.id} className="bg-card text-card-foreground">
-                        {c.emoji} {c.name}
-                      </option>
-                    ))}
+                    {parentCats.map(p => {
+                      const subs = allCategories.filter(c => c.parentId === p.id);
+                      return (
+                        <optgroup key={p.id} label={`${p.emoji} ${p.name}`} className="bg-card font-bold text-muted-foreground">
+                          <option value={`${p.id}|`} className="bg-card text-card-foreground font-semibold">
+                            {p.emoji} {p.name} (General)
+                          </option>
+                          {subs.map(s => (
+                            <option key={s.id} value={`${p.id}|${s.id}`} className="bg-card text-card-foreground">
+                              {s.emoji} {s.name}
+                            </option>
+                          ))}
+                        </optgroup>
+                      );
+                    })}
                   </select>
                 </div>
               )}

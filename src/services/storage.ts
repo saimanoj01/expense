@@ -1,7 +1,8 @@
 export interface Transaction {
   id: string;          // Unique UUID (generated on creation)
   date: string;        // ISO 8601 Date String (YYYY-MM-DD)
-  category: string;    // ID of the Category
+  category: string;    // ID of the Parent Category
+  subCategory?: string | null; // ID of the Sub-Category (optional)
   amount: number;      // Numeric amount (positive float)
   type: 'income' | 'expense' | 'transfer';
   description: string; // Brief description/payee name
@@ -15,6 +16,7 @@ export interface Category {
   name: string;        // Human-readable name
   color: string;       // Hex color code (e.g., '#FF6B6B')
   emoji: string;       // Emoji icon representing category (e.g., '🍔')
+  parentId?: string | null; // Optional Parent Category ID (null or undefined if top-level category)
 }
 
 export interface Budget {
@@ -59,6 +61,7 @@ export interface StorageAdapter {
 
 // Default categories for new projects
 export const DEFAULT_CATEGORIES: Category[] = [
+  // Parent Categories
   { id: 'salary', name: 'Salary', color: '#51CF66', emoji: '💰' },
   { id: 'rent', name: 'Rent', color: '#4DABF7', emoji: '🏠' },
   { id: 'utilities', name: 'Utilities', color: '#FCC419', emoji: '⚡' },
@@ -68,7 +71,22 @@ export const DEFAULT_CATEGORIES: Category[] = [
   { id: 'travel', name: 'Travel', color: '#38BDF8', emoji: '✈️' },
   { id: 'meals', name: 'Meals', color: '#FF922B', emoji: '🍽️' },
   { id: 'healthcare', name: 'Healthcare', color: '#20C997', emoji: '🏥' },
-  { id: 'misc', name: 'Miscellaneous', color: '#ADB5BD', emoji: '📦' }
+  { id: 'misc', name: 'Miscellaneous', color: '#ADB5BD', emoji: '📦' },
+
+  // Sub-Categories
+  { id: 'food-groceries', name: 'Groceries', color: '#FF6B6B', emoji: '🛒', parentId: 'food' },
+  { id: 'food-dining', name: 'Dining Out', color: '#FF6B6B', emoji: '🍕', parentId: 'food' },
+  { id: 'food-cafes', name: 'Coffee & Cafes', color: '#FF6B6B', emoji: '☕', parentId: 'food' },
+  
+  { id: 'transport-fuel', name: 'Gas & Fuel', color: '#845EF7', emoji: '⛽', parentId: 'transport' },
+  { id: 'transport-transit', name: 'Rideshare & Transit', color: '#845EF7', emoji: '🚕', parentId: 'transport' },
+  { id: 'transport-maint', name: 'Auto Maintenance', color: '#845EF7', emoji: '🔧', parentId: 'transport' },
+
+  { id: 'utilities-electric', name: 'Electricity & Water', color: '#FCC419', emoji: '💡', parentId: 'utilities' },
+  { id: 'utilities-internet', name: 'Internet & WiFi', color: '#FCC419', emoji: '📶', parentId: 'utilities' },
+
+  { id: 'entertainment-subs', name: 'Subscriptions & Streaming', color: '#FF8787', emoji: '📺', parentId: 'entertainment' },
+  { id: 'entertainment-events', name: 'Movies & Events', color: '#FF8787', emoji: '🎟️', parentId: 'entertainment' }
 ];
 
 // Seed Datasets
@@ -654,7 +672,7 @@ export class GoogleSheetsAdapter implements StorageAdapter {
     const project = (await this.getProjects()).find(p => p.id === projectId);
     if (!project || !project.spreadsheetId) throw new Error("Project not found or missing spreadsheet ID");
 
-    const res = await this.fetchApi(`https://sheets.googleapis.com/v4/spreadsheets/${project.spreadsheetId}/values:batchGet?ranges=Transactions!A:I&ranges=Categories!A:D&ranges=Budgets!A:B&ranges=Locks!A:C`);
+    const res = await this.fetchApi(`https://sheets.googleapis.com/v4/spreadsheets/${project.spreadsheetId}/values:batchGet?ranges=Transactions!A:J&ranges=Categories!A:E&ranges=Budgets!A:B&ranges=Locks!A:C`);
     
     const parseJSON = (str: string) => { try { return JSON.parse(str); } catch { return str; } };
 
@@ -664,11 +682,11 @@ export class GoogleSheetsAdapter implements StorageAdapter {
     const lockRows = res.valueRanges?.[3]?.values || [];
 
     const transactions: Transaction[] = txRows.slice(1).map((r: any[]) => ({
-      id: r[0], date: r[1], category: r[2], amount: parseFloat(r[3]), type: r[4], description: r[5], notes: r[6] || '', labels: parseJSON(r[7] || '[]'), hash: r[8] || ''
+      id: r[0], date: r[1], category: r[2], subCategory: r[3] || null, amount: parseFloat(r[4]), type: r[5], description: r[6], notes: r[7] || '', labels: parseJSON(r[8] || '[]'), hash: r[9] || ''
     })).filter((t: any) => t.id);
 
     let categories: Category[] = catRows.slice(1).map((r: any[]) => ({
-      id: r[0], name: r[1], color: r[2], emoji: r[3]
+      id: r[0], name: r[1], color: r[2], emoji: r[3], parentId: r[4] || null
     })).filter((c: any) => c.id);
     
     if (categories.length === 0) categories = [...DEFAULT_CATEGORIES];
@@ -701,15 +719,15 @@ export class GoogleSheetsAdapter implements StorageAdapter {
   }
 
   private async saveTransactionsToSheet(projectId: string, txs: Transaction[]) {
-    const header = ['id', 'date', 'category', 'amount', 'type', 'description', 'notes', 'labels', 'hash'];
-    const rows = txs.map(t => [t.id, t.date, t.category, t.amount, t.type, t.description, t.notes, JSON.stringify(t.labels), t.hash]);
-    await this.writeSheet(projectId, 'Transactions!A:I', [header, ...rows]);
+    const header = ['id', 'date', 'category', 'subCategory', 'amount', 'type', 'description', 'notes', 'labels', 'hash'];
+    const rows = txs.map(t => [t.id, t.date, t.category, t.subCategory || '', t.amount, t.type, t.description, t.notes, JSON.stringify(t.labels), t.hash]);
+    await this.writeSheet(projectId, 'Transactions!A:J', [header, ...rows]);
   }
 
   private async saveCategoriesToSheet(projectId: string, cats: Category[]) {
-    const header = ['id', 'name', 'color', 'emoji'];
-    const rows = cats.map(c => [c.id, c.name, c.color, c.emoji]);
-    await this.writeSheet(projectId, 'Categories!A:D', [header, ...rows]);
+    const header = ['id', 'name', 'color', 'emoji', 'parentId'];
+    const rows = cats.map(c => [c.id, c.name, c.color, c.emoji, c.parentId || '']);
+    await this.writeSheet(projectId, 'Categories!A:E', [header, ...rows]);
   }
 
   private async saveBudgetsToSheet(projectId: string, budgets: Budget[]) {
