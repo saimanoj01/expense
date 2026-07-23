@@ -19,8 +19,8 @@ export function TrendChart({ trendPathData }: TrendChartProps) {
         </div>
         <h3 className="text-lg font-bold">Expense Trend</h3>
       </div>
-      <div className="flex-1 min-h-[200px] flex items-center justify-center relative">
-        <svg viewBox="0 0 300 150" data-testid="chart-svg-trend" className="w-full h-full overflow-visible drop-shadow-md">
+      <div className="flex-1 min-h-[200px] flex items-center justify-center relative overflow-hidden">
+        <svg viewBox="0 0 300 150" data-testid="chart-svg-trend" className="w-full h-full overflow-hidden drop-shadow-md">
           {/* Subtle grid lines */}
           <line x1="0" y1="25" x2="300" y2="25" stroke="currentColor" className="text-border/30" strokeWidth="1" strokeDasharray="4 4" />
           <line x1="0" y1="75" x2="300" y2="75" stroke="currentColor" className="text-border/30" strokeWidth="1" strokeDasharray="4 4" />

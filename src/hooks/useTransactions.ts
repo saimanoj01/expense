@@ -85,20 +85,32 @@ export function useTransactions(
     if (expenses.length === 0) return '';
     const dateMap: { [date: string]: number } = {};
     expenses.forEach(t => {
-      dateMap[t.date] = (dateMap[t.date] || 0) + t.amount;
+      if (t.date) {
+        const amt = typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount || 0));
+        dateMap[t.date] = (dateMap[t.date] || 0) + (isNaN(amt) ? 0 : amt);
+      }
     });
     const sortedDates = Object.keys(dateMap).sort();
     if (sortedDates.length === 0) return '';
     if (sortedDates.length === 1) {
-      return 'M 30 105 Q 150 90, 270 105';
+      return 'M 30 75 L 270 75';
     }
-    const maxAmt = Math.max(...Object.values(dateMap), 1);
+
+    const values = Object.values(dateMap);
+    const maxAmt = Math.max(...values, 1);
+    const minAmt = Math.min(...values, 0);
+    const range = maxAmt - minAmt || 1;
+
     const width = 300;
     const height = 150;
     const padding = 20;
+
     const points = sortedDates.map((date, idx) => {
       const x = padding + (idx / (sortedDates.length - 1)) * (width - 2 * padding);
-      const y = height - padding - (dateMap[date] / maxAmt) * (height - 2 * padding);
+      const rawVal = dateMap[date];
+      const normalized = (rawVal - minAmt) / range;
+      const clampedNorm = Math.max(0, Math.min(1, isNaN(normalized) ? 0.5 : normalized));
+      const y = height - padding - clampedNorm * (height - 2 * padding);
       return `${x.toFixed(1)} ${y.toFixed(1)}`;
     });
     return `M ${points.join(' L ')}`;
