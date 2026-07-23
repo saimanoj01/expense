@@ -271,6 +271,19 @@ export function useTransactions(
     }
   };
 
+  const executeSaveTransactions = async (txnsToSave: Transaction[]) => {
+    if (!activeProject || !storageAdapter || txnsToSave.length === 0) return false;
+    try {
+      await storageAdapter.saveTransactions(activeProject.id, txnsToSave);
+      await refreshTransactions();
+      showToast(`Saved ${txnsToSave.length} transactions successfully`);
+      return true;
+    } catch (err: any) {
+      alert(err.message || 'Failed to save transactions');
+      return false;
+    }
+  };
+
   const handleDeleteTxn = async (id: string, onDeleted?: (id: string) => void) => {
     if (!activeProject || !storageAdapter) return;
     try {
@@ -286,15 +299,17 @@ export function useTransactions(
   const handleExecuteBulkDelete = async (selectedTxnIds: Set<string>, onComplete?: () => void) => {
     if (!activeProject || !storageAdapter || selectedTxnIds.size === 0) return;
     const idsToDelete = Array.from(selectedTxnIds);
-    let count = 0;
     try {
-      for (const id of idsToDelete) {
-        await storageAdapter.deleteTransaction(activeProject.id, id);
-        count++;
+      if (typeof storageAdapter.deleteTransactions === 'function') {
+        await storageAdapter.deleteTransactions(activeProject.id, idsToDelete);
+      } else {
+        for (const id of idsToDelete) {
+          await storageAdapter.deleteTransaction(activeProject.id, id);
+        }
       }
       await refreshTransactions();
       if (onComplete) onComplete();
-      showToast(`Successfully deleted ${count} transaction${count > 1 ? 's' : ''}`);
+      showToast(`Successfully deleted ${idsToDelete.length} transaction${idsToDelete.length > 1 ? 's' : ''}`);
     } catch (err: any) {
       alert(err.message || 'Failed to delete selected transactions');
     }
@@ -317,6 +332,7 @@ export function useTransactions(
     trendDetails,
     refreshTransactions,
     executeSaveTransaction,
+    executeSaveTransactions,
     handleDeleteTxn,
     handleExecuteBulkDelete,
   };

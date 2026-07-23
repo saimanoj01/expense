@@ -48,6 +48,7 @@ export interface StorageAdapter {
   saveTransaction(projectId: string, transaction: Transaction): Promise<Transaction>;
   saveTransactions(projectId: string, transactions: Transaction[]): Promise<Transaction[]>;
   deleteTransaction(projectId: string, transactionId: string): Promise<void>;
+  deleteTransactions(projectId: string, transactionIds: string[]): Promise<void>;
 
   getBudgets(projectId: string): Promise<Budget[]>;
   saveBudgets(projectId: string, budgets: Budget[]): Promise<void>;
@@ -426,6 +427,30 @@ export class LocalStorageAdapter implements StorageAdapter {
     }
   }
 
+  async deleteTransactions(projectId: string, transactionIds: string[]): Promise<void> {
+    if (transactionIds.length === 0) return;
+    const transactions = await this.getTransactions(projectId);
+    const idSet = new Set(transactionIds);
+    const locks = await this.getLocks(projectId);
+
+    for (const t of transactions) {
+      if (idSet.has(t.id)) {
+        const txMonth = t.date.substring(0, 7);
+        const isLocked = locks.some(lock => lock.month === txMonth && lock.locked);
+        if (isLocked) {
+          throw new Error(`Cannot delete transaction. The month ${txMonth} is locked.`);
+        }
+      }
+    }
+
+    const filtered = transactions.filter(t => !idSet.has(t.id));
+    try {
+      localStorage.setItem(`expense_txs_${projectId}`, JSON.stringify(filtered));
+    } catch (e) {
+      throw new Error('Local storage quota exceeded. Unable to delete transactions.');
+    }
+  }
+
   async getBudgets(projectId: string): Promise<Budget[]> {
     const raw = localStorage.getItem(`expense_budgets_${projectId}`);
     if (!raw) return [];
@@ -785,6 +810,27 @@ export class GoogleSheetsAdapter implements StorageAdapter {
     }
 
     this.cache[projectId].transactions = txs.filter(t => t.id !== transactionId);
+    await this.saveTransactionsToSheet(projectId, this.cache[projectId].transactions);
+  }
+
+  async deleteTransactions(projectId: string, transactionIds: string[]): Promise<void> {
+    if (transactionIds.length === 0) return;
+    await this.ensureCache(projectId);
+    const txs = this.cache[projectId].transactions;
+    const idSet = new Set(transactionIds);
+    const locks = await this.getLocks(projectId);
+
+    for (const t of txs) {
+      if (idSet.has(t.id)) {
+        const txMonth = t.date.substring(0, 7);
+        const isLocked = locks.some(lock => lock.month === txMonth && lock.locked);
+        if (isLocked) {
+          throw new Error(`Cannot delete transaction. The month ${txMonth} is locked.`);
+        }
+      }
+    }
+
+    this.cache[projectId].transactions = txs.filter(t => !idSet.has(t.id));
     await this.saveTransactionsToSheet(projectId, this.cache[projectId].transactions);
   }
 
