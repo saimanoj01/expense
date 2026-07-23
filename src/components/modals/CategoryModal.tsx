@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { X, Save } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { Category } from '../../services/storage';
+import { Category, DEFAULT_CATEGORIES } from '../../services/storage';
 
 interface CategoryModalProps {
   showModal: boolean;
@@ -12,9 +12,17 @@ interface CategoryModalProps {
 
 export function CategoryModal({ showModal, setShowModal, handleSaveCategory, categories }: CategoryModalProps) {
   const [newCatName, setNewCatName] = useState('');
+  const [selectedParentId, setSelectedParentId] = useState('');
   const [newCatColor, setNewCatColor] = useState('#38bdf8');
   const [newCatEmoji, setNewCatEmoji] = useState('📦');
   const [error, setError] = useState<string | null>(null);
+
+  const parentCategories = useMemo(() => {
+    const map = new Map<string, Category>();
+    DEFAULT_CATEGORIES.filter(c => !c.parentId).forEach(c => map.set(c.id, c));
+    categories.filter(c => !c.parentId).forEach(c => map.set(c.id, c));
+    return Array.from(map.values());
+  }, [categories]);
 
   if (!showModal) return null;
 
@@ -23,26 +31,31 @@ export function CategoryModal({ showModal, setShowModal, handleSaveCategory, cat
     setError(null);
     if (!newCatName.trim()) return;
 
-    const dup = categories.some(c => c.name.toLowerCase() === newCatName.trim().toLowerCase());
+    const slug = newCatName.trim().toLowerCase().replace(/[^a-z0-9]/g, '-');
+    const catId = selectedParentId ? `${selectedParentId}-${slug}` : slug;
+
+    const allCategories = [...DEFAULT_CATEGORIES, ...categories];
+    const dup = allCategories.some(c => c.id === catId || c.name.toLowerCase() === newCatName.trim().toLowerCase());
     if (dup) {
-      setError('Category already exists');
+      setError('Category with this name already exists');
       return;
     }
 
-    const catId = newCatName.trim().toLowerCase().replace(/[^a-z0-9]/g, '-');
     const validHexColor = /^#[0-9A-Fa-f]{6}$/i.test(newCatColor) ? newCatColor : '#38bdf8';
     
     const newCat: Category = {
       id: catId,
       name: newCatName.trim(),
       color: validHexColor,
-      emoji: newCatEmoji || '📦'
+      emoji: newCatEmoji || '📦',
+      parentId: selectedParentId || null
     };
 
     const success = await handleSaveCategory(newCat, false);
     if (success) {
       setShowModal(false);
       setNewCatName('');
+      setSelectedParentId('');
     }
   };
 
@@ -71,9 +84,27 @@ export function CategoryModal({ showModal, setShowModal, handleSaveCategory, cat
               data-testid="new-category-name-input"
               value={newCatName} onChange={e => setNewCatName(e.target.value)}
               className="w-full bg-card/50 border border-border rounded-xl px-4 py-2.5 font-medium focus:ring-2 focus:ring-primary outline-none"
-              placeholder="e.g. Travel"
+              placeholder="e.g. Organic Groceries"
             />
           </div>
+
+          <div>
+            <label className="block text-sm font-bold text-muted-foreground mb-1">Parent Category (Optional)</label>
+            <select
+              data-testid="new-category-parent-select"
+              value={selectedParentId}
+              onChange={e => setSelectedParentId(e.target.value)}
+              className="w-full bg-card/50 border border-border rounded-xl px-4 py-2.5 font-medium focus:ring-2 focus:ring-primary outline-none cursor-pointer text-foreground"
+            >
+              <option value="" className="bg-card text-card-foreground">-- None -- (Top-Level Category)</option>
+              {parentCategories.map(p => (
+                <option key={p.id} value={p.id} className="bg-card text-card-foreground">
+                  {p.emoji} {p.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-bold text-muted-foreground mb-1">Emoji</label>

@@ -144,4 +144,25 @@ test.describe('Tier 6: Category Dropdown & Transfer Regressions', () => {
     expect(txs[0].category).toBe('food');
     expect(txs[0].subCategory).toBe('food-groceries');
   });
+
+  test('46. Add Sub-Category UX: Category modal supports creating custom sub-categories under a parent category', async ({ page }) => {
+    await preseedMockData(page, {
+      mockSession: 'true',
+      projects: [{ id: 'p1', name: 'My Project' }],
+      activeProjectId: 'p1'
+    });
+    await appPage.goto();
+
+    await page.getByTestId('open-add-category-btn').click();
+    await page.getByTestId('new-category-name-input').fill('Organic Produce');
+    await page.getByTestId('new-category-parent-select').selectOption('food');
+    await page.getByRole('button', { name: 'Add Category' }).click();
+
+    const storedCatsStr = await page.evaluate(() => window.localStorage.getItem('expense_categories_p1'));
+    expect(storedCatsStr).not.toBeNull();
+    const cats = JSON.parse(storedCatsStr!);
+    const addedSubCat = cats.find((c: any) => c.name === 'Organic Produce');
+    expect(addedSubCat).toBeDefined();
+    expect(addedSubCat.parentId).toBe('food');
+  });
 });
