@@ -21,8 +21,9 @@ export function useCsvImport(
   categories: Category[],
   activeProject: any,
   storageAdapter: any,
-  refreshTransactions: () => Promise<void>,
-  showToast: (msg: string) => void
+  refreshProjectData: () => Promise<void>,
+  showToast: (msg: string) => void,
+  setSelectedMonth?: (m: string) => void
 ) {
   const [showCsvWizard, setShowCsvWizard] = useState(false);
   const [csvStep, setCsvStep] = useState<1 | 2>(1);
@@ -87,7 +88,7 @@ export function useCsvImport(
     const items: CsvItem[] = [];
 
     for (const row of csvRawRows) {
-      const rawDate = standardizeDate(row[dateIdx] || '2026-07-15');
+      const rawDate = standardizeDate(row[dateIdx] || new Date().toISOString().substring(0, 10));
       const rawDesc = row[descIdx] || 'Imported Transaction';
       let rawAmt = parseFloat(row[amtIdx] || '0') || 0;
       let rawType: 'income' | 'expense' = 'expense';
@@ -105,7 +106,7 @@ export function useCsvImport(
       const hash = await computeTxHash(rawDate, rawDesc, rawAmt, rawType);
       const isDup = seenHashesInBatch.has(hash) || existingHashes.has(hash) || transactions.some(t => 
         t.date === rawDate && 
-        t.description.trim().toLowerCase() === rawDesc.trim().toLowerCase() && 
+        (t.description || '').trim().toLowerCase() === rawDesc.trim().toLowerCase() && 
         Math.abs(t.amount - rawAmt) < 0.001 && 
         t.type === rawType
       );
@@ -159,7 +160,18 @@ export function useCsvImport(
 
     try {
       await storageAdapter.saveTransactions(activeProject.id, newTxns);
-      await refreshTransactions();
+      await refreshProjectData();
+
+      // Auto-switch selectedMonth to the imported month (or 'all' if multi-month) so imported data is immediately visible
+      if (toImport.length > 0 && setSelectedMonth) {
+        const importedMonths = Array.from(new Set(toImport.map(i => i.date.substring(0, 7))));
+        if (importedMonths.length === 1) {
+          setSelectedMonth(importedMonths[0]);
+        } else if (importedMonths.length > 1) {
+          setSelectedMonth('all');
+        }
+      }
+
       setShowCsvWizard(false);
       setShowCsvDuplicateWarningModal(false);
       showToast(`Imported ${toImport.length} transactions`);

@@ -85,9 +85,6 @@ function AppInner() {
   // Hooks
   const txnHooks = useTransactions(storageAdapter, activeProject, locks, showToast);
   const budgetHooks = useBudgets(storageAdapter, activeProject, txnHooks.filteredTransactions, showToast, setAuthErrorToast);
-  const csvHooks = useCsvImport(
-    txnHooks.transactions, locks, budgetHooks.categories, activeProject, storageAdapter, txnHooks.refreshTransactions, showToast
-  );
 
   const refreshProjectData = async () => {
     if (!isAuthenticated || !activeProject || !storageAdapter) return;
@@ -97,6 +94,17 @@ function AppInner() {
       storageAdapter.getLocks(activeProject.id).then(setLocks).catch(console.error)
     ]);
   };
+
+  const csvHooks = useCsvImport(
+    txnHooks.transactions,
+    locks,
+    budgetHooks.categories,
+    activeProject,
+    storageAdapter,
+    refreshProjectData,
+    showToast,
+    txnHooks.setSelectedMonth
+  );
 
   useEffect(() => {
     refreshProjectData();

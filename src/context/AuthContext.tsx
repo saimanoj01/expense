@@ -99,16 +99,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!isInvalidOrExpiredToken(token)) {
       return getPersistedGoogleUser();
     }
+    const mockUser = localStorage.getItem('expense_mock_session');
+    if (mockUser) {
+      try { return JSON.parse(mockUser); } catch {}
+    }
     return null;
   });
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(() => {
     const token = localStorage.getItem('expense_google_token');
-    return !isInvalidOrExpiredToken(token);
+    if (!isInvalidOrExpiredToken(token)) return true;
+    return !!localStorage.getItem('expense_mock_session');
   });
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isMockMode, setIsMockMode] = useState<boolean>(() => {
     const token = localStorage.getItem('expense_google_token');
-    return isInvalidOrExpiredToken(token);
+    if (!isInvalidOrExpiredToken(token)) return false;
+    return true;
   });
 
   const getClientId = () => 
