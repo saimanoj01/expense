@@ -21,6 +21,7 @@ import { TransactionList } from './components/transactions/TransactionList';
 // Modals
 import { TransactionModal } from './components/modals/TransactionModal';
 import { CategoryModal } from './components/modals/CategoryModal';
+import { CategoryManagerModal } from './components/modals/CategoryManagerModal';
 import { CsvImportWizard } from './components/modals/CsvImportWizard';
 import { DuplicateWarningModal, CsvDuplicateWarningModal } from './components/modals/DuplicateWarningModals';
 import { CreateProjectModal } from './components/modals/CreateProjectModal';
@@ -71,6 +72,7 @@ function AppInner() {
   const [editingTxnData, setEditingTxnData] = useState<Partial<Transaction>>({});
   
   const [showAddCatModal, setShowAddCatModal] = useState(false);
+  const [showCategoryManagerModal, setShowCategoryManagerModal] = useState(false);
   const [showDuplicateWarningModal, setShowDuplicateWarningModal] = useState(false);
   const [pendingDuplicateTxn, setPendingDuplicateTxn] = useState<Transaction | null>(null);
   
@@ -224,7 +226,7 @@ function AppInner() {
                 budgetErrors={budgetHooks.budgetErrors}
                 handleBudgetInputChange={budgetHooks.handleBudgetInputChange}
                 handleSaveBudgets={budgetHooks.handleSaveBudgets}
-                setShowAddCatModal={setShowAddCatModal}
+                setShowAddCatModal={() => setShowCategoryManagerModal(true)}
               />
             </div>
 
@@ -280,6 +282,21 @@ function AppInner() {
             executeSaveTransaction={txnHooks.executeSaveTransaction}
             setPendingDuplicateTxn={setPendingDuplicateTxn}
             setShowDuplicateWarningModal={setShowDuplicateWarningModal}
+            setShowCategoryManagerModal={setShowCategoryManagerModal}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showCategoryManagerModal && (
+          <CategoryManagerModal
+            showModal={showCategoryManagerModal}
+            setShowModal={setShowCategoryManagerModal}
+            categories={budgetHooks.categories}
+            transactions={txnHooks.transactions}
+            handleSaveCategory={budgetHooks.handleSaveCategory}
+            handleDeleteCategory={budgetHooks.handleDeleteCategory}
+            handleExecuteBulkCategoryUpdate={txnHooks.handleExecuteBulkCategoryUpdate}
           />
         )}
       </AnimatePresence>
@@ -326,7 +343,11 @@ function AppInner() {
 
       <AnimatePresence>
         {csvHooks.showCsvWizard && (
-          <CsvImportWizard {...csvHooks} categories={budgetHooks.categories} />
+          <CsvImportWizard
+            {...csvHooks}
+            categories={budgetHooks.categories}
+            setShowCategoryManagerModal={setShowCategoryManagerModal}
+          />
         )}
       </AnimatePresence>
       

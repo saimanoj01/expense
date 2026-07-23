@@ -26,6 +26,7 @@ interface CsvImportWizardProps {
   setMapCategoryCol: (col: string) => void;
   setMapSubCategoryCol?: (col: string) => void;
   setParsedCsvItems: React.Dispatch<React.SetStateAction<CsvItem[]>>;
+  setShowCategoryManagerModal?: (v: boolean) => void;
   handleCsvNextStep: () => void;
   handleCommitCsvImport: () => void;
 }
@@ -51,6 +52,7 @@ export function CsvImportWizard({
   setMapCategoryCol,
   setMapSubCategoryCol,
   setParsedCsvItems,
+  setShowCategoryManagerModal,
   handleCsvNextStep,
   handleCommitCsvImport
 }: CsvImportWizardProps) {
@@ -166,22 +168,33 @@ export function CsvImportWizard({
                 <p className="text-xs text-muted-foreground">
                   Review and tweak categories per item before committing import.
                 </p>
-                <button
-                  type="button"
-                  onClick={handleRunAiClassification}
-                  disabled={isAiClassifying}
-                  className="px-3 py-1.5 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 font-bold text-xs flex items-center gap-1.5 transition-all"
-                >
-                  {isAiClassifying ? (
-                    <>
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" /> Classifying...
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="w-3.5 h-3.5" /> Auto-Classify with AI
-                    </>
+                <div className="flex items-center gap-2">
+                  {setShowCategoryManagerModal && (
+                    <button
+                      type="button"
+                      onClick={() => setShowCategoryManagerModal(true)}
+                      className="px-3 py-1.5 rounded-lg bg-card hover:bg-card/80 text-foreground border border-border/70 font-bold text-xs flex items-center gap-1.5 transition-all"
+                    >
+                      + Manage Categories
+                    </button>
                   )}
-                </button>
+                  <button
+                    type="button"
+                    onClick={handleRunAiClassification}
+                    disabled={isAiClassifying}
+                    className="px-3 py-1.5 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 font-bold text-xs flex items-center gap-1.5 transition-all"
+                  >
+                    {isAiClassifying ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" /> Classifying...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-3.5 h-3.5" /> Auto-Classify with AI
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
 
               <div className="overflow-x-auto">

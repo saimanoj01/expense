@@ -61,32 +61,82 @@ export interface StorageAdapter {
 
 // Default categories for new projects
 export const DEFAULT_CATEGORIES: Category[] = [
-  // Parent Categories
-  { id: 'salary', name: 'Salary', color: '#51CF66', emoji: '💰' },
-  { id: 'rent', name: 'Rent', color: '#4DABF7', emoji: '🏠' },
+  // 13 Parent Categories
+  { id: 'groceries', name: 'Groceries', color: '#51CF66', emoji: '🛒' },
+  { id: 'shopping', name: 'Shopping', color: '#E64980', emoji: '🛍️' },
+  { id: 'merchandise', name: 'Merchandise', color: '#BE4BDB', emoji: '📦' },
   { id: 'utilities', name: 'Utilities', color: '#FCC419', emoji: '⚡' },
-  { id: 'food', name: 'Food', color: '#FF6B6B', emoji: '🍔' },
-  { id: 'transport', name: 'Transport', color: '#845EF7', emoji: '🚗' },
+  { id: 'food', name: 'Food & Dining', color: '#FF6B6B', emoji: '🍔' },
   { id: 'entertainment', name: 'Entertainment', color: '#FF8787', emoji: '🎬' },
-  { id: 'travel', name: 'Travel', color: '#38BDF8', emoji: '✈️' },
-  { id: 'meals', name: 'Meals', color: '#FF922B', emoji: '🍽️' },
-  { id: 'healthcare', name: 'Healthcare', color: '#20C997', emoji: '🏥' },
   { id: 'misc', name: 'Miscellaneous', color: '#ADB5BD', emoji: '📦' },
+  { id: 'income', name: 'Income', color: '#40C057', emoji: '💰' },
+  { id: 'transfers', name: 'Transfers', color: '#339AF0', emoji: '↔️' },
+  { id: 'travel', name: 'Travel', color: '#38BDF8', emoji: '✈️' },
+  { id: 'housing', name: 'Housing', color: '#4DABF7', emoji: '🏠' },
+  { id: 'transport', name: 'Transport', color: '#845EF7', emoji: '🚗' },
+  { id: 'healthcare', name: 'Health & Medical', color: '#20C997', emoji: '🏥' },
 
   // Sub-Categories
-  { id: 'food-groceries', name: 'Groceries', color: '#FF6B6B', emoji: '🛒', parentId: 'food' },
-  { id: 'food-dining', name: 'Dining Out', color: '#FF6B6B', emoji: '🍕', parentId: 'food' },
-  { id: 'food-cafes', name: 'Coffee & Cafes', color: '#FF6B6B', emoji: '☕', parentId: 'food' },
-  
+  // Groceries
+  { id: 'groceries-costco', name: 'Costco', color: '#51CF66', emoji: '🏬', parentId: 'groceries' },
+  { id: 'groceries-instacart', name: 'Instacart', color: '#51CF66', emoji: '🚚', parentId: 'groceries' },
+  { id: 'groceries-supermarket', name: 'Supermarket', color: '#51CF66', emoji: '🛒', parentId: 'groceries' },
+
+  // Shopping
+  { id: 'shopping-amazon', name: 'Amazon', color: '#E64980', emoji: '📦', parentId: 'shopping' },
+  { id: 'shopping-apparel', name: 'Apparel & Clothing', color: '#E64980', emoji: '👕', parentId: 'shopping' },
+  { id: 'shopping-general', name: 'General Shopping', color: '#E64980', emoji: '🛍️', parentId: 'shopping' },
+
+  // Merchandise
+  { id: 'merchandise-retail', name: 'Retail Goods', color: '#BE4BDB', emoji: '🏷️', parentId: 'merchandise' },
+  { id: 'merchandise-electronics', name: 'Electronics & Supplies', color: '#BE4BDB', emoji: '💻', parentId: 'merchandise' },
+
+  // Utilities
+  { id: 'utilities-phone', name: 'Phone & Mobile', color: '#FCC419', emoji: '📱', parentId: 'utilities' },
+  { id: 'utilities-electric', name: 'Electricity', color: '#FCC419', emoji: '💡', parentId: 'utilities' },
+  { id: 'utilities-water', name: 'Water & Sewer', color: '#FCC419', emoji: '🚰', parentId: 'utilities' },
+  { id: 'utilities-gas', name: 'Gas & Heating', color: '#FCC419', emoji: '🔥', parentId: 'utilities' },
+  { id: 'utilities-internet', name: 'Internet & TV', color: '#FCC419', emoji: '📶', parentId: 'utilities' },
+
+  // Food
+  { id: 'food-dine-in', name: 'Dine in', color: '#FF6B6B', emoji: '🍽️', parentId: 'food' },
+  { id: 'food-takeout', name: 'Takeout & Delivery', color: '#FF6B6B', emoji: '🥡', parentId: 'food' },
+
+  // Entertainment
+  { id: 'entertainment-subs', name: 'Subscriptions & Streaming', color: '#FF8787', emoji: '📺', parentId: 'entertainment' },
+  { id: 'entertainment-movies', name: 'Movies & Events', color: '#FF8787', emoji: '🎟️', parentId: 'entertainment' },
+
+  // Misc
+  { id: 'misc-salon', name: 'Salon & Personal Care', color: '#ADB5BD', emoji: '💇', parentId: 'misc' },
+  { id: 'misc-other', name: 'Other Miscellaneous', color: '#ADB5BD', emoji: '🏷️', parentId: 'misc' },
+
+  // Income
+  { id: 'income-salary', name: 'Salary & Wages', color: '#40C057', emoji: '💼', parentId: 'income' },
+  { id: 'income-freelance', name: 'Freelance & Side Hustles', color: '#40C057', emoji: '💸', parentId: 'income' },
+  { id: 'income-investment', name: 'Investments & Dividends', color: '#40C057', emoji: '📈', parentId: 'income' },
+
+  // Transfers
+  { id: 'transfers-cc', name: 'Credit Card Payment', color: '#339AF0', emoji: '💳', parentId: 'transfers' },
+  { id: 'transfers-bank', name: 'Bank Transfer', color: '#339AF0', emoji: '🏦', parentId: 'transfers' },
+
+  // Travel
+  { id: 'travel-flights', name: 'Flights & Airfare', color: '#38BDF8', emoji: '🛫', parentId: 'travel' },
+  { id: 'travel-hotels', name: 'Hotels & Lodging', color: '#38BDF8', emoji: '🏨', parentId: 'travel' },
+  { id: 'travel-car', name: 'Car Rental', color: '#38BDF8', emoji: '🚘', parentId: 'travel' },
+
+  // Housing
+  { id: 'housing-mortgage', name: 'Mortgage & Rent', color: '#4DABF7', emoji: '🏠', parentId: 'housing' },
+  { id: 'housing-hoa', name: 'HOA Fees & Dues', color: '#4DABF7', emoji: '🏢', parentId: 'housing' },
+
+  // Transport
   { id: 'transport-fuel', name: 'Gas & Fuel', color: '#845EF7', emoji: '⛽', parentId: 'transport' },
   { id: 'transport-transit', name: 'Rideshare & Transit', color: '#845EF7', emoji: '🚕', parentId: 'transport' },
-  { id: 'transport-maint', name: 'Auto Maintenance', color: '#845EF7', emoji: '🔧', parentId: 'transport' },
+  { id: 'transport-maint', name: 'Vehicle Maintenance', color: '#845EF7', emoji: '🔧', parentId: 'transport' },
 
-  { id: 'utilities-electric', name: 'Electricity & Water', color: '#FCC419', emoji: '💡', parentId: 'utilities' },
-  { id: 'utilities-internet', name: 'Internet & WiFi', color: '#FCC419', emoji: '📶', parentId: 'utilities' },
-
-  { id: 'entertainment-subs', name: 'Subscriptions & Streaming', color: '#FF8787', emoji: '📺', parentId: 'entertainment' },
-  { id: 'entertainment-events', name: 'Movies & Events', color: '#FF8787', emoji: '🎟️', parentId: 'entertainment' }
+  // Health & Medical
+  { id: 'healthcare-doctor', name: 'Doctor & Copay', color: '#20C997', emoji: '🩺', parentId: 'healthcare' },
+  { id: 'healthcare-pharmacy', name: 'Pharmacy & Meds', color: '#20C997', emoji: '💊', parentId: 'healthcare' },
+  { id: 'healthcare-dental', name: 'Dental & Vision', color: '#20C997', emoji: '👓', parentId: 'healthcare' }
 ];
 
 // Seed Datasets
@@ -528,10 +578,14 @@ export class LocalStorageAdapter implements StorageAdapter {
     const raw = localStorage.getItem(`expense_categories_${projectId}`);
     if (!raw) return [...DEFAULT_CATEGORIES];
     try {
-      return JSON.parse(raw);
+      const stored: Category[] = JSON.parse(raw);
+      const map = new Map<string, Category>();
+      DEFAULT_CATEGORIES.forEach(c => map.set(c.id, c));
+      stored.forEach(c => map.set(c.id, c));
+      return Array.from(map.values());
     } catch (e) {
       console.error(`Failed to parse categories for project ${projectId}:`, e);
-      return [];
+      return [...DEFAULT_CATEGORIES];
     }
   }
 
@@ -695,11 +749,14 @@ export class GoogleSheetsAdapter implements StorageAdapter {
       id: r[0], date: r[1], category: r[2], subCategory: r[3] || null, amount: parseFloat(r[4]), type: r[5], description: r[6], notes: r[7] || '', labels: parseJSON(r[8] || '[]'), hash: r[9] || ''
     })).filter((t: any) => t.id);
 
-    let categories: Category[] = catRows.slice(1).map((r: any[]) => ({
+    const parsedCats: Category[] = catRows.slice(1).map((r: any[]) => ({
       id: r[0], name: r[1], color: r[2], emoji: r[3], parentId: r[4] || null
     })).filter((c: any) => c.id);
     
-    if (categories.length === 0) categories = [...DEFAULT_CATEGORIES];
+    const catMap = new Map<string, Category>();
+    DEFAULT_CATEGORIES.forEach(c => catMap.set(c.id, c));
+    parsedCats.forEach(c => catMap.set(c.id, c));
+    const categories: Category[] = Array.from(catMap.values());
 
     const budgets: Budget[] = bgRows.slice(1).map((r: any[]) => ({
       category: r[0], amount: parseFloat(r[1])

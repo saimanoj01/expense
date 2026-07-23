@@ -189,6 +189,19 @@ export function useBudgets(
     }
   };
 
+  const handleDeleteCategory = async (catId: string) => {
+    if (!activeProject || !storageAdapter) return;
+    try {
+      if (typeof storageAdapter.deleteCategory === 'function') {
+        await storageAdapter.deleteCategory(activeProject.id, catId);
+      }
+      await refreshBudgetsAndCategories();
+      showToast('Category deleted');
+    } catch (err: any) {
+      alert(err.message || 'Failed to delete category');
+    }
+  };
+
   return {
     budgets,
     setBudgets,
@@ -200,6 +213,7 @@ export function useBudgets(
     refreshBudgetsAndCategories,
     handleSaveBudgets,
     handleBudgetInputChange,
-    handleSaveCategory
+    handleSaveCategory,
+    handleDeleteCategory
   };
 }

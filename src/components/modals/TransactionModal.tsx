@@ -15,6 +15,7 @@ interface TransactionModalProps {
   executeSaveTransaction: (txnToSave: Transaction, isEdit: boolean) => Promise<boolean>;
   setPendingDuplicateTxn: (txn: Transaction) => void;
   setShowDuplicateWarningModal: (v: boolean) => void;
+  setShowCategoryManagerModal?: (v: boolean) => void;
 }
 
 export function TransactionModal({
@@ -26,7 +27,8 @@ export function TransactionModal({
   transactions,
   executeSaveTransaction,
   setPendingDuplicateTxn,
-  setShowDuplicateWarningModal
+  setShowDuplicateWarningModal,
+  setShowCategoryManagerModal
 }: TransactionModalProps) {
   const [txnType, setTxnType] = useState<'income' | 'expense' | 'transfer'>('expense');
   const [txnAmount, setTxnAmount] = useState('');
@@ -223,11 +225,22 @@ export function TransactionModal({
           <div>
             <div className="flex justify-between items-center mb-1">
               <label className="block text-sm font-bold text-muted-foreground">Category *</label>
-              {!userManuallySelectedCategory && txnDescription.trim() && (
-                <span className="text-[11px] text-primary font-semibold flex items-center gap-1">
-                  <Sparkles className="w-3 h-3" /> Auto-suggested
-                </span>
-              )}
+              <div className="flex items-center gap-2">
+                {!userManuallySelectedCategory && txnDescription.trim() && (
+                  <span className="text-[11px] text-primary font-semibold flex items-center gap-1">
+                    <Sparkles className="w-3 h-3" /> Auto-suggested
+                  </span>
+                )}
+                {setShowCategoryManagerModal && (
+                  <button
+                    type="button"
+                    onClick={() => setShowCategoryManagerModal(true)}
+                    className="text-[11px] text-primary font-bold hover:underline flex items-center gap-1"
+                  >
+                    + Manage Categories
+                  </button>
+                )}
+              </div>
             </div>
             {(() => {
               const allCategoriesMap = new Map<string, Category>();
