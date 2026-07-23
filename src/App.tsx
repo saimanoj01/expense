@@ -216,7 +216,7 @@ function AppInner() {
             />
 
             <div className="flex flex-col lg:flex-row gap-6 mb-8">
-              <TrendChart trendPathData={txnHooks.trendPathData} />
+              <TrendChart trendDetails={txnHooks.trendDetails} />
               <BudgetUtilization
                 categorySummary={budgetHooks.categorySummary}
                 piePaths={budgetHooks.piePaths}
