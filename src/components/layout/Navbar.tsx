@@ -1,4 +1,4 @@
-import { Shield, Sun, Moon, LogOut } from 'lucide-react';
+import { Shield, Sun, Moon, LogOut, Sparkles } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Project } from '../../services/storage';
 
@@ -12,6 +12,7 @@ interface NavbarProps {
   toggleTheme: () => void;
   selectProject: (id: string) => void;
   setShowCreateModal: (show: boolean) => void;
+  onOpenGeminiKeyModal?: () => void;
   logout: () => void;
 }
 
@@ -25,6 +26,7 @@ export function Navbar({
   toggleTheme,
   selectProject,
   setShowCreateModal,
+  onOpenGeminiKeyModal,
   logout
 }: NavbarProps) {
   return (
@@ -72,9 +74,21 @@ export function Navbar({
             onClick={toggleTheme}
             data-testid="theme-toggle-btn"
             className="p-2 hover:bg-card/50 rounded-lg transition-colors border border-transparent hover:border-border"
+            title="Toggle Light/Dark Theme"
           >
             {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
           </button>
+
+          {onOpenGeminiKeyModal && (
+            <button
+              onClick={onOpenGeminiKeyModal}
+              data-testid="ai-settings-btn"
+              className="p-2 hover:bg-card/50 rounded-lg transition-colors border border-transparent hover:border-border text-primary"
+              title="Gemini AI Settings"
+            >
+              <Sparkles className="w-5 h-5" />
+            </button>
+          )}
 
           <div className="h-8 w-px bg-border mx-1" />
 

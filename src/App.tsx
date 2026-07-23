@@ -26,6 +26,7 @@ import { CsvImportWizard } from './components/modals/CsvImportWizard';
 import { DuplicateWarningModal, CsvDuplicateWarningModal } from './components/modals/DuplicateWarningModals';
 import { CreateProjectModal } from './components/modals/CreateProjectModal';
 import { ShareProjectModal } from './components/modals/ShareProjectModal';
+import { GeminiKeyModal } from './components/modals/GeminiKeyModal';
 
 // Hooks
 import { useTransactions } from './hooks/useTransactions';
@@ -64,6 +65,7 @@ function AppInner() {
   // State
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
+  const [showGeminiKeyModal, setShowGeminiKeyModal] = useState(false);
   const [locks, setLocks] = useState<any[]>([]);
 
   // Modals
@@ -183,6 +185,7 @@ function AppInner() {
         toggleTheme={() => setTheme(prev => prev === 'dark' ? 'light' : 'dark')}
         selectProject={selectProject}
         setShowCreateModal={setShowCreateModal}
+        onOpenGeminiKeyModal={() => setShowGeminiKeyModal(true)}
         logout={logout}
       />
 
@@ -347,6 +350,16 @@ function AppInner() {
             {...csvHooks}
             categories={budgetHooks.categories}
             setShowCategoryManagerModal={setShowCategoryManagerModal}
+            onRequestGeminiKey={() => setShowGeminiKeyModal(true)}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showGeminiKeyModal && (
+          <GeminiKeyModal
+            showModal={showGeminiKeyModal}
+            onClose={() => setShowGeminiKeyModal(false)}
           />
         )}
       </AnimatePresence>

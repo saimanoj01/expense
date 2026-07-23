@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { Upload, Check, X, Sparkles, Loader2 } from 'lucide-react';
+import { Upload, Check, X, Sparkles, Loader2, AlertCircle } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { CsvItem } from '../../hooks/useCsvImport';
 import { Category, DEFAULT_CATEGORIES } from '../../services/storage';
 import { classifyTransactionsWithLLM } from '../../services/llmCategorizer';
+import { hasGeminiApiKey } from '../../services/ai/geminiClient';
 
 interface CsvImportWizardProps {
   showCsvWizard: boolean;
@@ -27,6 +28,7 @@ interface CsvImportWizardProps {
   setMapSubCategoryCol?: (col: string) => void;
   setParsedCsvItems: React.Dispatch<React.SetStateAction<CsvItem[]>>;
   setShowCategoryManagerModal?: (v: boolean) => void;
+  onRequestGeminiKey?: () => void;
   handleCsvNextStep: () => void;
   handleCommitCsvImport: () => void;
 }
@@ -53,31 +55,60 @@ export function CsvImportWizard({
   setMapSubCategoryCol,
   setParsedCsvItems,
   setShowCategoryManagerModal,
+  onRequestGeminiKey,
   handleCsvNextStep,
   handleCommitCsvImport
 }: CsvImportWizardProps) {
   const [isAiClassifying, setIsAiClassifying] = useState(false);
+  const [aiError, setAiError] = useState<string | null>(null);
 
   if (!showCsvWizard) return null;
 
   const handleRunAiClassification = async () => {
+    setAiError(null);
+    if (!hasGeminiApiKey()) {
+      if (onRequestGeminiKey) {
+        onRequestGeminiKey();
+      } else {
+        setAiError('Gemini API key is required. Please set your key in AI Settings.');
+      }
+      return;
+    }
+
     setIsAiClassifying(true);
+    let classificationError: string | null = null;
     try {
       const itemsToClassify = parsedCsvItems.map((item, idx) => ({
         id: String(idx),
-        description: item.description,
-        rawCategory: item.category
+        description: item.description
       }));
+
       const results = await classifyTransactionsWithLLM(itemsToClassify, categories);
-      setParsedCsvItems(prev => prev.map((item, idx) => {
-        const aiCategory = results[String(idx)];
-        return aiCategory ? { ...item, category: aiCategory } : item;
-      }));
-    } catch (e) {
+      applyClassificationResults(results);
+    } catch (e: unknown) {
       console.error("AI classification failed:", e);
+      classificationError = e instanceof Error ? e.message : "AI classification failed. Check API Key or network connection.";
+      // The categorizer still returns partial results via fallback before throwing,
+      // but since it threw, we only have results if we catch and re-call.
+      // Show the error but don't block — the user can retry or manually adjust.
+      setAiError(classificationError);
     } finally {
       setIsAiClassifying(false);
     }
+  };
+
+  const applyClassificationResults = (results: Record<string, { categoryId: string; subCategoryId?: string }>) => {
+    setParsedCsvItems(prev => prev.map((item, idx) => {
+      const aiRes = results[String(idx)];
+      if (aiRes) {
+        return {
+          ...item,
+          category: aiRes.categoryId,
+          subCategory: aiRes.subCategoryId || null
+        };
+      }
+      return item;
+    }));
   };
 
   return (
@@ -196,6 +227,24 @@ export function CsvImportWizard({
                   </button>
                 </div>
               </div>
+
+              {aiError && (
+                <div className="p-3 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive text-xs font-semibold flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0" />
+                    <span>{aiError}</span>
+                  </div>
+                  {onRequestGeminiKey && aiError.toLowerCase().includes('key') && (
+                    <button
+                      type="button"
+                      onClick={() => { setAiError(null); onRequestGeminiKey(); }}
+                      className="px-2.5 py-1 rounded-md bg-destructive/20 hover:bg-destructive/30 text-destructive font-bold text-xs shrink-0 transition-colors"
+                    >
+                      Configure Key
+                    </button>
+                  )}
+                </div>
+              )}
 
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse" data-testid="csv-preview-table">
