@@ -55,7 +55,6 @@ test.describe('Tier 8: Transaction Sort By Functionality', () => {
     const select = page.getByTestId('transaction-sort-select');
     
     // Default (Date: Newest First -> July 15, July 10, July 1)
-    let descriptions = page.locator('[data-testid="transaction-item"] h3, [data-testid="transaction-row"] .txn-description, h3');
     await expect(page.locator('text=Zebra Apartments')).toBeVisible();
 
     // Change to Date: Oldest First
