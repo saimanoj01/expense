@@ -103,7 +103,7 @@ test.describe('Tier 6: Category Dropdown & Transfer Regressions', () => {
     // Total expenses should only reflect $100.00, excluding $500.00 transfer
     await expect(page.getByTestId('kpi-total-expenses')).toContainText('$100.00');
     // Transfer row badge should be visible
-    await expect(page.locator('text=↔️ Transfer')).toBeVisible();
+    await expect(page.getByText('↔️ Transfer', { exact: true })).toBeVisible();
   });
 
   test('44. Transaction Modal Auto-Detects Transfer Type: Typing "Credit Card Payment" switches mode toggle to Transfer', async ({ page }) => {
@@ -136,13 +136,13 @@ test.describe('Tier 6: Category Dropdown & Transfer Regressions', () => {
 
     const rowSelect = page.getByTestId('transaction-category-select-t1');
     await expect(rowSelect).toBeVisible();
-    await rowSelect.selectOption('food|food-groceries');
+    await rowSelect.selectOption('food|food-dine-in');
 
     const updatedTxsStr = await page.evaluate(() => window.localStorage.getItem('expense_txs_p1'));
     expect(updatedTxsStr).not.toBeNull();
     const txs = JSON.parse(updatedTxsStr!);
     expect(txs[0].category).toBe('food');
-    expect(txs[0].subCategory).toBe('food-groceries');
+    expect(txs[0].subCategory).toBe('food-dine-in');
   });
 
   test('46. Add Sub-Category UX: Category modal supports creating custom sub-categories under a parent category', async ({ page }) => {

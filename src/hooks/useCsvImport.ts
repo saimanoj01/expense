@@ -98,18 +98,28 @@ export function useCsvImport(
       const rawDate = standardizeDate(row[dateIdx] || new Date().toISOString().substring(0, 10));
       const rawDesc = row[descIdx] || 'Imported Transaction';
       let rawAmt = parseFloat(row[amtIdx] || '0') || 0;
+      const isNegativeAmount = rawAmt < 0;
+      rawAmt = Math.abs(rawAmt);
+
       let rawType: 'income' | 'expense' | 'transfer' = detectTransactionType(rawDesc, typeIdx > -1 ? row[typeIdx] : '');
+      if (isNegativeAmount && typeIdx === -1) {
+        rawType = 'transfer';
+      }
+
       const rawCat = catIdx > -1 && row[catIdx] ? row[catIdx] : '';
       const rawSubCat = subCatIdx > -1 && row[subCatIdx] ? row[subCatIdx] : '';
 
       if (typeIdx > -1) {
-        const inflowVal = parseFloat(row[typeIdx] || '0');
+        const typeCell = row[typeIdx] || '';
+        const inflowVal = parseFloat(typeCell);
         if (!isNaN(inflowVal) && inflowVal > 0 && rawAmt === 0) {
           rawType = 'income';
           rawAmt = inflowVal;
-        } else if (/income/i.test(row[typeIdx] || '')) {
+        } else if (/income/i.test(typeCell)) {
           rawType = 'income';
-        } else if (/transfer|payment/i.test(row[typeIdx] || '')) {
+        } else if (/transfer|payment/i.test(typeCell)) {
+          rawType = 'transfer';
+        } else if (isNegativeAmount && !/expense/i.test(typeCell)) {
           rawType = 'transfer';
         }
       }
