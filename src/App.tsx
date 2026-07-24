@@ -247,9 +247,11 @@ function AppInner() {
               availableMonths={txnHooks.availableMonths}
               availableTags={txnHooks.availableTags}
               selectedTagFilter={txnHooks.selectedTagFilter}
+              sortBy={txnHooks.sortBy}
               isCurrentMonthLocked={isCurrentMonthLocked}
               setSelectedMonth={txnHooks.setSelectedMonth}
               setSelectedTagFilter={txnHooks.setSelectedTagFilter}
+              setSortBy={txnHooks.setSortBy}
               handleOpenAddTxn={handleOpenAddTxn}
               handleCsvFileUpload={csvHooks.handleCsvFileUpload}
               setShowShareModal={setShowShareModal}

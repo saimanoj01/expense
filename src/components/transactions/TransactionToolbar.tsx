@@ -1,5 +1,5 @@
 import React from 'react';
-import { Upload, Plus, Lock, Unlock, Share2, Tag } from 'lucide-react';
+import { Upload, Plus, Lock, Unlock, Share2, Tag, ArrowUpDown } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 interface TransactionToolbarProps {
@@ -7,9 +7,11 @@ interface TransactionToolbarProps {
   availableMonths: string[];
   availableTags?: string[];
   selectedTagFilter?: string | null;
+  sortBy?: string;
   isCurrentMonthLocked: boolean;
   setSelectedMonth: (m: string) => void;
   setSelectedTagFilter?: (t: string | null) => void;
+  setSortBy?: (s: string) => void;
   handleOpenAddTxn: () => void;
   handleCsvFileUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
   handleLockCurrentMonth: () => void;
@@ -22,9 +24,11 @@ export function TransactionToolbar({
   availableMonths,
   availableTags = [],
   selectedTagFilter,
+  sortBy,
   isCurrentMonthLocked,
   setSelectedMonth,
   setSelectedTagFilter,
+  setSortBy,
   handleOpenAddTxn,
   handleCsvFileUpload,
   handleLockCurrentMonth,
@@ -48,6 +52,30 @@ export function TransactionToolbar({
             <option key={m} value={m} className="bg-card text-card-foreground">{m}</option>
           ))}
         </select>
+
+        {/* Sort Selector */}
+        {setSortBy && (
+          <div className="relative flex items-center">
+            <div className="absolute left-3 pointer-events-none text-muted-foreground">
+              <ArrowUpDown className="w-3.5 h-3.5" />
+            </div>
+            <select
+              data-testid="transaction-sort-select"
+              value={sortBy || 'date-desc'}
+              onChange={(e) => setSortBy(e.target.value)}
+              className="bg-card/50 border border-border rounded-xl pl-9 pr-4 py-2 font-medium text-sm focus:ring-2 focus:ring-primary outline-none transition-all cursor-pointer hover:bg-card/80"
+            >
+              <option value="date-desc" className="bg-card text-card-foreground">Date: Newest First</option>
+              <option value="date-asc" className="bg-card text-card-foreground">Date: Oldest First</option>
+              <option value="amount-desc" className="bg-card text-card-foreground">Amount: High to Low</option>
+              <option value="amount-asc" className="bg-card text-card-foreground">Amount: Low to High</option>
+              <option value="desc-asc" className="bg-card text-card-foreground">Description: A to Z</option>
+              <option value="desc-desc" className="bg-card text-card-foreground">Description: Z to A</option>
+              <option value="cat-asc" className="bg-card text-card-foreground">Category: A to Z</option>
+              <option value="cat-desc" className="bg-card text-card-foreground">Category: Z to A</option>
+            </select>
+          </div>
+        )}
         
         {selectedMonth !== 'all' && (
           <button

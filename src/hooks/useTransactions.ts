@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback } from 'react';
-import { Transaction, MonthlyLock } from '../services/storage';
+import { Transaction, MonthlyLock, Category, DEFAULT_CATEGORIES } from '../services/storage';
 
 export interface TrendPoint {
   date: string;
@@ -105,21 +105,107 @@ export function useTransactions(
   storageAdapter: any,
   activeProject: any,
   locks: MonthlyLock[],
-  showToast: (msg: string) => void
+  showToast: (msg: string) => void,
+  categories: Category[] = []
 ) {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [selectedMonth, setSelectedMonth] = useState<string>('2026-07');
   const [selectedTagFilter, setSelectedTagFilter] = useState<string | null>(null);
 
-  // Filter transactions by selected month and tag
+  const [sortBy, setSortByState] = useState<string>(() => {
+    try {
+      const saved = localStorage.getItem('expense_tracker_sort_option');
+      return saved || 'date-desc';
+    } catch {
+      return 'date-desc';
+    }
+  });
+
+  const setSortBy = useCallback((newSort: string) => {
+    setSortByState(newSort);
+    try {
+      localStorage.setItem('expense_tracker_sort_option', newSort);
+    } catch (e) {
+      console.error('Failed to save sort option to localStorage:', e);
+    }
+  }, []);
+
+  const categoryNameMap = useMemo(() => {
+    const map = new Map<string, string>();
+    DEFAULT_CATEGORIES.forEach(c => map.set(c.id, c.name));
+    categories.forEach(c => map.set(c.id, c.name));
+    return map;
+  }, [categories]);
+
+  // Filter and sort transactions
   const filteredTransactions = useMemo(() => {
-    return transactions.filter(t => {
+    const result = transactions.filter(t => {
       const monthMatches = (t.date || '').startsWith(selectedMonth);
       if (!monthMatches && selectedMonth !== 'all') return false;
       if (selectedTagFilter && !ensureLabelsArray(t.labels).includes(selectedTagFilter)) return false;
       return true;
     });
-  }, [transactions, selectedMonth, selectedTagFilter]);
+
+    return [...result].sort((a, b) => {
+      switch (sortBy) {
+        case 'date-asc': {
+          const dateDiff = (a.date || '').localeCompare(b.date || '');
+          if (dateDiff !== 0) return dateDiff;
+          return (a.id || '').localeCompare(b.id || '');
+        }
+        case 'date-desc': {
+          const dateDiff = (b.date || '').localeCompare(a.date || '');
+          if (dateDiff !== 0) return dateDiff;
+          return (b.id || '').localeCompare(a.id || '');
+        }
+        case 'amount-asc': {
+          const amtA = typeof a.amount === 'number' ? a.amount : parseFloat(String(a.amount || 0));
+          const amtB = typeof b.amount === 'number' ? b.amount : parseFloat(String(b.amount || 0));
+          if (amtA !== amtB) return amtA - amtB;
+          const dateDiff = (b.date || '').localeCompare(a.date || '');
+          if (dateDiff !== 0) return dateDiff;
+          return (b.id || '').localeCompare(a.id || '');
+        }
+        case 'amount-desc': {
+          const amtA = typeof a.amount === 'number' ? a.amount : parseFloat(String(a.amount || 0));
+          const amtB = typeof b.amount === 'number' ? b.amount : parseFloat(String(b.amount || 0));
+          if (amtA !== amtB) return amtB - amtA;
+          const dateDiff = (b.date || '').localeCompare(a.date || '');
+          if (dateDiff !== 0) return dateDiff;
+          return (b.id || '').localeCompare(a.id || '');
+        }
+        case 'desc-asc': {
+          const descDiff = (a.description || '').localeCompare(b.description || '', undefined, { sensitivity: 'base' });
+          if (descDiff !== 0) return descDiff;
+          return (b.date || '').localeCompare(a.date || '');
+        }
+        case 'desc-desc': {
+          const descDiff = (b.description || '').localeCompare(a.description || '', undefined, { sensitivity: 'base' });
+          if (descDiff !== 0) return descDiff;
+          return (b.date || '').localeCompare(a.date || '');
+        }
+        case 'cat-asc': {
+          const catA = categoryNameMap.get(a.subCategory || a.category) || categoryNameMap.get(a.category) || a.category || '';
+          const catB = categoryNameMap.get(b.subCategory || b.category) || categoryNameMap.get(b.category) || b.category || '';
+          const catDiff = catA.localeCompare(catB, undefined, { sensitivity: 'base' });
+          if (catDiff !== 0) return catDiff;
+          return (b.date || '').localeCompare(a.date || '');
+        }
+        case 'cat-desc': {
+          const catA = categoryNameMap.get(a.subCategory || a.category) || categoryNameMap.get(a.category) || a.category || '';
+          const catB = categoryNameMap.get(b.subCategory || b.category) || categoryNameMap.get(b.category) || b.category || '';
+          const catDiff = catB.localeCompare(catA, undefined, { sensitivity: 'base' });
+          if (catDiff !== 0) return catDiff;
+          return (b.date || '').localeCompare(a.date || '');
+        }
+        default: {
+          const dateDiff = (b.date || '').localeCompare(a.date || '');
+          if (dateDiff !== 0) return dateDiff;
+          return (b.id || '').localeCompare(a.id || '');
+        }
+      }
+    });
+  }, [transactions, selectedMonth, selectedTagFilter, sortBy, categoryNameMap]);
 
   // Duplicate transaction detector (Optimized to O(N))
   const duplicateTxnIds = useMemo(() => {
@@ -567,6 +653,8 @@ export function useTransactions(
     setSelectedMonth,
     selectedTagFilter,
     setSelectedTagFilter,
+    sortBy,
+    setSortBy,
     filteredTransactions,
     duplicateTxnIds,
     totalExpenses,
