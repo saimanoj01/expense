@@ -41,6 +41,7 @@ export interface StorageAdapter {
   getProjects(): Promise<Project[]>;
   createProject(name: string): Promise<Project>;
   saveProject(project: Project): Promise<Project>;
+  shareProject(projectId: string, email: string): Promise<Project>;
 
   getCategories(projectId: string): Promise<Category[]>;
   saveCategory(projectId: string, category: Category): Promise<Category>;
@@ -363,6 +364,16 @@ export class LocalStorageAdapter implements StorageAdapter {
       throw new Error('Local storage quota exceeded. Unable to save project.');
     }
     return project;
+  }
+
+  async shareProject(projectId: string, email: string): Promise<Project> {
+    const projects = await this.getProjects();
+    const targetProject = projects.find(p => p.id === projectId);
+    if (!targetProject) throw new Error("Project not found");
+
+    const updatedCollaborators = Array.from(new Set([...(targetProject.collaborators || []), email]));
+    const updatedProject = { ...targetProject, collaborators: updatedCollaborators };
+    return this.saveProject(updatedProject);
   }
 
   async getTransactions(projectId: string): Promise<Transaction[]> {
@@ -729,6 +740,31 @@ export class GoogleSheetsAdapter implements StorageAdapter {
     this.projectsCache = projects;
     localStorage.setItem('expense_google_projects', JSON.stringify(projects));
     return project;
+  }
+
+  async shareProject(projectId: string, email: string): Promise<Project> {
+    const projects = await this.getProjects();
+    const targetProject = projects.find(p => p.id === projectId);
+    if (!targetProject) throw new Error("Project not found");
+
+    const spreadsheetId = targetProject.spreadsheetId || projectId;
+    try {
+      await this.fetchApi(`https://www.googleapis.com/drive/v3/files/${spreadsheetId}/permissions`, {
+        method: 'POST',
+        body: JSON.stringify({
+          role: 'writer',
+          type: 'user',
+          emailAddress: email
+        })
+      });
+    } catch (e: any) {
+      console.error("Failed to grant Google Drive file permission:", e);
+      throw new Error(`Google Drive permission error: ${e.message || 'Unable to share Google Sheet with ' + email}`);
+    }
+
+    const updatedCollaborators = Array.from(new Set([...(targetProject.collaborators || []), email]));
+    const updatedProject = { ...targetProject, collaborators: updatedCollaborators };
+    return this.saveProject(updatedProject);
   }
 
   private async ensureCache(projectId: string) {

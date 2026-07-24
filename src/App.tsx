@@ -346,10 +346,14 @@ function AppInner() {
             onClose={() => setShowShareModal(false)}
             collaborators={activeProject.collaborators || []}
             onAddCollaborator={async (email) => {
-              const updatedCollabs = Array.from(new Set([...(activeProject.collaborators || []), email]));
-              await storageAdapter?.saveProject({ ...activeProject, collaborators: updatedCollabs });
-              showToast('Collaborator added');
-              refreshProjectData();
+              if (!storageAdapter || !activeProject) return;
+              try {
+                await storageAdapter.shareProject(activeProject.id, email);
+                showToast(`Collaborator ${email} added`);
+                refreshProjectData();
+              } catch (err: any) {
+                alert(err.message || 'Failed to share project');
+              }
             }}
           />
         )}
