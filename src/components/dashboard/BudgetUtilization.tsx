@@ -25,7 +25,7 @@ export interface CategorySummary {
 
 interface BudgetUtilizationProps {
   categorySummary: CategorySummary[];
-  piePaths: { segments: any[]; totalPieExpense: number };
+  piePaths?: { segments: any[]; totalPieExpense: number };
   budgetErrors?: Record<string, string>;
   handleBudgetInputChange?: (catName: string, val: string) => void;
   handleSaveBudgets?: () => void;
@@ -34,7 +34,6 @@ interface BudgetUtilizationProps {
 
 export function BudgetUtilization({
   categorySummary,
-  piePaths,
   budgetErrors = {},
   handleBudgetInputChange,
   handleSaveBudgets,
@@ -88,71 +87,26 @@ export function BudgetUtilization({
         </div>
       </div>
 
-      <div className="flex flex-col md:flex-row gap-8 items-start flex-1 justify-center">
-        {piePaths.totalPieExpense > 0 && (
-          <div className="relative w-48 h-48 flex-shrink-0 self-center">
-            <svg viewBox="0 0 300 200" data-testid="chart-svg-pie" className="w-full h-full drop-shadow-xl filter drop-shadow-[0_4px_12px_rgba(0,0,0,0.5)]">
-              {piePaths.segments.length === 1 ? (
-                <motion.circle
-                  initial={{ opacity: 0, scale: 0.8 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  cx="150"
-                  cy="96"
-                  r="60"
-                  fill={piePaths.segments[0].color}
+      <div className="w-full space-y-3 flex-1">
+        {categorySummary.length > 0 ? categorySummary.map(item => {
+          const hasSubCats = item.subCategories && item.subCategories.length > 0;
+          const isExpanded = expandedParents.has(item.id);
+
+          return (
+            <div key={item.id} className="glass-card p-3 rounded-xl border border-border/40 space-y-2">
+              <div className="flex justify-between items-center text-sm">
+                <div 
+                  onClick={() => hasSubCats && toggleExpand(item.id)}
+                  className={`font-semibold flex items-center gap-2 ${hasSubCats ? 'cursor-pointer hover:text-primary' : ''} transition-colors`}
                 >
-                  <title>{piePaths.segments[0].name}</title>
-                </motion.circle>
-              ) : (
-                piePaths.segments.map((seg, i) => (
-                  <motion.path
-                    key={i}
-                    initial={{ opacity: 0, scale: 0.8 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={{ delay: 0.4 + i * 0.1 }}
-                    d={seg.pathData}
-                    fill={seg.color}
-                    className="hover:opacity-80 cursor-pointer transition-opacity"
-                  >
-                    <title>{seg.name}</title>
-                  </motion.path>
-                ))
-              )}
-            </svg>
-            <div className="absolute inset-0 flex flex-col items-center justify-center -mt-6 pointer-events-none">
-              <span className="text-xs text-muted-foreground font-medium">Spent</span>
-              <span className="font-bold tracking-tight">
-                ${piePaths.totalPieExpense.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
-              </span>
-            </div>
-          </div>
-        )}
-
-        <div className="flex-1 w-full space-y-4">
-          {categorySummary.length > 0 ? categorySummary.map(item => {
-            const hasSubCats = item.subCategories && item.subCategories.length > 0;
-            const isExpanded = expandedParents.has(item.id);
-
-            return (
-              <div key={item.id} className="glass-card p-3 rounded-xl border border-border/40 space-y-2">
-                <div className="flex justify-between items-center text-sm">
-                  <div 
-                    onClick={() => hasSubCats && toggleExpand(item.id)}
-                    className={`font-semibold flex items-center gap-2 ${hasSubCats ? 'cursor-pointer hover:text-primary' : ''} transition-colors`}
-                  >
-                    {hasSubCats && (
-                      <span className="text-muted-foreground">
-                        {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-                      </span>
-                    )}
-                    <span>{item.emoji}</span>
-                    <span>{item.name}</span>
-                    {hasSubCats && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-card border border-border text-muted-foreground font-bold">
-                        {item.subCategories?.length} sub
-                      </span>
-                    )}
-                  </div>
+                  {hasSubCats && (
+                    <span className="text-muted-foreground">
+                      {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                    </span>
+                  )}
+                  <span>{item.emoji}</span>
+                  <span>{item.name}</span>
+                </div>
 
                   <div className="flex items-center gap-2">
                     <span className="text-muted-foreground text-xs">
@@ -256,7 +210,6 @@ export function BudgetUtilization({
           }) : (
             <div className="text-muted-foreground text-center py-8">No budget data available</div>
           )}
-        </div>
       </div>
     </motion.div>
   );
