@@ -16,7 +16,7 @@ export type ClassificationResultMap = Record<string, ClassifiedResultItem>;
  * parent and sub-category selections.
  */
 export async function classifyTransactionsWithLLM(
-  items: { id: string; description: string; rawCategory?: string }[],
+  items: { id: string; description: string; amount?: number; type?: 'income' | 'expense' | 'transfer'; rawCategory?: string }[],
   categories: Category[]
 ): Promise<ClassificationResultMap> {
   if (!hasGeminiApiKey()) {
@@ -80,9 +80,13 @@ CRITICAL RULES:
   for (let i = 0; i < items.length; i += BATCH_SIZE) {
     const batch = items.slice(i, i + BATCH_SIZE);
 
-    const transactionText = batch.map(t => 
-      `Transaction ID: "${t.id}" | Description: "${t.description}"`
-    ).join('\n');
+    const transactionText = batch.map(t => {
+      let details = `Transaction ID: "${t.id}" | Description: "${t.description}"`;
+      if (t.type) details += ` | Type: "${t.type}"`;
+      if (t.amount !== undefined) details += ` | Amount: "$${t.amount.toFixed(2)}"`;
+      if (t.rawCategory) details += ` | Raw Category: "${t.rawCategory}"`;
+      return details;
+    }).join('\n');
 
     const prompt = `Available Category Hierarchy:\n${categoryTreeDescription}\n\nTransactions to Classify:\n${transactionText}\n\nClassify each transaction accurately using the provided JSON schema.`;
 

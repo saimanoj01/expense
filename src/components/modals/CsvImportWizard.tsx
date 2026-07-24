@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Upload, Check, X, Sparkles, Loader2, AlertCircle } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { CsvItem } from '../../hooks/useCsvImport';
@@ -61,6 +61,22 @@ export function CsvImportWizard({
 }: CsvImportWizardProps) {
   const [isAiClassifying, setIsAiClassifying] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
+  const [hasAutoClassified, setHasAutoClassified] = useState(false);
+
+  useEffect(() => {
+    if (!showCsvWizard || csvStep === 1) {
+      setHasAutoClassified(false);
+    }
+  }, [showCsvWizard, csvStep]);
+
+  useEffect(() => {
+    if (showCsvWizard && csvStep === 2 && !hasAutoClassified && !isAiClassifying && parsedCsvItems.length > 0) {
+      if (hasGeminiApiKey()) {
+        setHasAutoClassified(true);
+        handleRunAiClassification();
+      }
+    }
+  }, [showCsvWizard, csvStep, hasAutoClassified, isAiClassifying, parsedCsvItems.length]);
 
   if (!showCsvWizard) return null;
 
@@ -80,7 +96,10 @@ export function CsvImportWizard({
     try {
       const itemsToClassify = parsedCsvItems.map((item, idx) => ({
         id: String(idx),
-        description: item.description
+        description: item.description,
+        amount: item.amount,
+        type: item.type,
+        rawCategory: item.category
       }));
 
       const results = await classifyTransactionsWithLLM(itemsToClassify, categories);
@@ -88,9 +107,6 @@ export function CsvImportWizard({
     } catch (e: unknown) {
       console.error("AI classification failed:", e);
       classificationError = e instanceof Error ? e.message : "AI classification failed. Check API Key or network connection.";
-      // The categorizer still returns partial results via fallback before throwing,
-      // but since it threw, we only have results if we catch and re-call.
-      // Show the error but don't block — the user can retry or manually adjust.
       setAiError(classificationError);
     } finally {
       setIsAiClassifying(false);
@@ -227,6 +243,31 @@ export function CsvImportWizard({
                   </button>
                 </div>
               </div>
+
+              {isAiClassifying && (
+                <div className="p-3 rounded-xl bg-primary/10 border border-primary/20 text-primary text-xs font-semibold flex items-center gap-2 animate-pulse">
+                  <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+                  <span>AI is categorizing your transactions in the background...</span>
+                </div>
+              )}
+
+              {!hasGeminiApiKey() && !aiError && (
+                <div className="p-3 rounded-xl bg-card border border-border/70 text-muted-foreground text-xs flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-primary shrink-0" />
+                    <span>AI auto-categorization is inactive because no Gemini API Key is configured.</span>
+                  </div>
+                  {onRequestGeminiKey && (
+                    <button
+                      type="button"
+                      onClick={onRequestGeminiKey}
+                      className="px-2.5 py-1 rounded-md bg-primary/10 hover:bg-primary/20 text-primary font-bold text-xs shrink-0 transition-colors"
+                    >
+                      Configure Key
+                    </button>
+                  )}
+                </div>
+              )}
 
               {aiError && (
                 <div className="p-3 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive text-xs font-semibold flex items-center justify-between gap-2">
