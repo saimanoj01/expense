@@ -1,6 +1,7 @@
 import { Edit2, Trash2 } from 'lucide-react';
 import { useMemo } from 'react';
 import { Transaction, Category, DEFAULT_CATEGORIES } from '../../services/storage';
+import { formatTransactionAmount } from '../../utils/formatters';
 
 interface TransactionItemProps {
   transaction: Transaction;
@@ -136,11 +137,14 @@ export function TransactionItem({
       </div>
       
       <div className="flex items-center gap-4 pl-4 flex-shrink-0">
-        <div className={`font-bold tabular-nums text-right ${
-          transaction.type === 'income' ? 'text-emerald-500' : transaction.type === 'transfer' ? 'text-blue-400 font-semibold' : ''
-        }`}>
-          {transaction.type === 'income' ? '+' : transaction.type === 'transfer' ? '↔ ' : '-'}${transaction.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-        </div>
+        {(() => {
+          const { formattedAmount, colorClass } = formatTransactionAmount(transaction.amount, transaction.type);
+          return (
+            <div className={`font-bold tabular-nums text-right ${colorClass}`}>
+              {formattedAmount}
+            </div>
+          );
+        })()}
         
         {!isLockedMonth && (
           <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">

@@ -1,6 +1,7 @@
 import { AlertTriangle, Check, X } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Transaction } from '../../services/storage';
+import { formatTransactionAmount } from '../../utils/formatters';
 
 interface DuplicateWarningModalProps {
   showModal: boolean;
@@ -40,9 +41,14 @@ export function DuplicateWarningModal({ showModal, pendingTxn, onCancel, onProce
           </div>
           <div className="flex justify-between">
             <span className="text-muted-foreground">Amount:</span>
-            <span className={pendingTxn.type === 'income' ? 'text-emerald-500' : 'text-foreground'}>
-              {pendingTxn.type === 'income' ? '+' : '-'}${pendingTxn.amount.toLocaleString()}
-            </span>
+            {(() => {
+              const { formattedAmount, colorClass } = formatTransactionAmount(pendingTxn.amount, pendingTxn.type);
+              return (
+                <span className={`font-bold ${colorClass}`}>
+                  {formattedAmount}
+                </span>
+              );
+            })()}
           </div>
         </div>
 

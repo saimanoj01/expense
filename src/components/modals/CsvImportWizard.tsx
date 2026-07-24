@@ -5,6 +5,7 @@ import { CsvItem } from '../../hooks/useCsvImport';
 import { Category, DEFAULT_CATEGORIES } from '../../services/storage';
 import { classifyTransactionsWithLLM } from '../../services/llmCategorizer';
 import { hasGeminiApiKey } from '../../services/ai/geminiClient';
+import { formatTransactionAmount } from '../../utils/formatters';
 
 interface CsvImportWizardProps {
   showCsvWizard: boolean;
@@ -367,9 +368,14 @@ export function CsvImportWizard({
                               );
                             })()}
                           </td>
-                          <td className={`p-3 text-right font-bold tabular-nums ${item.type === 'income' ? 'text-emerald-500' : item.type === 'transfer' ? 'text-blue-400 font-medium' : ''}`}>
-                            {item.type === 'income' ? '+' : item.type === 'transfer' ? '↔ ' : '-'}${item.amount.toLocaleString(undefined, {minimumFractionDigits: 2})}
-                          </td>
+                          {(() => {
+                            const { formattedAmount, colorClass } = formatTransactionAmount(item.amount, item.type);
+                            return (
+                              <td className={`p-3 text-right font-bold tabular-nums ${colorClass}`}>
+                                {formattedAmount}
+                              </td>
+                            );
+                          })()}
                           <td className="p-3">
                             <select
                               value={item.type}
