@@ -222,7 +222,16 @@ function AppInner() {
             />
 
             <div className="flex flex-col lg:flex-row gap-6 mb-8">
-              <TrendChart trendDetails={txnHooks.trendDetails} />
+              <TrendChart
+                trendDetails={txnHooks.trendDetails}
+                totalBudget={budgetHooks.totalBudget}
+                budgets={budgetHooks.budgets}
+                categories={budgetHooks.categories}
+                transactions={txnHooks.transactions}
+                selectedMonth={txnHooks.selectedMonth}
+                onSelectMonth={txnHooks.setSelectedMonth}
+                onRequestGeminiKey={() => setShowGeminiKeyModal(true)}
+              />
               <BudgetUtilization
                 categorySummary={budgetHooks.categorySummary}
                 piePaths={budgetHooks.piePaths}
