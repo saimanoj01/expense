@@ -42,6 +42,7 @@ export interface StorageAdapter {
   createProject(name: string): Promise<Project>;
   saveProject(project: Project): Promise<Project>;
   shareProject(projectId: string, email: string): Promise<Project>;
+  deleteProject(projectId: string): Promise<void>;
 
   getCategories(projectId: string): Promise<Category[]>;
   saveCategory(projectId: string, category: Category): Promise<Category>;
@@ -374,6 +375,16 @@ export class LocalStorageAdapter implements StorageAdapter {
     const updatedCollaborators = Array.from(new Set([...(targetProject.collaborators || []), email]));
     const updatedProject = { ...targetProject, collaborators: updatedCollaborators };
     return this.saveProject(updatedProject);
+  }
+
+  async deleteProject(projectId: string): Promise<void> {
+    const projects = await this.getProjects();
+    const filtered = projects.filter(p => p.id !== projectId);
+    localStorage.setItem('expense_projects', JSON.stringify(filtered));
+    localStorage.removeItem(`expense_txs_${projectId}`);
+    localStorage.removeItem(`expense_categories_${projectId}`);
+    localStorage.removeItem(`expense_budgets_${projectId}`);
+    localStorage.removeItem(`expense_locks_${projectId}`);
   }
 
   async getTransactions(projectId: string): Promise<Transaction[]> {
@@ -765,6 +776,26 @@ export class GoogleSheetsAdapter implements StorageAdapter {
     const updatedCollaborators = Array.from(new Set([...(targetProject.collaborators || []), email]));
     const updatedProject = { ...targetProject, collaborators: updatedCollaborators };
     return this.saveProject(updatedProject);
+  }
+
+  async deleteProject(projectId: string): Promise<void> {
+    const projects = await this.getProjects();
+    const targetProject = projects.find(p => p.id === projectId);
+    const updatedProjects = projects.filter(p => p.id !== projectId);
+
+    this.projectsCache = updatedProjects;
+    localStorage.setItem('expense_google_projects', JSON.stringify(updatedProjects));
+    delete this.cache[projectId];
+
+    if (targetProject?.spreadsheetId) {
+      try {
+        await this.fetchApi(`https://www.googleapis.com/drive/v3/files/${targetProject.spreadsheetId}`, {
+          method: 'DELETE'
+        });
+      } catch (e: any) {
+        console.warn("Failed to delete Google Drive file:", e);
+      }
+    }
   }
 
   private async ensureCache(projectId: string) {

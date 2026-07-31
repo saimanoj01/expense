@@ -25,6 +25,7 @@ import { CategoryManagerModal } from './components/modals/CategoryManagerModal';
 import { CsvImportWizard } from './components/modals/CsvImportWizard';
 import { DuplicateWarningModal, CsvDuplicateWarningModal } from './components/modals/DuplicateWarningModals';
 import { CreateProjectModal } from './components/modals/CreateProjectModal';
+import { ManageProjectsModal } from './components/modals/ManageProjectsModal';
 import { ShareProjectModal } from './components/modals/ShareProjectModal';
 import { GeminiKeyModal } from './components/modals/GeminiKeyModal';
 
@@ -35,7 +36,7 @@ import { useCsvImport } from './hooks/useCsvImport';
 
 function AppInner() {
   const { user, isAuthenticated, isMockMode, login, loginAsMock, logout, setAuthErrorToast } = useAuth();
-  const { projects, activeProject, isLoading, storageAdapter, selectProject, createNewProject } = useApp();
+  const { projects, activeProject, isLoading, storageAdapter, selectProject, createNewProject, deleteProject } = useApp();
 
   useHashRouting();
 
@@ -64,6 +65,7 @@ function AppInner() {
 
   // State
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showManageProjectsModal, setShowManageProjectsModal] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
   const [showGeminiKeyModal, setShowGeminiKeyModal] = useState(false);
   const [locks, setLocks] = useState<any[]>([]);
@@ -185,6 +187,7 @@ function AppInner() {
         toggleTheme={() => setTheme(prev => prev === 'dark' ? 'light' : 'dark')}
         selectProject={selectProject}
         setShowCreateModal={setShowCreateModal}
+        onManageProjects={() => setShowManageProjectsModal(true)}
         onOpenGeminiKeyModal={() => setShowGeminiKeyModal(true)}
         logout={logout}
       />
@@ -334,6 +337,26 @@ function AppInner() {
             onCreate={async (name) => {
               await createNewProject(name);
               showToast('Project created successfully');
+            }}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showManageProjectsModal && (
+          <ManageProjectsModal
+            showModal={showManageProjectsModal}
+            onClose={() => setShowManageProjectsModal(false)}
+            projects={projects}
+            activeProject={activeProject}
+            onSelectProject={selectProject}
+            onCreateProject={async (name) => {
+              await createNewProject(name);
+              showToast('Project created successfully');
+            }}
+            onDeleteProject={async (projectId) => {
+              await deleteProject(projectId);
+              showToast('Project deleted');
             }}
           />
         )}

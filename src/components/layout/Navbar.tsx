@@ -1,4 +1,4 @@
-import { Shield, Sun, Moon, LogOut, Sparkles } from 'lucide-react';
+import { Shield, Sun, Moon, LogOut, Sparkles, FolderKanban } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Project } from '../../services/storage';
 
@@ -12,6 +12,7 @@ interface NavbarProps {
   toggleTheme: () => void;
   selectProject: (id: string) => void;
   setShowCreateModal: (show: boolean) => void;
+  onManageProjects?: () => void;
   onOpenGeminiKeyModal?: () => void;
   logout: () => void;
 }
@@ -26,6 +27,7 @@ export function Navbar({
   toggleTheme,
   selectProject,
   setShowCreateModal,
+  onManageProjects,
   onOpenGeminiKeyModal,
   logout
 }: NavbarProps) {
@@ -50,24 +52,40 @@ export function Navbar({
 
         <div className="flex items-center gap-3">
           {projects.length > 0 && (
-            <select
-              disabled={isLoading}
-              data-testid="project-selector"
-              className="bg-card/50 border border-border rounded-lg px-3 py-1.5 text-sm max-w-[130px] sm:max-w-[200px] truncate focus:ring-2 focus:ring-primary outline-none transition-all"
-              value={activeProject?.id || ''}
-              onChange={(e) => {
-                if (e.target.value === 'new') {
-                  setShowCreateModal(true);
-                } else {
-                  selectProject(e.target.value);
-                }
-              }}
-            >
-              {projects.map(p => (
-                <option key={p.id} value={p.id} className="bg-card text-card-foreground">{p.name}</option>
-              ))}
-              <option value="new" data-testid="create-project-btn" className="bg-card text-card-foreground">+ New Project</option>
-            </select>
+            <div className="flex items-center gap-1.5">
+              <select
+                disabled={isLoading}
+                data-testid="project-selector"
+                className="bg-card/50 border border-border rounded-lg px-3 py-1.5 text-sm max-w-[130px] sm:max-w-[200px] truncate focus:ring-2 focus:ring-primary outline-none transition-all cursor-pointer"
+                value={activeProject?.id || ''}
+                onChange={(e) => {
+                  if (e.target.value === 'new') {
+                    setShowCreateModal(true);
+                  } else if (e.target.value === 'manage') {
+                    onManageProjects?.();
+                  } else {
+                    selectProject(e.target.value);
+                  }
+                }}
+              >
+                {projects.map(p => (
+                  <option key={p.id} value={p.id} className="bg-card text-card-foreground">{p.name}</option>
+                ))}
+                <option value="new" data-testid="create-project-btn" className="bg-card text-card-foreground">+ New Project</option>
+                <option value="manage" data-testid="manage-projects-btn" className="bg-card text-card-foreground">⚙️ Manage Projects...</option>
+              </select>
+
+              {onManageProjects && (
+                <button
+                  onClick={onManageProjects}
+                  data-testid="manage-projects-icon-btn"
+                  className="p-1.5 hover:bg-card/50 rounded-lg transition-colors border border-transparent hover:border-border text-muted-foreground hover:text-foreground"
+                  title="Manage & Delete Projects"
+                >
+                  <FolderKanban className="w-4 h-4" />
+                </button>
+              )}
+            </div>
           )}
 
           <button

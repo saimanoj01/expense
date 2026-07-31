@@ -14,6 +14,7 @@ export interface AppContextType {
   loadProjects: () => Promise<void>;
   selectProject: (projectId: string | null) => void;
   createNewProject: (name: string) => Promise<Project>;
+  deleteProject: (projectId: string) => Promise<void>;
   setCurrentView: (view: ViewType) => void;
 }
 
@@ -129,6 +130,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  const deleteProject = async (projectId: string): Promise<void> => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      await storageAdapter.deleteProject(projectId);
+      const updatedList = await storageAdapter.getProjects();
+      setProjects(updatedList);
+      if (activeProject?.id === projectId) {
+        if (updatedList.length > 0) {
+          setActiveProject(updatedList[0]);
+          localStorage.setItem('expense_active_project_id', updatedList[0].id);
+          window.location.hash = `#/dashboard?project=${updatedList[0].id}`;
+        } else {
+          setActiveProject(null);
+          setCurrentView('project-selector');
+          localStorage.removeItem('expense_active_project_id');
+          window.location.hash = '#/projects';
+        }
+      }
+    } catch (err: any) {
+      setError(err.message || 'Failed to delete project');
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   return (
     <AppContext.Provider value={{
       projects,
@@ -140,6 +168,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       loadProjects,
       selectProject,
       createNewProject,
+      deleteProject,
       setCurrentView
     }}>
       {children}
