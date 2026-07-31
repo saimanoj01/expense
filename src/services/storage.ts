@@ -670,7 +670,8 @@ export class GoogleSheetsAdapter implements StorageAdapter {
       const errorText = await response.text();
       throw new Error(`API Error ${response.status}: ${errorText}`);
     }
-    return response.json();
+    const text = await response.text();
+    return text ? JSON.parse(text) : {};
   }
 
   async getProjects(): Promise<Project[]> {

@@ -59,12 +59,15 @@ export function Navbar({
                 className="bg-card/50 border border-border rounded-lg px-3 py-1.5 text-sm max-w-[130px] sm:max-w-[200px] truncate focus:ring-2 focus:ring-primary outline-none transition-all cursor-pointer"
                 value={activeProject?.id || ''}
                 onChange={(e) => {
-                  if (e.target.value === 'new') {
+                  const val = e.target.value;
+                  if (val === 'new') {
                     setShowCreateModal(true);
-                  } else if (e.target.value === 'manage') {
+                    e.target.value = activeProject?.id || '';
+                  } else if (val === 'manage') {
                     onManageProjects?.();
+                    e.target.value = activeProject?.id || '';
                   } else {
-                    selectProject(e.target.value);
+                    selectProject(val);
                   }
                 }}
               >
