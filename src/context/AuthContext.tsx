@@ -287,7 +287,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       sessionStorage.setItem('oauth_csrf_state', csrfState);
 
       const scopes = [
-        'https://www.googleapis.com/auth/drive.file',
+        'https://www.googleapis.com/auth/drive.readonly',
         'https://www.googleapis.com/auth/spreadsheets',
         'email',
         'profile'
@@ -353,6 +353,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.removeItem('expense_google_token');
     localStorage.removeItem('expense_google_user');
     localStorage.removeItem('expense_mock_session');
+    localStorage.removeItem('expense_google_projects');
+    localStorage.removeItem('expense_active_project_id');
     setUser(null);
     setIsAuthenticated(false);
     setIsLoading(false);
