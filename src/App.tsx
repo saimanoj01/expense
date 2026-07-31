@@ -242,10 +242,6 @@ function AppInner() {
                 handleBudgetInputChange={budgetHooks.handleBudgetInputChange}
                 handleSaveBudgets={budgetHooks.handleSaveBudgets}
                 setShowAddCatModal={() => setShowCategoryManagerModal(true)}
-                transactions={txnHooks.transactions}
-                categories={budgetHooks.categories}
-                budgets={budgetHooks.budgets}
-                onRequestGeminiKey={() => setShowGeminiKeyModal(true)}
               />
             </div>
 

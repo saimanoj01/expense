@@ -1,9 +1,7 @@
 import { useState } from 'react';
-import { Target, Plus, Save, ChevronDown, ChevronRight, Sparkles, Edit3 } from 'lucide-react';
+import { Target, Plus, Save, ChevronDown, ChevronRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { AiBudgetAdvisorModal } from '../modals/AiBudgetAdvisorModal';
-import { Budget, Category, Transaction } from '../../services/storage';
-import { hasGeminiApiKey } from '../../services/ai/geminiClient';
+
 export interface SubCategorySummary {
   id: string;
   name: string;
@@ -32,10 +30,6 @@ interface BudgetUtilizationProps {
   handleBudgetInputChange?: (catName: string, val: string) => void;
   handleSaveBudgets?: () => void;
   setShowAddCatModal?: (show: boolean) => void;
-  transactions?: Transaction[];
-  categories?: Category[];
-  budgets?: Budget[];
-  onRequestGeminiKey?: () => void;
 }
 
 export function BudgetUtilization({
@@ -44,13 +38,8 @@ export function BudgetUtilization({
   handleBudgetInputChange,
   handleSaveBudgets,
   setShowAddCatModal,
-  transactions = [],
-  categories = [],
-  budgets = [],
-  onRequestGeminiKey,
 }: BudgetUtilizationProps) {
   const [expandedParents, setExpandedParents] = useState<Set<string>>(new Set());
-  const [showAiAdvisorModal, setShowAiAdvisorModal] = useState(false);
 
   const toggleExpand = (id: string) => {
     setExpandedParents(prev => {
@@ -58,13 +47,6 @@ export function BudgetUtilization({
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
-    });
-  };
-
-  const handleApplySuggestions = (updatedPairs: Array<{ categoryId: string; amount: number }>) => {
-    if (!handleBudgetInputChange) return;
-    updatedPairs.forEach(pair => {
-      handleBudgetInputChange(pair.categoryId, pair.amount.toString());
     });
   };
 
@@ -87,23 +69,7 @@ export function BudgetUtilization({
           </div>
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap">
-          <button
-            type="button"
-            onClick={() => {
-              if (!hasGeminiApiKey() && onRequestGeminiKey) {
-                onRequestGeminiKey();
-              } else {
-                setShowAiAdvisorModal(true);
-              }
-            }}
-            data-testid="open-ai-budget-advisor-btn"
-            className="flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-lg bg-primary/15 text-primary hover:bg-primary/25 border border-primary/30 transition-all shadow-sm"
-            title="Get AI budget recommendations based on last 2 months spending"
-          >
-            <Sparkles className="w-3.5 h-3.5" /> AI Budget Assistant
-          </button>
-
+        <div className="flex items-center gap-2">
           {setShowAddCatModal && (
             <button
               onClick={() => setShowAddCatModal(true)}
@@ -137,60 +103,60 @@ export function BudgetUtilization({
             const remaining = item.budget - item.spent;
 
             return (
-              <div key={item.id} className="glass-card p-3.5 rounded-xl border border-border/50 space-y-2.5">
-                {/* Row 1: Category Name & Status Badge + Labeled Spending & Budget Target Input */}
-                <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
-                  {/* Left: Category Title + Status Badge */}
-                  <div className="flex items-center gap-2 min-w-0">
-                    <div 
-                      onClick={() => hasSubCats && toggleExpand(item.id)}
-                      className={`font-semibold flex items-center gap-2 ${
-                        hasSubCats ? 'cursor-pointer hover:text-primary' : ''
-                      } transition-colors truncate`}
-                    >
-                      {hasSubCats && (
-                        <span className="text-muted-foreground shrink-0">
-                          {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-                        </span>
-                      )}
-                      <span className="text-base leading-none">{item.emoji}</span>
-                      <span className="truncate">{item.name}</span>
-                    </div>
-
-                    {/* Status Badge */}
-                    {item.budget > 0 ? (
-                      <span
-                        className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider shrink-0 ${
-                          isOver
-                            ? 'bg-destructive/20 text-destructive border border-destructive/30'
-                            : isNearCap
-                            ? 'bg-amber-500/20 text-amber-500 border border-amber-500/30'
-                            : 'bg-emerald-500/15 text-emerald-500 border border-emerald-500/30'
-                        }`}
-                      >
-                        {isOver ? `Over by $${Math.abs(remaining).toFixed(0)}` : isNearCap ? 'Near Limit' : 'On Track'}
-                      </span>
-                    ) : (
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-card text-muted-foreground border border-border/60 shrink-0">
-                        No Target
+              <div key={item.id} className="glass-card p-4 rounded-xl border border-border/50 space-y-3">
+                {/* Line 1: Category Header & Status Badge */}
+                <div className="flex items-center justify-between gap-2">
+                  <div 
+                    onClick={() => hasSubCats && toggleExpand(item.id)}
+                    className={`font-semibold flex items-center gap-2.5 text-base ${
+                      hasSubCats ? 'cursor-pointer hover:text-primary' : ''
+                    } transition-colors truncate min-w-0`}
+                  >
+                    {hasSubCats && (
+                      <span className="text-muted-foreground shrink-0">
+                        {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                       </span>
                     )}
+                    <span className="text-base leading-none shrink-0">{item.emoji}</span>
+                    <span className="truncate">{item.name}</span>
                   </div>
 
-                  {/* Right: Explicitly Labeled "Spent" / "Budget" Row */}
-                  <div className="flex items-center gap-2.5 shrink-0">
-                    <div className="flex items-center gap-1.5 text-xs sm:text-sm">
-                      <span className="text-muted-foreground font-normal">Spent:</span>
-                      <span className={`font-bold ${isOver ? 'text-destructive' : 'text-foreground'}`}>
-                        ${item.spent.toFixed(0)}
-                      </span>
-                    </div>
+                  {/* Status Badge */}
+                  {item.budget > 0 ? (
+                    <span
+                      className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider shrink-0 ${
+                        isOver
+                          ? 'bg-destructive/20 text-destructive border border-destructive/30'
+                          : isNearCap
+                          ? 'bg-amber-500/20 text-amber-500 border border-amber-500/30'
+                          : 'bg-emerald-500/15 text-emerald-500 border border-emerald-500/30'
+                      }`}
+                    >
+                      {isOver ? `Over by $${Math.abs(remaining).toFixed(0)}` : isNearCap ? 'Near Limit' : 'On Track'}
+                    </span>
+                  ) : (
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-card text-muted-foreground border border-border/60 shrink-0">
+                      No Target
+                    </span>
+                  )}
+                </div>
 
-                    <span className="text-muted-foreground/50 text-xs font-light">/</span>
+                {/* Line 2 & 3: Stacked Metrics (Spent on top, Budget below it) */}
+                <div className="bg-card/40 rounded-lg p-3 border border-border/30 space-y-2">
+                  {/* Spent Line */}
+                  <div className="flex justify-between items-center text-sm">
+                    <span className="text-muted-foreground font-medium">Spent</span>
+                    <span className={`font-bold text-base tabular-nums ${isOver ? 'text-destructive' : 'text-foreground'}`}>
+                      ${item.spent.toFixed(0)}
+                    </span>
+                  </div>
 
+                  {/* Budget Line */}
+                  <div className="flex justify-between items-center text-sm pt-1 border-t border-border/20">
+                    <span className="text-muted-foreground font-medium">Budget</span>
                     {handleBudgetInputChange ? (
-                      <div className="flex items-center gap-1 bg-card/80 border border-border/80 hover:border-primary/50 focus-within:border-primary focus-within:ring-1 focus-within:ring-primary/40 rounded-lg px-2.5 py-1 transition-all">
-                        <span className="text-xs text-muted-foreground font-medium">Budget: $</span>
+                      <div className="flex items-center gap-1 bg-card border border-border/80 hover:border-primary/50 focus-within:border-primary focus-within:ring-1 focus-within:ring-primary/40 rounded-lg px-2.5 py-1 transition-all">
+                        <span className="text-xs text-muted-foreground font-semibold">$</span>
                         <input
                           type="number"
                           min="0"
@@ -198,14 +164,11 @@ export function BudgetUtilization({
                           value={item.budget === 0 ? '0' : (item.budget || '')}
                           placeholder="0"
                           onChange={e => handleBudgetInputChange(item.id, e.target.value)}
-                          className="w-14 bg-transparent text-xs font-bold text-foreground tabular-nums outline-none text-right"
+                          className="w-16 bg-transparent text-sm font-bold text-foreground tabular-nums outline-none text-right"
                         />
-                        <Edit3 className="w-3 h-3 text-muted-foreground/50" />
                       </div>
                     ) : (
-                      <div className="text-xs text-muted-foreground font-medium">
-                        Budget: ${item.budget}
-                      </div>
+                      <span className="font-bold text-foreground tabular-nums">${item.budget}</span>
                     )}
                   </div>
                 </div>
@@ -214,10 +177,10 @@ export function BudgetUtilization({
                   <p className="text-[10px] text-destructive font-bold">{budgetErrors[item.id]}</p>
                 )}
 
-                {/* Row 2: Progress Bar & Percentage Info */}
+                {/* Line 4: Progress Bar & Status Text */}
                 {item.budget > 0 ? (
-                  <div className="space-y-1">
-                    <div className="h-2.5 bg-card/60 rounded-full overflow-hidden border border-border/40">
+                  <div className="space-y-1 pt-0.5">
+                    <div className="h-2 bg-card/60 rounded-full overflow-hidden border border-border/40">
                       <motion.div
                         initial={{ width: 0 }}
                         animate={{ width: `${Math.min(item.percent, 100)}%` }}
@@ -226,9 +189,9 @@ export function BudgetUtilization({
                         style={{ backgroundColor: item.percent <= 100 ? item.color : undefined }}
                       />
                     </div>
-                    <div className="flex justify-between items-center text-[11px] text-muted-foreground px-0.5">
+                    <div className="flex justify-between items-center text-[11px] text-muted-foreground px-0.5 font-medium tabular-nums">
                       <span>{item.percent.toFixed(0)}% used</span>
-                      <span>
+                      <span className={isOver ? 'text-destructive font-semibold' : ''}>
                         {isOver
                           ? `$${Math.abs(remaining).toFixed(0)} over target`
                           : `$${remaining.toFixed(0)} remaining`}
@@ -236,8 +199,8 @@ export function BudgetUtilization({
                     </div>
                   </div>
                 ) : (
-                  <div className="text-[11px] text-muted-foreground/70 italic px-0.5">
-                    Set a monthly budget target above to track spending progress
+                  <div className="text-[11px] text-muted-foreground/70 italic px-0.5 pt-0.5">
+                    Enter a budget target above to track utilization
                   </div>
                 )}
 
@@ -248,32 +211,40 @@ export function BudgetUtilization({
                       initial={{ opacity: 0, height: 0 }}
                       animate={{ opacity: 1, height: 'auto' }}
                       exit={{ opacity: 0, height: 0 }}
-                      className="pt-2 pl-4 sm:pl-6 border-l-2 border-primary/20 space-y-2.5 mt-2"
+                      className="pt-2 pl-3 sm:pl-4 border-l-2 border-primary/20 space-y-2.5 mt-2"
                     >
                       {item.subCategories!.map(sub => {
                         const subOver = sub.spent > sub.budget && sub.budget > 0;
                         const subRemaining = sub.budget - sub.spent;
 
                         return (
-                          <div key={sub.id} className="space-y-1.5 bg-card/30 p-2.5 rounded-lg border border-border/30">
-                            <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-                              <span className="font-medium text-foreground flex items-center gap-1.5 truncate">
+                          <div key={sub.id} className="bg-card/20 p-3 rounded-lg border border-border/30 space-y-2">
+                            {/* Sub-category Header */}
+                            <div className="flex items-center justify-between gap-2 text-xs">
+                              <span className="font-semibold text-foreground flex items-center gap-1.5 truncate">
                                 <span>{sub.emoji}</span>
                                 <span className="truncate">{sub.name}</span>
                               </span>
-
-                              <div className="flex items-center gap-2">
-                                <span className="text-muted-foreground">
-                                  Spent: <span className={subOver ? 'text-destructive font-bold' : 'font-semibold text-foreground'}>
-                                    ${sub.spent.toFixed(0)}
-                                  </span>
+                              {sub.budget > 0 && (
+                                <span className="text-[10px] font-medium text-muted-foreground tabular-nums">
+                                  {sub.percent.toFixed(0)}% used
                                 </span>
+                              )}
+                            </div>
 
-                                <span className="text-muted-foreground/40 font-light">/</span>
-
+                            {/* Sub-category Stacked Metrics */}
+                            <div className="bg-card/40 rounded p-2 border border-border/20 space-y-1 text-xs">
+                              <div className="flex justify-between items-center">
+                                <span className="text-muted-foreground">Spent</span>
+                                <span className={`font-bold tabular-nums ${subOver ? 'text-destructive' : 'text-foreground'}`}>
+                                  ${sub.spent.toFixed(0)}
+                                </span>
+                              </div>
+                              <div className="flex justify-between items-center pt-1 border-t border-border/20">
+                                <span className="text-muted-foreground">Budget</span>
                                 {handleBudgetInputChange ? (
                                   <div className="flex items-center gap-1 bg-card border border-border/70 rounded px-2 py-0.5">
-                                    <span className="text-[11px] text-muted-foreground">Budget: $</span>
+                                    <span className="text-[10px] text-muted-foreground">$</span>
                                     <input
                                       type="number"
                                       min="0"
@@ -281,11 +252,11 @@ export function BudgetUtilization({
                                       value={sub.budget === 0 ? '0' : (sub.budget || '')}
                                       placeholder="0"
                                       onChange={e => handleBudgetInputChange(sub.id, e.target.value)}
-                                      className="w-12 bg-transparent text-[11px] text-right font-bold tabular-nums outline-none text-foreground"
+                                      className="w-14 bg-transparent text-xs text-right font-bold tabular-nums outline-none text-foreground"
                                     />
                                   </div>
                                 ) : (
-                                  sub.budget > 0 && <span className="text-[11px] text-muted-foreground">Budget: ${sub.budget}</span>
+                                  <span className="font-bold tabular-nums">${sub.budget}</span>
                                 )}
                               </div>
                             </div>
@@ -301,7 +272,7 @@ export function BudgetUtilization({
                                     }}
                                   />
                                 </div>
-                                <div className="flex justify-between text-[10px] text-muted-foreground px-0.5">
+                                <div className="flex justify-between text-[10px] text-muted-foreground px-0.5 tabular-nums">
                                   <span>{sub.percent.toFixed(0)}%</span>
                                   <span>{subOver ? `$${Math.abs(subRemaining).toFixed(0)} over` : `$${subRemaining.toFixed(0)} left`}</span>
                                 </div>
@@ -320,20 +291,6 @@ export function BudgetUtilization({
           <div className="text-muted-foreground text-center py-8">No budget data available</div>
         )}
       </div>
-
-      {/* AI Budget Advisor Modal */}
-      <AnimatePresence>
-        {showAiAdvisorModal && (
-          <AiBudgetAdvisorModal
-            showModal={showAiAdvisorModal}
-            onClose={() => setShowAiAdvisorModal(false)}
-            transactions={transactions}
-            categories={categories}
-            budgets={budgets}
-            onApplySuggestions={handleApplySuggestions}
-          />
-        )}
-      </AnimatePresence>
     </motion.div>
   );
 }
