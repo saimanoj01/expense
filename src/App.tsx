@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { AppProvider, useApp } from './context/AppContext';
@@ -78,6 +78,14 @@ function AppInner() {
   const [showAddCatModal, setShowAddCatModal] = useState(false);
   const [showCategoryManagerModal, setShowCategoryManagerModal] = useState(false);
   const [showDuplicateWarningModal, setShowDuplicateWarningModal] = useState(false);
+
+  const hasTriggeredOnboarding = useRef(false);
+  useEffect(() => {
+    if (isAuthenticated && projects.length === 0 && !isLoading && !hasTriggeredOnboarding.current) {
+      hasTriggeredOnboarding.current = true;
+      setShowCreateModal(true);
+    }
+  }, [isAuthenticated, projects.length, isLoading]);
   const [pendingDuplicateTxn, setPendingDuplicateTxn] = useState<Transaction | null>(null);
   
   const [showBulkDeleteConfirmModal, setShowBulkDeleteConfirmModal] = useState(false);
@@ -90,7 +98,15 @@ function AppInner() {
 
   // Hooks
   const txnHooks = useTransactions(storageAdapter, activeProject, locks, showToast);
-  const budgetHooks = useBudgets(storageAdapter, activeProject, txnHooks.filteredTransactions, showToast, setAuthErrorToast);
+  const budgetHooks = useBudgets(
+    storageAdapter,
+    activeProject,
+    txnHooks.filteredTransactions,
+    txnHooks.transactions,
+    txnHooks.selectedMonth,
+    showToast,
+    setAuthErrorToast
+  );
 
   const refreshProjectData = async () => {
     if (!isAuthenticated || !activeProject || !storageAdapter) return;
@@ -242,6 +258,11 @@ function AppInner() {
                 handleBudgetInputChange={budgetHooks.handleBudgetInputChange}
                 handleSaveBudgets={budgetHooks.handleSaveBudgets}
                 setShowAddCatModal={() => setShowCategoryManagerModal(true)}
+                selectedMonth={txnHooks.selectedMonth}
+                budgetNotes={budgetHooks.budgetNotes}
+                spendingHistory={budgetHooks.spendingHistory}
+                handleSaveBudgetNote={budgetHooks.handleSaveBudgetNote}
+                handleDeleteBudgetNote={budgetHooks.handleDeleteBudgetNote}
               />
             </div>
 
@@ -280,7 +301,7 @@ function AppInner() {
             />
           </>
         ) : (
-          <div className="flex items-center justify-center h-[60vh]">
+          <div data-testid="no-projects-prompt" className="flex items-center justify-center h-[60vh]">
             <p className="text-muted-foreground">Please select or create a project to get started.</p>
           </div>
         )}

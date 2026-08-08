@@ -1,26 +1,31 @@
 import { useState, useMemo, useCallback } from 'react';
-import { Budget, Category, Transaction } from '../services/storage';
+import { Budget, Category, Transaction, BudgetNote } from '../services/storage';
 
 export function useBudgets(
   storageAdapter: any,
   activeProject: any,
   filteredTransactions: Transaction[],
+  allTransactions: Transaction[] = [],
+  selectedMonth: string = '',
   showToast: (msg: string) => void,
   setAuthErrorToast: (msg: string) => void
 ) {
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [budgetErrors, setBudgetErrors] = useState<Record<string, string>>({});
+  const [budgetNotes, setBudgetNotes] = useState<Record<string, BudgetNote>>({});
 
   const refreshBudgetsAndCategories = useCallback(async () => {
     if (!activeProject || !storageAdapter) return;
     try {
       const bgs = await storageAdapter.getBudgets(activeProject.id);
       const cats = await storageAdapter.getCategories(activeProject.id);
+      const notes = await storageAdapter.getBudgetNotes(activeProject.id);
       setBudgets(bgs);
       setCategories(cats);
+      setBudgetNotes(notes || {});
     } catch (err) {
-      console.error("Failed to load budgets/categories:", err);
+      console.error("Failed to load budgets/categories/notes:", err);
     }
   }, [activeProject, storageAdapter]);
 
@@ -59,7 +64,7 @@ export function useBudgets(
         const subSpent = filteredTransactions
           .filter(t => t.type === 'expense' && (t.subCategory === sCat.id || (t.category === sCat.id && !t.subCategory)))
           .reduce((sum, t) => sum + t.amount, 0);
-        const subPercent = subBudget > 0 ? Math.min(Math.round((subSpent / subBudget) * 100), 100) : 0;
+        const subPercent = subBudget > 0 ? Math.round((subSpent / subBudget) * 100) : 0;
         return {
           id: sCat.id,
           name: sCat.name,
@@ -84,7 +89,7 @@ export function useBudgets(
       const subCategoryBudgetSum = subCategorySummaries.reduce((sum, s) => sum + s.budget, 0);
       const parentBudget = parentBObj ? parentBObj.amount : subCategoryBudgetSum;
 
-      const parentPercent = parentBudget > 0 ? Math.min(Math.round((totalParentSpent / parentBudget) * 100), 100) : 0;
+      const parentPercent = parentBudget > 0 ? Math.round((totalParentSpent / parentBudget) * 100) : 0;
 
       items.push({
         id: pCat.id,
@@ -144,6 +149,60 @@ export function useBudgets(
     return { segments: result, totalPieExpense };
   }, [filteredTransactions, categories]);
 
+  const spendingHistory = useMemo(() => {
+    if (!selectedMonth || selectedMonth === 'all') return {};
+
+    const parts = selectedMonth.split('-');
+    if (parts.length !== 2) return {};
+    const year = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10);
+    if (isNaN(year) || isNaN(month)) return {};
+
+    const getMonthStr = (y: number, m: number) => {
+      const d = new Date(Date.UTC(y, m - 1, 1));
+      return d.toISOString().substring(0, 7);
+    };
+
+    const prev1Month = getMonthStr(year, month - 1);
+    const prev2Month = getMonthStr(year, month - 2);
+    const prev3Month = getMonthStr(year, month - 3);
+
+    const catMap = new Map<string, string>();
+    categories.forEach(c => {
+      catMap.set(c.id, c.id);
+      catMap.set(c.name.toLowerCase(), c.id);
+    });
+
+    const lastMonthTotals: Record<string, number> = {};
+    const total3moTotals: Record<string, number> = {};
+
+    allTransactions.forEach(t => {
+      if (t.type !== 'expense') return;
+      const tMonth = (t.date || '').substring(0, 7);
+      const isPrev1 = tMonth === prev1Month;
+      const isPrev3 = isPrev1 || tMonth === prev2Month || tMonth === prev3Month;
+      if (!isPrev3) return;
+
+      const targetCatId = catMap.get(t.subCategory || '') || catMap.get(t.category) || catMap.get((t.category || '').toLowerCase());
+      if (!targetCatId) return;
+
+      if (isPrev1) {
+        lastMonthTotals[targetCatId] = (lastMonthTotals[targetCatId] || 0) + t.amount;
+      }
+      total3moTotals[targetCatId] = (total3moTotals[targetCatId] || 0) + t.amount;
+    });
+
+    const history: Record<string, { lastMonth: number; avg3mo: number }> = {};
+    categories.forEach(cat => {
+      history[cat.id] = {
+        lastMonth: lastMonthTotals[cat.id] || 0,
+        avg3mo: Math.round((total3moTotals[cat.id] || 0) / 3)
+      };
+    });
+
+    return history;
+  }, [categories, allTransactions, selectedMonth]);
+
   const handleSaveBudgets = async () => {
     if (!activeProject || !storageAdapter) return;
     try {
@@ -202,6 +261,39 @@ export function useBudgets(
     }
   };
 
+  const handleSaveBudgetNote = useCallback(async (month: string, keyId: string, text: string, mood?: string) => {
+    if (!activeProject || !storageAdapter) return;
+    const key = `${month}:${keyId}`;
+    const noteObj: BudgetNote = {
+      text: text.trim(),
+      updatedAt: new Date().toISOString(),
+      ...(mood ? { mood } : {})
+    };
+    try {
+      await storageAdapter.saveBudgetNote(activeProject.id, key, noteObj);
+      setBudgetNotes(prev => ({ ...prev, [key]: noteObj }));
+      showToast('Note saved');
+    } catch (err: any) {
+      alert(err.message || 'Failed to save note');
+    }
+  }, [activeProject, storageAdapter, showToast]);
+
+  const handleDeleteBudgetNote = useCallback(async (month: string, keyId: string) => {
+    if (!activeProject || !storageAdapter) return;
+    const key = `${month}:${keyId}`;
+    try {
+      await storageAdapter.deleteBudgetNote(activeProject.id, key);
+      setBudgetNotes(prev => {
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      });
+      showToast('Note removed');
+    } catch (err: any) {
+      alert(err.message || 'Failed to delete note');
+    }
+  }, [activeProject, storageAdapter, showToast]);
+
   return {
     budgets,
     setBudgets,
@@ -210,10 +302,15 @@ export function useBudgets(
     totalBudget,
     categorySummary,
     piePaths,
+    budgetNotes,
+    spendingHistory,
     refreshBudgetsAndCategories,
     handleSaveBudgets,
     handleBudgetInputChange,
     handleSaveCategory,
-    handleDeleteCategory
+    handleDeleteCategory,
+    handleSaveBudgetNote,
+    handleDeleteBudgetNote
   };
 }
+

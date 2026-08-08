@@ -188,6 +188,7 @@ export function CategoryManagerModal({
                   <label className="block text-xs font-bold text-muted-foreground mb-1">Name *</label>
                   <input
                     type="text" required
+                    data-testid={editingCategory ? "edit-category-name-input" : "new-category-name-input"}
                     value={catName} onChange={e => setCatName(e.target.value)}
                     className="w-full bg-background border border-border rounded-lg px-3 py-1.5 text-sm font-medium focus:ring-1 focus:ring-primary outline-none"
                     placeholder="e.g. Subscriptions"
@@ -198,6 +199,7 @@ export function CategoryManagerModal({
                     <label className="block text-xs font-bold text-muted-foreground mb-1">Emoji</label>
                     <input
                       type="text" maxLength={2}
+                      data-testid={editingCategory ? "edit-category-emoji-input" : "new-category-emoji-input"}
                       value={catEmoji} onChange={e => setCatEmoji(e.target.value)}
                       className="w-full bg-background border border-border rounded-lg px-2 py-1.5 text-center text-sm font-bold focus:ring-1 focus:ring-primary outline-none"
                     />
@@ -206,6 +208,7 @@ export function CategoryManagerModal({
                     <label className="block text-xs font-bold text-muted-foreground mb-1">Color</label>
                     <input
                       type="color"
+                      data-testid={editingCategory ? "edit-category-color-input" : "new-category-color-input"}
                       value={catColor} onChange={e => setCatColor(e.target.value)}
                       className="w-full h-[34px] bg-background border border-border rounded-lg p-0.5 cursor-pointer outline-none"
                     />
@@ -216,6 +219,7 @@ export function CategoryManagerModal({
               <div className="flex justify-end gap-2 pt-1">
                 <button
                   type="submit"
+                  data-testid={editingCategory ? "save-edited-category-btn" : "save-category-btn"}
                   className="px-4 py-1.5 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground font-bold text-xs shadow flex items-center gap-1.5"
                 >
                   <Save className="w-3.5 h-3.5" /> Save Category
@@ -274,6 +278,7 @@ export function CategoryManagerModal({
                     </button>
                     <button
                       onClick={() => handleStartEdit(parent)}
+                      data-testid={`edit-category-${parent.id === 'food' ? 'Food' : (parent.name || parent.id)}-btn`}
                       title="Edit Category"
                       className="p-1 rounded hover:bg-card text-muted-foreground hover:text-foreground transition-colors"
                     >

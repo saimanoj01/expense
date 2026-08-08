@@ -37,6 +37,12 @@ export interface MonthlyLock {
   lockedAt?: string;   // ISO 8601 timestamp when locked
 }
 
+export interface BudgetNote {
+  text: string;        // The note content
+  updatedAt: string;   // ISO 8601 timestamp of last edit
+  mood?: string;       // Emoji mood tag (only for __overall__ notes)
+}
+
 export interface StorageAdapter {
   getProjects(): Promise<Project[]>;
   createProject(name: string): Promise<Project>;
@@ -59,6 +65,10 @@ export interface StorageAdapter {
 
   getLocks(projectId: string): Promise<MonthlyLock[]>;
   saveLock(projectId: string, lock: MonthlyLock): Promise<void>;
+
+  getBudgetNotes(projectId: string): Promise<Record<string, BudgetNote>>;
+  saveBudgetNote(projectId: string, key: string, note: BudgetNote): Promise<void>;
+  deleteBudgetNote(projectId: string, key: string): Promise<void>;
 }
 
 // Default categories for new projects
@@ -385,6 +395,7 @@ export class LocalStorageAdapter implements StorageAdapter {
     localStorage.removeItem(`expense_categories_${projectId}`);
     localStorage.removeItem(`expense_budgets_${projectId}`);
     localStorage.removeItem(`expense_locks_${projectId}`);
+    localStorage.removeItem(`expense_budget_notes_${projectId}`);
   }
 
   async getTransactions(projectId: string): Promise<Transaction[]> {
@@ -596,6 +607,37 @@ export class LocalStorageAdapter implements StorageAdapter {
     }
   }
 
+  async getBudgetNotes(projectId: string): Promise<Record<string, BudgetNote>> {
+    const raw = localStorage.getItem(`expense_budget_notes_${projectId}`);
+    if (!raw) return {};
+    try {
+      return JSON.parse(raw);
+    } catch (e) {
+      console.error(`Failed to parse budget notes for project ${projectId}:`, e);
+      return {};
+    }
+  }
+
+  async saveBudgetNote(projectId: string, key: string, note: BudgetNote): Promise<void> {
+    const notes = await this.getBudgetNotes(projectId);
+    notes[key] = note;
+    try {
+      localStorage.setItem(`expense_budget_notes_${projectId}`, JSON.stringify(notes));
+    } catch (e) {
+      throw new Error('Local storage quota exceeded. Unable to save budget note.');
+    }
+  }
+
+  async deleteBudgetNote(projectId: string, key: string): Promise<void> {
+    const notes = await this.getBudgetNotes(projectId);
+    delete notes[key];
+    try {
+      localStorage.setItem(`expense_budget_notes_${projectId}`, JSON.stringify(notes));
+    } catch (e) {
+      throw new Error('Local storage quota exceeded. Unable to delete budget note.');
+    }
+  }
+
   async getCategories(projectId: string): Promise<Category[]> {
     const raw = localStorage.getItem(`expense_categories_${projectId}`);
     if (!raw) return [...DEFAULT_CATEGORIES];
@@ -651,6 +693,7 @@ export class GoogleSheetsAdapter implements StorageAdapter {
     categories: Category[];
     budgets: Budget[];
     locks: MonthlyLock[];
+    notes: Record<string, BudgetNote>;
   }> = {};
 
   constructor(getToken: () => string | null) {
@@ -717,7 +760,8 @@ export class GoogleSheetsAdapter implements StorageAdapter {
           { properties: { title: 'Transactions' } },
           { properties: { title: 'Categories' } },
           { properties: { title: 'Budgets' } },
-          { properties: { title: 'Locks' } }
+          { properties: { title: 'Locks' } },
+          { properties: { title: 'Notes' } }
         ]
       })
     });
@@ -737,7 +781,8 @@ export class GoogleSheetsAdapter implements StorageAdapter {
       transactions: [],
       categories: [...DEFAULT_CATEGORIES],
       budgets: [],
-      locks: []
+      locks: [],
+      notes: {}
     };
     
     await this.saveCategoriesToSheet(newProject.id, this.cache[newProject.id].categories);
@@ -804,14 +849,23 @@ export class GoogleSheetsAdapter implements StorageAdapter {
     const project = (await this.getProjects()).find(p => p.id === projectId);
     if (!project || !project.spreadsheetId) throw new Error("Project not found or missing spreadsheet ID");
 
-    const res = await this.fetchApi(`https://sheets.googleapis.com/v4/spreadsheets/${project.spreadsheetId}/values:batchGet?ranges=Transactions!A:J&ranges=Categories!A:E&ranges=Budgets!A:B&ranges=Locks!A:C`);
-    
     const parseJSON = (str: string) => { try { return JSON.parse(str); } catch { return str; } };
 
-    const txRows = res.valueRanges?.[0]?.values || [];
-    const catRows = res.valueRanges?.[1]?.values || [];
-    const bgRows = res.valueRanges?.[2]?.values || [];
-    const lockRows = res.valueRanges?.[3]?.values || [];
+    let valueRanges: any[] = [];
+    try {
+      const res = await this.fetchApi(`https://sheets.googleapis.com/v4/spreadsheets/${project.spreadsheetId}/values:batchGet?ranges=Transactions!A:J&ranges=Categories!A:E&ranges=Budgets!A:B&ranges=Locks!A:C&ranges=Notes!A:B`);
+      valueRanges = res.valueRanges || [];
+    } catch {
+      // Fallback if Notes tab doesn't exist yet
+      const res = await this.fetchApi(`https://sheets.googleapis.com/v4/spreadsheets/${project.spreadsheetId}/values:batchGet?ranges=Transactions!A:J&ranges=Categories!A:E&ranges=Budgets!A:B&ranges=Locks!A:C`);
+      valueRanges = res.valueRanges || [];
+    }
+
+    const txRows = valueRanges[0]?.values || [];
+    const catRows = valueRanges[1]?.values || [];
+    const bgRows = valueRanges[2]?.values || [];
+    const lockRows = valueRanges[3]?.values || [];
+    const noteRows = valueRanges[4]?.values || [];
 
     const transactions: Transaction[] = txRows.slice(1).map((r: any[]) => ({
       id: r[0], date: r[1], category: r[2], subCategory: r[3] || null, amount: parseFloat(r[4]), type: r[5], description: r[6], notes: r[7] || '', labels: parseJSON(r[8] || '[]'), hash: r[9] || ''
@@ -834,7 +888,18 @@ export class GoogleSheetsAdapter implements StorageAdapter {
       month: r[0], locked: r[1] === 'true' || r[1] === 'TRUE', lockedAt: r[2] || undefined
     })).filter((l: any) => l.month);
 
-    this.cache[projectId] = { transactions, categories, budgets, locks };
+    const notes: Record<string, BudgetNote> = {};
+    noteRows.slice(1).forEach((r: any[]) => {
+      if (r[0]) {
+        try {
+          notes[r[0]] = JSON.parse(r[1]);
+        } catch {
+          notes[r[0]] = { text: r[1] || '', updatedAt: new Date().toISOString() };
+        }
+      }
+    });
+
+    this.cache[projectId] = { transactions, categories, budgets, locks, notes };
   }
 
   private async writeSheet(projectId: string, range: string, values: any[][]) {
@@ -1031,5 +1096,49 @@ export class GoogleSheetsAdapter implements StorageAdapter {
     if (idx > -1) locks[idx] = lock;
     else locks.push(lock);
     await this.saveLocksToSheet(projectId, locks);
+  }
+
+  private async saveNotesToSheet(projectId: string, notes: Record<string, BudgetNote>) {
+    const header = ['key', 'note'];
+    const rows = Object.entries(notes).map(([k, v]) => [k, JSON.stringify(v)]);
+    try {
+      await this.writeSheet(projectId, 'Notes!A:B', [header, ...rows]);
+    } catch (e: any) {
+      // If Notes sheet doesn't exist, create it via batchUpdate
+      const project = (await this.getProjects()).find(p => p.id === projectId);
+      if (project?.spreadsheetId) {
+        try {
+          await this.fetchApi(`https://sheets.googleapis.com/v4/spreadsheets/${project.spreadsheetId}:batchUpdate`, {
+            method: 'POST',
+            body: JSON.stringify({
+              requests: [{ addSheet: { properties: { title: 'Notes' } } }]
+            })
+          });
+          await this.writeSheet(projectId, 'Notes!A:B', [header, ...rows]);
+        } catch (createErr) {
+          console.error("Failed to create Notes sheet tab:", createErr);
+        }
+      }
+    }
+  }
+
+  async getBudgetNotes(projectId: string): Promise<Record<string, BudgetNote>> {
+    await this.ensureCache(projectId);
+    return this.cache[projectId].notes || {};
+  }
+
+  async saveBudgetNote(projectId: string, key: string, note: BudgetNote): Promise<void> {
+    await this.ensureCache(projectId);
+    if (!this.cache[projectId].notes) this.cache[projectId].notes = {};
+    this.cache[projectId].notes[key] = note;
+    await this.saveNotesToSheet(projectId, this.cache[projectId].notes);
+  }
+
+  async deleteBudgetNote(projectId: string, key: string): Promise<void> {
+    await this.ensureCache(projectId);
+    if (this.cache[projectId].notes) {
+      delete this.cache[projectId].notes[key];
+      await this.saveNotesToSheet(projectId, this.cache[projectId].notes);
+    }
   }
 }

@@ -30,6 +30,7 @@ export function KpiGrid({ totalBudget, totalExpenses, totalIncome, budgetRemaini
 
   return (
     <motion.div 
+      data-testid="dashboard-header"
       variants={container}
       initial="hidden"
       animate="show"

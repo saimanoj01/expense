@@ -250,7 +250,7 @@ export function TransactionModal({
               const parentCats = allCats.filter(c => !c.parentId);
 
               const validParent = parentCats.some(c => c.id === txnCategory) ? txnCategory : (parentCats[0]?.id || 'misc');
-              const activeValue = `${validParent}|${txnSubCategory || ''}`;
+              const activeValue = txnSubCategory ? `${validParent}|${txnSubCategory}` : validParent;
 
               return (
                 <select
@@ -268,7 +268,7 @@ export function TransactionModal({
                     const subs = allCats.filter(c => c.parentId === p.id);
                     return (
                       <optgroup key={p.id} label={`${p.emoji} ${p.name}`} className="bg-card font-bold text-muted-foreground">
-                        <option value={`${p.id}|`} className="bg-card text-card-foreground font-semibold">
+                        <option value={p.id} className="bg-card text-card-foreground font-semibold">
                           {p.emoji} {p.name} (General)
                         </option>
                         {subs.map(s => (

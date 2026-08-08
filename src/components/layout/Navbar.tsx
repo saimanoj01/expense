@@ -72,7 +72,7 @@ export function Navbar({
                 }}
               >
                 {projects.map(p => (
-                  <option key={p.id} value={p.id} className="bg-card text-card-foreground">{p.name}</option>
+                  <option key={p.id} value={p.id} data-testid={`project-item-${p.id}`} className="bg-card text-card-foreground">{p.name}</option>
                 ))}
                 <option value="new" data-testid="create-project-btn" className="bg-card text-card-foreground">+ New Project</option>
                 <option value="manage" data-testid="manage-projects-btn" className="bg-card text-card-foreground">⚙️ Manage Projects...</option>
