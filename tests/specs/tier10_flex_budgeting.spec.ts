@@ -103,9 +103,16 @@ test.describe('Tier 10: Flex Budgeting & Spending Bucket Separation', () => {
   });
 
   test('Pipeline banner step cards trigger bucket filtering on click', async ({ page }) => {
+    // Click Income step card in Hero Banner
+    await page.getByTestId('kpi-total-income').click();
+    await expect(page.locator('h4:has-text("Monthly Salary")')).toBeVisible();
+    await expect(page.locator('h4:has-text("Mortgage Payment")')).not.toBeVisible();
+    await expect(page.locator('h4:has-text("Starbucks Coffee")')).not.toBeVisible();
+
     // Click Fixed step card in Hero Banner
     await page.getByTestId('kpi-fixed-expenses').click();
     await expect(page.locator('h4:has-text("Mortgage Payment")')).toBeVisible();
+    await expect(page.locator('h4:has-text("Monthly Salary")')).not.toBeVisible();
     await expect(page.locator('h4:has-text("Starbucks Coffee")')).not.toBeVisible();
 
     // Toggle off filter

@@ -114,7 +114,7 @@ export function useTransactions(
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [selectedMonth, setSelectedMonth] = useState<string>('2026-07');
   const [selectedTagFilter, setSelectedTagFilter] = useState<string | null>(null);
-  const [selectedBucket, setSelectedBucket] = useState<SpendingBucket | null>(null);
+  const [selectedBucket, setSelectedBucket] = useState<'income' | SpendingBucket | null>(null);
 
   const [sortBy, setSortByState] = useState<string>(() => {
     try {
@@ -154,7 +154,12 @@ export function useTransactions(
   // Filter and sort transactions for display
   const filteredTransactions = useMemo(() => {
     const result = monthTransactions.filter(t => {
-      if (selectedBucket && t.spendingBucket !== selectedBucket) return false;
+      if (selectedBucket) {
+        if (selectedBucket === 'income') {
+          return t.type === 'income' || t.category === 'income';
+        }
+        return t.spendingBucket === selectedBucket;
+      }
       return true;
     });
 

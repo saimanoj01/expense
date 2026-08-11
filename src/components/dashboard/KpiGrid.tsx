@@ -13,8 +13,8 @@ interface KpiGridProps {
   flexNumber?: number;
   savingsAmount?: number;
   savingsRate?: number;
-  selectedBucket?: 'fixed' | 'flexible' | 'non-monthly' | null;
-  onSelectBucket?: (b: 'fixed' | 'flexible' | 'non-monthly' | null) => void;
+  selectedBucket?: 'income' | 'fixed' | 'flexible' | 'non-monthly' | null;
+  onSelectBucket?: (b: 'income' | 'fixed' | 'flexible' | 'non-monthly' | null) => void;
 }
 
 export function KpiGrid({
@@ -95,12 +95,18 @@ export function KpiGrid({
       {/* 5-Step Pipeline Grid */}
       <div className="flex flex-col sm:grid sm:grid-cols-2 lg:flex lg:flex-row lg:items-stretch gap-3 lg:gap-0 mb-6">
         {/* Step 1: Total Income */}
-        <motion.div 
+        <motion.button 
           variants={item} 
-          className="flex-1 p-4 rounded-xl bg-emerald-500/5 border border-emerald-500/20 relative group hover:border-emerald-500/40 transition-all flex flex-col justify-between"
+          type="button"
+          onClick={() => onSelectBucket && onSelectBucket(selectedBucket === 'income' ? null : 'income')}
+          className={`flex-1 p-4 rounded-xl text-left transition-all relative group flex flex-col justify-between ${
+            selectedBucket === 'income'
+              ? 'bg-emerald-500/20 border-2 border-emerald-500 shadow-md shadow-emerald-500/10'
+              : 'bg-emerald-500/5 border border-emerald-500/20 hover:border-emerald-500/40'
+          }`}
         >
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-bold text-emerald-500/90 uppercase tracking-wider">1. Income</span>
+          <div className="flex items-center justify-between mb-2 w-full">
+            <span className="text-xs font-bold text-emerald-500 uppercase tracking-wider">1. Income</span>
             <div className="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-500">
               <TrendingUp className="w-4 h-4" />
             </div>
@@ -111,7 +117,7 @@ export function KpiGrid({
             </div>
             <p className="text-[11px] text-muted-foreground mt-1 font-medium">Starting cash inflow</p>
           </div>
-        </motion.div>
+        </motion.button>
 
         {/* Connector 1 */}
         <div className="hidden lg:flex items-center justify-center px-1 text-muted-foreground/40 pointer-events-none shrink-0">

@@ -7,12 +7,12 @@ interface TransactionToolbarProps {
   availableMonths: string[];
   availableTags?: string[];
   selectedTagFilter?: string | null;
-  selectedBucket?: 'fixed' | 'flexible' | 'non-monthly' | null;
+  selectedBucket?: 'income' | 'fixed' | 'flexible' | 'non-monthly' | null;
   sortBy?: string;
   isCurrentMonthLocked: boolean;
   setSelectedMonth: (m: string) => void;
   setSelectedTagFilter?: (t: string | null) => void;
-  setSelectedBucket?: (b: 'fixed' | 'flexible' | 'non-monthly' | null) => void;
+  setSelectedBucket?: (b: 'income' | 'fixed' | 'flexible' | 'non-monthly' | null) => void;
   setSortBy?: (s: string) => void;
   handleOpenAddTxn: () => void;
   handleCsvFileUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
@@ -85,6 +85,15 @@ export function TransactionToolbar({
         {setSelectedBucket && (
           <div className="flex items-center gap-1 bg-card/40 p-1 rounded-xl border border-border/50" data-testid="toolbar-bucket-filters">
             <button
+              onClick={() => setSelectedBucket(selectedBucket === 'income' ? null : 'income')}
+              data-testid="filter-bucket-income"
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${
+                selectedBucket === 'income' ? 'bg-emerald-500 text-white shadow-sm' : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              🟢 Income
+            </button>
+            <button
               onClick={() => setSelectedBucket(selectedBucket === 'fixed' ? null : 'fixed')}
               data-testid="filter-bucket-fixed"
               className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${
@@ -97,10 +106,10 @@ export function TransactionToolbar({
               onClick={() => setSelectedBucket(selectedBucket === 'flexible' ? null : 'flexible')}
               data-testid="filter-bucket-flexible"
               className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${
-                selectedBucket === 'flexible' ? 'bg-emerald-500 text-white shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                selectedBucket === 'flexible' ? 'bg-rose-500 text-white shadow-sm' : 'text-muted-foreground hover:text-foreground'
               }`}
             >
-              🟢 Flexible
+              🔴 Flexible
             </button>
             <button
               onClick={() => setSelectedBucket(selectedBucket === 'non-monthly' ? null : 'non-monthly')}
