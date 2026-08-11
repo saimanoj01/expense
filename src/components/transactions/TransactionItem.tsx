@@ -1,11 +1,13 @@
-import { Edit2, Trash2 } from 'lucide-react';
-import { useMemo } from 'react';
+import { useState, useMemo } from 'react';
+import { Edit2, Trash2, Plus, X } from 'lucide-react';
 import { Transaction, Category, DEFAULT_CATEGORIES } from '../../services/storage';
 import { formatTransactionAmount } from '../../utils/formatters';
+import { TagInputPopover } from '../common/TagInputPopover';
 
 interface TransactionItemProps {
   transaction: Transaction;
   categories: Category[];
+  availableTags?: string[];
   isLockedMonth: boolean;
   isSelected: boolean;
   isDuplicate: boolean;
@@ -14,11 +16,14 @@ interface TransactionItemProps {
   handleDeleteTxn: (id: string) => void;
   handleCategoryChange?: (txn: Transaction, newCatId: string, newSubCatId?: string | null) => void;
   setSelectedTagFilter: (tag: string | null) => void;
+  handleAddTag?: (txnId: string, tags: string[]) => void;
+  handleRemoveTag?: (txnId: string, tag: string) => void;
 }
 
 export function TransactionItem({
   transaction,
   categories,
+  availableTags = [],
   isLockedMonth,
   isSelected,
   isDuplicate,
@@ -26,8 +31,12 @@ export function TransactionItem({
   handleEditTxn,
   handleDeleteTxn,
   handleCategoryChange,
-  setSelectedTagFilter
+  setSelectedTagFilter,
+  handleAddTag,
+  handleRemoveTag
 }: TransactionItemProps) {
+  const [showTagPopover, setShowTagPopover] = useState(false);
+
   const allCategories = useMemo(() => {
     const map = new Map<string, Category>();
     DEFAULT_CATEGORIES.forEach(c => map.set(c.id, c));
@@ -42,6 +51,7 @@ export function TransactionItem({
 
   const displayCat = subCat || parentCat;
   const activeValue = `${parentCat?.id || 'misc'}|${subCat?.id || ''}`;
+  const currentLabels = Array.isArray(transaction.labels) ? transaction.labels : [];
 
   return (
     <div 
@@ -80,9 +90,9 @@ export function TransactionItem({
               </span>
             )}
           </div>
-          <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1 flex-wrap">
             <span>{transaction.date}</span>
-            <span className="w-1 h-1 rounded-full bg-border" />
+            <span className="w-1 h-1 rounded-full bg-border shrink-0" />
             {isLockedMonth ? (
               <span className="truncate" title={subCat ? `${parentCat?.name} > ${subCat.name}` : parentCat?.name}>
                 {subCat ? `${parentCat?.emoji || ''} ${parentCat?.name} > ${subCat.emoji} ${subCat.name}` : (parentCat?.name || transaction.category)}
@@ -116,22 +126,60 @@ export function TransactionItem({
                 })}
               </select>
             )}
-            {Array.isArray(transaction.labels) && transaction.labels.length > 0 && (
-              <>
-                <span className="w-1 h-1 rounded-full bg-border" />
-                <div className="flex items-center gap-1">
-                  {transaction.labels.map((lbl, idx) => (
-                    <button 
-                      key={idx}
-                      onClick={(e) => { e.stopPropagation(); setSelectedTagFilter(lbl); }}
-                      className="px-1.5 py-0.5 rounded bg-secondary/10 text-secondary text-[10px] uppercase font-bold tracking-wider hover:bg-secondary/20 transition-colors"
+
+            {/* Tag Pills */}
+            <span className="w-1 h-1 rounded-full bg-border shrink-0" />
+            <div className="flex items-center gap-1 flex-wrap">
+              {currentLabels.map((lbl, idx) => (
+                <div key={idx} className="group/tag inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-secondary/10 text-secondary text-[10px] uppercase font-bold tracking-wider border border-secondary/20 transition-colors">
+                  <button 
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); setSelectedTagFilter(lbl); }}
+                    className="hover:underline"
+                  >
+                    {lbl}
+                  </button>
+                  {!isLockedMonth && handleRemoveTag && (
+                    <button
+                      type="button"
+                      aria-label={`Remove tag ${lbl}`}
+                      data-testid={`delete-tag-${lbl}-${transaction.id}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleRemoveTag(transaction.id, lbl);
+                      }}
+                      className="text-secondary/70 hover:text-destructive transition-colors p-0.5"
                     >
-                      {lbl}
+                      <X className="w-2.5 h-2.5" />
                     </button>
-                  ))}
+                  )}
                 </div>
-              </>
-            )}
+              ))}
+
+              {!isLockedMonth && handleAddTag && (
+                <div className="relative inline-block">
+                  <button
+                    type="button"
+                    data-testid={`add-tag-btn-${transaction.id}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowTagPopover(prev => !prev);
+                    }}
+                    className="px-1.5 py-0.5 rounded bg-secondary/10 hover:bg-secondary/20 text-secondary text-[10px] font-bold uppercase tracking-wider transition-colors flex items-center gap-0.5 border border-secondary/20"
+                  >
+                    <Plus className="w-2.5 h-2.5" /> Tag
+                  </button>
+                  {showTagPopover && (
+                    <TagInputPopover
+                      availableTags={availableTags}
+                      existingTags={currentLabels}
+                      onAddTag={(tags) => handleAddTag(transaction.id, tags)}
+                      onClose={() => setShowTagPopover(false)}
+                    />
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>

@@ -1,12 +1,14 @@
-import { Search, Filter, Trash2, X } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { Search, Filter, Trash2, X, Tag } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { useMemo } from 'react';
 import { Transaction, Category, DEFAULT_CATEGORIES } from '../../services/storage';
 import { TransactionItem } from './TransactionItem';
+import { TagInputPopover } from '../common/TagInputPopover';
 
 interface TransactionListProps {
   transactions: Transaction[];
   categories: Category[];
+  availableTags?: string[];
   selectedTagFilter: string | null;
   duplicateTxnIds: Set<string>;
   isLockedMonth: boolean;
@@ -19,11 +21,16 @@ interface TransactionListProps {
   handleCategoryChange?: (txn: Transaction, newCatId: string, newSubCatId?: string | null) => void;
   handleExecuteBulkCategoryUpdate?: (selectedTxnIds: Set<string>, categoryId: string, subCategoryId?: string | null) => void;
   setShowBulkDeleteConfirmModal: (v: boolean) => void;
+  handleAddTag?: (txnId: string, tags: string[]) => void;
+  handleRemoveTag?: (txnId: string, tag: string) => void;
+  handleExecuteBulkAddTag?: (selectedTxnIds: Set<string>, tags: string[]) => void;
+  handleExecuteBulkRemoveTag?: (selectedTxnIds: Set<string>, tag: string) => void;
 }
 
 export function TransactionList({
   transactions,
   categories,
+  availableTags = [],
   selectedTagFilter,
   duplicateTxnIds,
   isLockedMonth,
@@ -35,8 +42,14 @@ export function TransactionList({
   handleDeleteTxn,
   handleCategoryChange,
   handleExecuteBulkCategoryUpdate,
-  setShowBulkDeleteConfirmModal
+  setShowBulkDeleteConfirmModal,
+  handleAddTag,
+  handleRemoveTag,
+  handleExecuteBulkAddTag,
+  handleExecuteBulkRemoveTag
 }: TransactionListProps) {
+  const [showBulkAddPopover, setShowBulkAddPopover] = useState(false);
+
   const isAllSelected = transactions.length > 0 && transactions.every(t => selectedTxnIds.has(t.id));
 
   const allCategories = useMemo(() => {
@@ -48,9 +61,22 @@ export function TransactionList({
 
   const parentCats = useMemo(() => allCategories.filter(c => !c.parentId), [allCategories]);
 
+  // Extract unique tags across currently selected transactions
+  const selectedTxnTags = useMemo(() => {
+    const tagsSet = new Set<string>();
+    transactions.forEach(t => {
+      if (selectedTxnIds.has(t.id) && Array.isArray(t.labels)) {
+        t.labels.forEach(lbl => {
+          if (lbl && lbl.trim()) tagsSet.add(lbl.trim().toLowerCase());
+        });
+      }
+    });
+    return Array.from(tagsSet).sort();
+  }, [transactions, selectedTxnIds]);
+
   return (
     <div className="glass-card rounded-2xl flex flex-col min-h-[350px] max-h-[600px] h-[55vh]">
-      <div className="p-4 border-b border-border/50 flex items-center justify-between bg-card/30 rounded-t-2xl">
+      <div className="p-4 border-b border-border/50 flex flex-wrap items-center justify-between gap-3 bg-card/30 rounded-t-2xl">
         <div className="flex items-center gap-3">
           <h2 className="font-bold text-lg">Transactions</h2>
           <span className="px-2 py-0.5 rounded-full bg-card border border-border text-xs font-bold tabular-nums">
@@ -67,9 +93,9 @@ export function TransactionList({
           )}
         </div>
         
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-wrap">
           {selectedTxnIds.size > 0 && (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               {handleExecuteBulkCategoryUpdate && (
                 <div className="relative flex items-center">
                   <select
@@ -102,6 +128,52 @@ export function TransactionList({
                   </select>
                 </div>
               )}
+
+              {/* Bulk Add Tag */}
+              {handleExecuteBulkAddTag && (
+                <div className="relative inline-block">
+                  <button
+                    type="button"
+                    data-testid="bulk-add-tag-btn"
+                    onClick={() => setShowBulkAddPopover(prev => !prev)}
+                    className="flex items-center gap-1 px-3 py-1.5 bg-secondary/10 text-secondary border border-secondary/20 hover:bg-secondary/20 rounded-lg text-xs sm:text-sm font-bold transition-colors"
+                  >
+                    <Tag className="w-3.5 h-3.5" /> + Tag ({selectedTxnIds.size})
+                  </button>
+                  {showBulkAddPopover && (
+                    <TagInputPopover
+                      availableTags={availableTags}
+                      onAddTag={(tags) => {
+                        handleExecuteBulkAddTag(selectedTxnIds, tags);
+                        setShowBulkAddPopover(false);
+                      }}
+                      onClose={() => setShowBulkAddPopover(false)}
+                      align="right"
+                    />
+                  )}
+                </div>
+              )}
+
+              {/* Bulk Remove Tag */}
+              {handleExecuteBulkRemoveTag && selectedTxnTags.length > 0 && (
+                <select
+                  defaultValue=""
+                  data-testid="bulk-remove-tag-select"
+                  onChange={(e) => {
+                    if (e.target.value) {
+                      handleExecuteBulkRemoveTag(selectedTxnIds, e.target.value);
+                      e.target.value = '';
+                    }
+                  }}
+                  className="px-3 py-1.5 bg-card/80 border border-border text-foreground hover:bg-card rounded-lg text-xs sm:text-sm font-bold transition-colors cursor-pointer outline-none shadow-sm"
+                >
+                  <option value="" disabled className="bg-card text-card-foreground">Remove Tag ({selectedTxnIds.size})...</option>
+                  {selectedTxnTags.map(tag => (
+                    <option key={tag} value={tag} className="bg-card text-card-foreground">#{tag}</option>
+                  ))}
+                </select>
+              )}
+
               <motion.button
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
@@ -146,6 +218,7 @@ export function TransactionList({
                 key={txn.id}
                 transaction={txn}
                 categories={categories}
+                availableTags={availableTags}
                 isLockedMonth={isLockedMonth}
                 isSelected={selectedTxnIds.has(txn.id)}
                 isDuplicate={duplicateTxnIds.has(txn.id)}
@@ -154,6 +227,8 @@ export function TransactionList({
                 handleDeleteTxn={handleDeleteTxn}
                 handleCategoryChange={handleCategoryChange}
                 setSelectedTagFilter={setSelectedTagFilter}
+                handleAddTag={handleAddTag}
+                handleRemoveTag={handleRemoveTag}
               />
             ))
           )}

@@ -18,6 +18,7 @@ interface CsvImportWizardProps {
   mapTypeCol: string;
   mapCategoryCol: string;
   mapSubCategoryCol?: string;
+  batchTagsInput?: string;
   categories: Category[];
   parsedCsvItems: CsvItem[];
   setShowCsvWizard: (show: boolean) => void;
@@ -27,7 +28,9 @@ interface CsvImportWizardProps {
   setMapTypeCol: (col: string) => void;
   setMapCategoryCol: (col: string) => void;
   setMapSubCategoryCol?: (col: string) => void;
+  setBatchTagsInput?: (v: string) => void;
   setParsedCsvItems: React.Dispatch<React.SetStateAction<CsvItem[]>>;
+  updateItemTags?: (index: number, newTags: string[]) => void;
   setShowCategoryManagerModal?: (v: boolean) => void;
   onRequestGeminiKey?: () => void;
   handleCsvNextStep: () => void;
@@ -45,6 +48,7 @@ export function CsvImportWizard({
   mapTypeCol,
   mapCategoryCol,
   mapSubCategoryCol = '',
+  batchTagsInput = 'imported',
   categories,
   parsedCsvItems,
   setShowCsvWizard,
@@ -54,7 +58,9 @@ export function CsvImportWizard({
   setMapTypeCol,
   setMapCategoryCol,
   setMapSubCategoryCol,
+  setBatchTagsInput,
   setParsedCsvItems,
+  updateItemTags,
   setShowCategoryManagerModal,
   onRequestGeminiKey,
   handleCsvNextStep,
@@ -134,7 +140,7 @@ export function CsvImportWizard({
         initial={{ opacity: 0, scale: 0.95 }}
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.95 }}
-        className="glass-panel w-full max-w-4xl max-h-[90vh] rounded-2xl p-6 overflow-hidden flex flex-col shadow-2xl"
+        className="glass-panel w-full max-w-5xl max-h-[90vh] rounded-2xl p-6 overflow-hidden flex flex-col shadow-2xl"
       >
         <div className="flex justify-between items-center mb-6">
           <div className="flex items-center gap-3">
@@ -143,7 +149,7 @@ export function CsvImportWizard({
             </div>
             <div>
               <h2 className="text-2xl font-bold">
-                {csvStep === 1 ? 'Map Columns' : 'Preview Import & Categorize'}
+                {csvStep === 1 ? 'Map Columns & Batch Tags' : 'Preview Import & Categorize'}
               </h2>
               <p className="text-xs text-muted-foreground">Step {csvStep} of 2</p>
             </div>
@@ -185,8 +191,23 @@ export function CsvImportWizard({
                     {csvRawHeaders.map(h => <option key={h} value={h} className="bg-card text-card-foreground">{h}</option>)}
                   </select>
                 </div>
+              </div>
+
+              <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-bold text-muted-foreground mb-1">Type Column (Optional - checks for 'income' or positive inflow)</label>
+                  <label className="block text-sm font-bold text-muted-foreground mb-1">Batch Tag / Label (Applied to all imported rows)</label>
+                  <input
+                    type="text"
+                    data-testid="csv-batch-tag-input"
+                    value={batchTagsInput}
+                    onChange={e => setBatchTagsInput && setBatchTagsInput(e.target.value)}
+                    placeholder="e.g. bilt, chase, statement"
+                    className="w-full bg-card/50 border border-border rounded-xl px-4 py-2 font-medium focus:ring-2 focus:ring-primary outline-none"
+                  />
+                  <p className="text-[11px] text-muted-foreground mt-1">Separate multiple tags with commas (e.g. "bilt, tax-2026").</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-muted-foreground mb-1">Type Column (Optional)</label>
                   <select value={mapTypeCol} data-testid="csv-map-col-type" onChange={e => setMapTypeCol(e.target.value)} className="w-full bg-card/50 border border-border rounded-xl px-4 py-2 font-medium focus:ring-2 focus:ring-primary outline-none">
                     <option value="" className="bg-card text-card-foreground">-- None --</option>
                     {csvRawHeaders.map(h => <option key={h} value={h} className="bg-card text-card-foreground">{h}</option>)}
@@ -214,7 +235,7 @@ export function CsvImportWizard({
             <div className="space-y-4">
               <div className="flex justify-between items-center px-1">
                 <p className="text-xs text-muted-foreground">
-                  Review and tweak categories per item before committing import.
+                  Review and tweak categories and tags per item before committing import.
                 </p>
                 <div className="flex items-center gap-2">
                   {setShowCategoryManagerModal && (
@@ -296,6 +317,7 @@ export function CsvImportWizard({
                       <th className="p-3 font-medium">Date</th>
                       <th className="p-3 font-medium">Description</th>
                       <th className="p-3 font-medium">Category</th>
+                      <th className="p-3 font-medium">Tags</th>
                       <th className="p-3 font-medium text-right">Amount</th>
                       <th className="p-3 font-medium">Type</th>
                       <th className="p-3 font-medium">Status</th>
@@ -304,6 +326,7 @@ export function CsvImportWizard({
                   <tbody className="text-sm">
                     {parsedCsvItems.map((item, idx) => {
                       const isDisabled = item.isLockedMonth;
+                      const itemLabels = item.labels || [];
                       return (
                         <tr key={idx} className={`border-b border-border/20 ${item.isDuplicate ? 'bg-destructive/10' : ''} ${item.isLockedMonth ? 'opacity-50' : ''}`}>
                           <td className="p-3">
@@ -367,6 +390,36 @@ export function CsvImportWizard({
                                 </select>
                               );
                             })()}
+                          </td>
+                          <td className="p-3 relative">
+                            <div className="flex flex-wrap items-center gap-1">
+                              {itemLabels.map((tag, tIdx) => (
+                                <span
+                                  key={tIdx}
+                                  className="group/tag inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-secondary/10 text-secondary text-[10px] uppercase font-bold tracking-wider border border-secondary/20"
+                                >
+                                  <span>{tag}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const nextTags = itemLabels.filter((_, i) => i !== tIdx);
+                                      if (updateItemTags) {
+                                        updateItemTags(idx, nextTags);
+                                      } else {
+                                        setParsedCsvItems(prev => {
+                                          const copy = [...prev];
+                                          copy[idx] = { ...copy[idx], labels: nextTags };
+                                          return copy;
+                                        });
+                                      }
+                                    }}
+                                    className="hover:text-destructive transition-colors"
+                                  >
+                                    <X className="w-2.5 h-2.5" />
+                                  </button>
+                                </span>
+                              ))}
+                            </div>
                           </td>
                           {(() => {
                             const { formattedAmount, colorClass } = formatTransactionAmount(item.amount, item.type);

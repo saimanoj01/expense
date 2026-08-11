@@ -11,6 +11,7 @@ export interface CsvItem {
   type: 'income' | 'expense' | 'transfer';
   category: string;
   subCategory?: string | null;
+  labels: string[];
   hash: string;
   isDuplicate: boolean;
   isLockedMonth?: boolean;
@@ -29,6 +30,7 @@ export function useCsvImport(
 ) {
   const [showCsvWizard, setShowCsvWizard] = useState(false);
   const [csvStep, setCsvStep] = useState<1 | 2>(1);
+  const [batchTagsInput, setBatchTagsInput] = useState<string>('imported');
   const [csvRawHeaders, setCsvRawHeaders] = useState<string[]>([]);
   const [csvRawRows, setCsvRawRows] = useState<string[][]>([]);
   const [mapDateCol, setMapDateCol] = useState<string>('');
@@ -94,7 +96,17 @@ export function useCsvImport(
     const seenHashesInBatch = new Set<string>();
     const items: CsvItem[] = [];
 
-    for (const row of csvRawRows) {
+    const defaultBatchTags = batchTagsInput
+      .split(',')
+      .map(s => s.trim().toLowerCase())
+      .filter(Boolean);
+
+    if (defaultBatchTags.length === 0) {
+      defaultBatchTags.push('imported');
+    }
+
+    for (let idx = 0; idx < csvRawRows.length; idx++) {
+      const row = csvRawRows[idx];
       const rawDate = standardizeDate(row[dateIdx] || new Date().toISOString().substring(0, 10));
       const rawDesc = row[descIdx] || 'Imported Transaction';
       let rawAmt = parseFloat(row[amtIdx] || '0') || 0;
@@ -143,6 +155,12 @@ export function useCsvImport(
         if (directSub) matchedSubCat = directSub.id;
       }
 
+      // Preserve previously edited labels if user stepped back from Step 2
+      const existingItem = parsedCsvItems[idx];
+      const itemLabels = existingItem && existingItem.labels && existingItem.labels.length > 0
+        ? existingItem.labels
+        : [...defaultBatchTags];
+
       items.push({
         date: rawDate,
         description: rawDesc,
@@ -150,6 +168,7 @@ export function useCsvImport(
         type: rawType,
         category: suggestedCategory,
         subCategory: matchedSubCat,
+        labels: itemLabels,
         hash,
         isDuplicate: isDup,
         isLockedMonth,
@@ -159,6 +178,16 @@ export function useCsvImport(
 
     setParsedCsvItems(items);
     setCsvStep(2);
+  };
+
+  const updateItemTags = (index: number, newTags: string[]) => {
+    setParsedCsvItems(prev => {
+      const copy = [...prev];
+      if (copy[index]) {
+        copy[index] = { ...copy[index], labels: newTags };
+      }
+      return copy;
+    });
   };
 
   const executeCommitCsvImport = async () => {
@@ -176,7 +205,7 @@ export function useCsvImport(
         type: item.type,
         description: item.description,
         notes: 'Imported via CSV',
-        labels: ['imported'],
+        labels: item.labels && item.labels.length > 0 ? item.labels : ['imported'],
         hash: item.hash
       };
     });
@@ -218,6 +247,8 @@ export function useCsvImport(
     setShowCsvWizard,
     csvStep,
     setCsvStep,
+    batchTagsInput,
+    setBatchTagsInput,
     csvRawHeaders,
     mapDateCol,
     setMapDateCol,
@@ -233,6 +264,7 @@ export function useCsvImport(
     setMapSubCategoryCol,
     parsedCsvItems,
     setParsedCsvItems,
+    updateItemTags,
     csvError,
     showCsvDuplicateWarningModal,
     setShowCsvDuplicateWarningModal,

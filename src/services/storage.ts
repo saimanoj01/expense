@@ -484,15 +484,12 @@ export class LocalStorageAdapter implements StorageAdapter {
     const transactions = await this.getTransactions(projectId);
     const locks = await this.getLocks(projectId);
 
+    // Pre-validate all locks before mutating transactions array
     for (const transaction of newTransactions) {
       const txnMonth = transaction.date.substring(0, 7);
       const isTargetLocked = locks.some(lock => lock.month === txnMonth && lock.locked);
       if (isTargetLocked) {
         throw new Error(`Cannot write to locked month ${txnMonth}`);
-      }
-
-      if (!transaction.id) {
-        transaction.id = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 9);
       }
 
       const existingIndex = transactions.findIndex(t => t.id === transaction.id);
@@ -503,6 +500,17 @@ export class LocalStorageAdapter implements StorageAdapter {
         if (isOriginalLocked) {
           throw new Error(`Cannot modify transaction. The original month ${originalMonth} is locked.`);
         }
+      }
+    }
+
+    // Apply mutations after lock validation passes for all items
+    for (const transaction of newTransactions) {
+      if (!transaction.id) {
+        transaction.id = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 9);
+      }
+
+      const existingIndex = transactions.findIndex(t => t.id === transaction.id);
+      if (existingIndex > -1) {
         transactions[existingIndex] = transaction;
       } else {
         transactions.push(transaction);
@@ -867,9 +875,18 @@ export class GoogleSheetsAdapter implements StorageAdapter {
     const lockRows = valueRanges[3]?.values || [];
     const noteRows = valueRanges[4]?.values || [];
 
-    const transactions: Transaction[] = txRows.slice(1).map((r: any[]) => ({
-      id: r[0], date: r[1], category: r[2], subCategory: r[3] || null, amount: parseFloat(r[4]), type: r[5], description: r[6], notes: r[7] || '', labels: parseJSON(r[8] || '[]'), hash: r[9] || ''
-    })).filter((t: any) => t.id);
+    const transactions: Transaction[] = txRows.slice(1).map((r: any[]) => {
+      const rawL = parseJSON(r[8] || '[]');
+      let labels: string[] = [];
+      if (Array.isArray(rawL)) {
+        labels = rawL.map(s => String(s).trim()).filter(Boolean);
+      } else if (typeof rawL === 'string' && rawL.trim()) {
+        labels = [rawL.trim()];
+      }
+      return {
+        id: r[0], date: r[1], category: r[2], subCategory: r[3] || null, amount: parseFloat(r[4]), type: r[5], description: r[6], notes: r[7] || '', labels, hash: r[9] || ''
+      };
+    }).filter((t: any) => t.id);
 
     const parsedCats: Category[] = catRows.slice(1).map((r: any[]) => ({
       id: r[0], name: r[1], color: r[2], emoji: r[3], parentId: r[4] || null

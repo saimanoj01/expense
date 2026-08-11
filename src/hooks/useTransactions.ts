@@ -646,6 +646,160 @@ export function useTransactions(
     }
   };
 
+  const handleAddTagToTxn = async (txnId: string, tagsToAdd: string[]) => {
+    if (!activeProject || !storageAdapter || tagsToAdd.length === 0) return;
+    const target = transactions.find(t => t.id === txnId);
+    if (!target) return;
+
+    const txMonth = target.date.substring(0, 7);
+    const isLocked = locks.some(l => l.month === txMonth && l.locked);
+    if (isLocked) {
+      showToast(`Cannot modify tags. ${txMonth} is locked.`);
+      return;
+    }
+
+    const currentLabels = ensureLabelsArray(target.labels);
+    const newTags = tagsToAdd.map(t => t.trim().toLowerCase()).filter(t => t && !currentLabels.includes(t));
+    if (newTags.length === 0) return;
+
+    const updatedTxn: Transaction = {
+      ...target,
+      labels: [...currentLabels, ...newTags]
+    };
+
+    try {
+      await storageAdapter.saveTransaction(activeProject.id, updatedTxn);
+      await refreshTransactions();
+      showToast(`Added tag${newTags.length > 1 ? 's' : ''} ${newTags.map(t => `#${t}`).join(', ')}`);
+    } catch (err: any) {
+      alert(err.message || 'Failed to add tags');
+    }
+  };
+
+  const handleRemoveTagFromTxn = async (txnId: string, tagToRemove: string) => {
+    if (!activeProject || !storageAdapter) return;
+    const target = transactions.find(t => t.id === txnId);
+    if (!target) return;
+
+    const txMonth = target.date.substring(0, 7);
+    const isLocked = locks.some(l => l.month === txMonth && l.locked);
+    if (isLocked) {
+      showToast(`Cannot modify tags. ${txMonth} is locked.`);
+      return;
+    }
+
+    const currentLabels = ensureLabelsArray(target.labels);
+    const updatedLabels = currentLabels.filter(l => l.toLowerCase() !== tagToRemove.toLowerCase());
+    const updatedTxn: Transaction = {
+      ...target,
+      labels: updatedLabels
+    };
+
+    try {
+      await storageAdapter.saveTransaction(activeProject.id, updatedTxn);
+      await refreshTransactions();
+      showToast(`Removed tag #${tagToRemove}`);
+    } catch (err: any) {
+      alert(err.message || 'Failed to remove tag');
+    }
+  };
+
+  const handleExecuteBulkAddTag = async (selectedTxnIds: Set<string>, tagsToAdd: string[], onComplete?: () => void) => {
+    if (!activeProject || !storageAdapter || selectedTxnIds.size === 0 || tagsToAdd.length === 0) return;
+    const normalizedTags = tagsToAdd.map(t => t.trim().toLowerCase()).filter(Boolean);
+    if (normalizedTags.length === 0) return;
+
+    let skippedCount = 0;
+    const updatedTxns: Transaction[] = [];
+
+    for (const t of transactions) {
+      if (selectedTxnIds.has(t.id)) {
+        const txMonth = t.date.substring(0, 7);
+        const isLocked = locks.some(l => l.month === txMonth && l.locked);
+        if (isLocked) {
+          skippedCount++;
+          continue;
+        }
+        const currentLabels = ensureLabelsArray(t.labels);
+        const newTags = normalizedTags.filter(tag => !currentLabels.includes(tag));
+        if (newTags.length > 0) {
+          updatedTxns.push({
+            ...t,
+            labels: [...currentLabels, ...newTags]
+          });
+        }
+      }
+    }
+
+    if (updatedTxns.length === 0) {
+      if (skippedCount > 0) {
+        showToast(`No tags updated (${skippedCount} transaction${skippedCount > 1 ? 's' : ''} locked)`);
+      }
+      return;
+    }
+
+    try {
+      await storageAdapter.saveTransactions(activeProject.id, updatedTxns);
+      await refreshTransactions();
+      if (onComplete) onComplete();
+
+      let msg = `Added tag${normalizedTags.length > 1 ? 's' : ''} ${normalizedTags.map(t => `#${t}`).join(', ')} to ${updatedTxns.length} transaction${updatedTxns.length > 1 ? 's' : ''}`;
+      if (skippedCount > 0) {
+        msg += ` (${skippedCount} skipped due to month lock)`;
+      }
+      showToast(msg);
+    } catch (err: any) {
+      alert(err.message || 'Failed to add bulk tags');
+    }
+  };
+
+  const handleExecuteBulkRemoveTag = async (selectedTxnIds: Set<string>, tagToRemove: string, onComplete?: () => void) => {
+    if (!activeProject || !storageAdapter || selectedTxnIds.size === 0 || !tagToRemove.trim()) return;
+    const normalizedTag = tagToRemove.trim().toLowerCase();
+
+    let skippedCount = 0;
+    const updatedTxns: Transaction[] = [];
+
+    for (const t of transactions) {
+      if (selectedTxnIds.has(t.id)) {
+        const txMonth = t.date.substring(0, 7);
+        const isLocked = locks.some(l => l.month === txMonth && l.locked);
+        if (isLocked) {
+          skippedCount++;
+          continue;
+        }
+        const currentLabels = ensureLabelsArray(t.labels);
+        if (currentLabels.some(l => l.toLowerCase() === normalizedTag)) {
+          updatedTxns.push({
+            ...t,
+            labels: currentLabels.filter(l => l.toLowerCase() !== normalizedTag)
+          });
+        }
+      }
+    }
+
+    if (updatedTxns.length === 0) {
+      if (skippedCount > 0) {
+        showToast(`No tags removed (${skippedCount} transaction${skippedCount > 1 ? 's' : ''} locked)`);
+      }
+      return;
+    }
+
+    try {
+      await storageAdapter.saveTransactions(activeProject.id, updatedTxns);
+      await refreshTransactions();
+      if (onComplete) onComplete();
+
+      let msg = `Removed tag #${normalizedTag} from ${updatedTxns.length} transaction${updatedTxns.length > 1 ? 's' : ''}`;
+      if (skippedCount > 0) {
+        msg += ` (${skippedCount} skipped due to month lock)`;
+      }
+      showToast(msg);
+    } catch (err: any) {
+      alert(err.message || 'Failed to remove bulk tags');
+    }
+  };
+
   return {
     transactions,
     setTransactions,
@@ -670,5 +824,9 @@ export function useTransactions(
     handleDeleteTxn,
     handleExecuteBulkDelete,
     handleExecuteBulkCategoryUpdate,
+    handleAddTagToTxn,
+    handleRemoveTagFromTxn,
+    handleExecuteBulkAddTag,
+    handleExecuteBulkRemoveTag,
   };
 }

@@ -286,6 +286,7 @@ function AppInner() {
             <TransactionList
               transactions={txnHooks.filteredTransactions}
               categories={budgetHooks.categories}
+              availableTags={txnHooks.availableTags}
               selectedTagFilter={txnHooks.selectedTagFilter}
               duplicateTxnIds={txnHooks.duplicateTxnIds}
               isLockedMonth={isCurrentMonthLocked}
@@ -298,6 +299,10 @@ function AppInner() {
               handleCategoryChange={(txn, newCatId, newSubCatId) => txnHooks.executeSaveTransaction({ ...txn, category: newCatId, subCategory: newSubCatId || null }, true)}
               handleExecuteBulkCategoryUpdate={(selectedIds, catId, subCatId) => txnHooks.handleExecuteBulkCategoryUpdate(selectedIds, catId, subCatId, () => setSelectedTxnIds(new Set()))}
               setShowBulkDeleteConfirmModal={setShowBulkDeleteConfirmModal}
+              handleAddTag={txnHooks.handleAddTagToTxn}
+              handleRemoveTag={txnHooks.handleRemoveTagFromTxn}
+              handleExecuteBulkAddTag={(selectedIds, tags) => txnHooks.handleExecuteBulkAddTag(selectedIds, tags, () => setSelectedTxnIds(new Set()))}
+              handleExecuteBulkRemoveTag={(selectedIds, tag) => txnHooks.handleExecuteBulkRemoveTag(selectedIds, tag, () => setSelectedTxnIds(new Set()))}
             />
           </>
         ) : (
