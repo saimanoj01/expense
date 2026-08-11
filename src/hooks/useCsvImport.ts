@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { parseCsvLine, standardizeDate } from '../utils/csv';
 import { computeTxHash } from '../utils/crypto';
-import { Transaction, MonthlyLock, Category } from '../services/storage';
-import { suggestCategory, detectTransactionType } from '../utils/categorizer';
+import { Transaction, MonthlyLock, Category, SpendingBucket } from '../services/storage';
+import { suggestCategory, detectTransactionType, suggestSpendingBucket } from '../utils/categorizer';
 
 export interface CsvItem {
   date: string;
@@ -11,6 +11,7 @@ export interface CsvItem {
   type: 'income' | 'expense' | 'transfer';
   category: string;
   subCategory?: string | null;
+  spendingBucket?: SpendingBucket;
   labels: string[];
   hash: string;
   isDuplicate: boolean;
@@ -148,6 +149,7 @@ export function useCsvImport(
       const isLockedMonth = locks.some((l: MonthlyLock) => l.locked && l.month === monthStr);
 
       const suggestedCategory = suggestCategory(rawDesc, rawCat, categories);
+      const suggestedBucket = suggestSpendingBucket(rawDesc, suggestedCategory);
 
       let matchedSubCat: string | null = null;
       if (rawSubCat) {
@@ -161,6 +163,10 @@ export function useCsvImport(
         ? existingItem.labels
         : [...defaultBatchTags];
 
+      if (rawType === 'expense' && suggestedBucket && !itemLabels.includes(suggestedBucket)) {
+        itemLabels.push(suggestedBucket);
+      }
+
       items.push({
         date: rawDate,
         description: rawDesc,
@@ -168,6 +174,7 @@ export function useCsvImport(
         type: rawType,
         category: suggestedCategory,
         subCategory: matchedSubCat,
+        spendingBucket: rawType === 'expense' ? suggestedBucket : undefined,
         labels: itemLabels,
         hash,
         isDuplicate: isDup,
@@ -196,6 +203,11 @@ export function useCsvImport(
     if (toImport.length === 0) return;
 
     const newTxns: Transaction[] = toImport.map(item => {
+      const bucket = item.type === 'expense' ? (item.spendingBucket || suggestSpendingBucket(item.description, item.category)) : undefined;
+      const labels = item.labels && item.labels.length > 0 ? [...item.labels] : ['imported'];
+      if (bucket && !labels.includes(bucket)) {
+        labels.push(bucket);
+      }
       return {
         id: crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2),
         date: item.date,
@@ -203,9 +215,10 @@ export function useCsvImport(
         subCategory: item.subCategory || null,
         amount: item.amount,
         type: item.type,
+        spendingBucket: bucket,
         description: item.description,
         notes: 'Imported via CSV',
-        labels: item.labels && item.labels.length > 0 ? item.labels : ['imported'],
+        labels,
         hash: item.hash
       };
     });

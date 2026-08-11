@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback } from 'react';
-import { Transaction, MonthlyLock, Category, DEFAULT_CATEGORIES } from '../services/storage';
+import { Transaction, MonthlyLock, Category, DEFAULT_CATEGORIES, SpendingBucket } from '../services/storage';
 
 export interface TrendPoint {
   date: string;
@@ -26,6 +26,9 @@ export interface MonthlyCashFlow {
   expense: number;
   net: number;
   savingsRate: number;
+  fixedExpense?: number;
+  flexibleExpense?: number;
+  nonMonthlyExpense?: number;
 }
 
 export interface TrendChartDetails {
@@ -111,6 +114,7 @@ export function useTransactions(
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [selectedMonth, setSelectedMonth] = useState<string>('2026-07');
   const [selectedTagFilter, setSelectedTagFilter] = useState<string | null>(null);
+  const [selectedBucket, setSelectedBucket] = useState<SpendingBucket | null>(null);
 
   const [sortBy, setSortByState] = useState<string>(() => {
     try {
@@ -137,12 +141,20 @@ export function useTransactions(
     return map;
   }, [categories]);
 
-  // Filter and sort transactions
-  const filteredTransactions = useMemo(() => {
-    const result = transactions.filter(t => {
+  // Transactions matching month and tag (unfiltered by selectedBucket so KPIs stay consistent)
+  const monthTransactions = useMemo(() => {
+    return transactions.filter(t => {
       const monthMatches = (t.date || '').startsWith(selectedMonth);
       if (!monthMatches && selectedMonth !== 'all') return false;
       if (selectedTagFilter && !ensureLabelsArray(t.labels).includes(selectedTagFilter)) return false;
+      return true;
+    });
+  }, [transactions, selectedMonth, selectedTagFilter]);
+
+  // Filter and sort transactions for display
+  const filteredTransactions = useMemo(() => {
+    const result = monthTransactions.filter(t => {
+      if (selectedBucket && t.spendingBucket !== selectedBucket) return false;
       return true;
     });
 
@@ -205,7 +217,7 @@ export function useTransactions(
         }
       }
     });
-  }, [transactions, selectedMonth, selectedTagFilter, sortBy, categoryNameMap]);
+  }, [monthTransactions, selectedBucket, sortBy, categoryNameMap]);
 
   // Duplicate transaction detector (Optimized to O(N))
   const duplicateTxnIds = useMemo(() => {
@@ -236,17 +248,36 @@ export function useTransactions(
   }, [transactions]);
 
   // KPIs
-  const totalExpenses = useMemo(() => filteredTransactions
+  const totalExpenses = useMemo(() => monthTransactions
     .filter(t => t.type === 'expense')
-    .reduce((sum, t) => sum + t.amount, 0), [filteredTransactions]);
+    .reduce((sum, t) => sum + t.amount, 0), [monthTransactions]);
     
-  const totalIncome = useMemo(() => filteredTransactions
+  const totalIncome = useMemo(() => monthTransactions
     .filter(t => t.type === 'income')
-    .reduce((sum, t) => sum + t.amount, 0), [filteredTransactions]);
+    .reduce((sum, t) => sum + t.amount, 0), [monthTransactions]);
 
-  const totalTransfers = useMemo(() => filteredTransactions
+  const totalTransfers = useMemo(() => monthTransactions
     .filter(t => t.type === 'transfer')
-    .reduce((sum, t) => sum + t.amount, 0), [filteredTransactions]);
+    .reduce((sum, t) => sum + t.amount, 0), [monthTransactions]);
+
+  const fixedExpenses = useMemo(() => monthTransactions
+    .filter(t => t.type === 'expense' && t.spendingBucket === 'fixed')
+    .reduce((sum, t) => sum + t.amount, 0), [monthTransactions]);
+
+  const nonMonthlyExpenses = useMemo(() => monthTransactions
+    .filter(t => t.type === 'expense' && t.spendingBucket === 'non-monthly')
+    .reduce((sum, t) => sum + t.amount, 0), [monthTransactions]);
+
+  const flexibleExpenses = useMemo(() => {
+    return Math.max(0, totalExpenses - fixedExpenses - nonMonthlyExpenses);
+  }, [totalExpenses, fixedExpenses, nonMonthlyExpenses]);
+
+  const flexNumber = useMemo(() => totalIncome - fixedExpenses - nonMonthlyExpenses, [totalIncome, fixedExpenses, nonMonthlyExpenses]);
+  const savingsAmount = useMemo(() => totalIncome - totalExpenses, [totalIncome, totalExpenses]);
+  const savingsRate = useMemo(() => totalIncome > 0 ? (savingsAmount / totalIncome) * 100 : 0, [totalIncome, savingsAmount]);
+
+  const unclassifiedCount = useMemo(() => transactions
+    .filter(t => t.type === 'expense' && !t.spendingBucket).length, [transactions]);
 
   const availableMonths = useMemo(() => {
     const monthsSet = new Set<string>(['2026-05', '2026-06', '2026-07']);
@@ -460,21 +491,28 @@ export function useTransactions(
     const pacingStatus: 'under_budget' | 'on_track' | 'over_budget' = 'on_track';
 
     // 4. Multi-Month Cash Flow Summaries
-    const monthGroupMap: Record<string, { income: number; expense: number }> = {};
+    const monthGroupMap: Record<string, { income: number; expense: number; fixedExpense: number; flexibleExpense: number; nonMonthlyExpense: number }> = {};
     availableMonths.forEach(m => {
-      monthGroupMap[m] = { income: 0, expense: 0 };
+      monthGroupMap[m] = { income: 0, expense: 0, fixedExpense: 0, flexibleExpense: 0, nonMonthlyExpense: 0 };
     });
 
     transactions.forEach(t => {
       if (t.date && t.date.length >= 7) {
         const mKey = t.date.substring(0, 7);
         if (!monthGroupMap[mKey]) {
-          monthGroupMap[mKey] = { income: 0, expense: 0 };
+          monthGroupMap[mKey] = { income: 0, expense: 0, fixedExpense: 0, flexibleExpense: 0, nonMonthlyExpense: 0 };
         }
         const amt = typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount || 0));
         const validAmt = isNaN(amt) ? 0 : amt;
         if (t.type === 'expense') {
           monthGroupMap[mKey].expense += validAmt;
+          if (t.spendingBucket === 'fixed') {
+            monthGroupMap[mKey].fixedExpense += validAmt;
+          } else if (t.spendingBucket === 'non-monthly') {
+            monthGroupMap[mKey].nonMonthlyExpense += validAmt;
+          } else {
+            monthGroupMap[mKey].flexibleExpense += validAmt;
+          }
         } else if (t.type === 'income') {
           monthGroupMap[mKey].income += validAmt;
         }
@@ -492,6 +530,9 @@ export function useTransactions(
           formattedMonth: formatMonthLabel(mKey),
           income: Math.round(data.income),
           expense: Math.round(data.expense),
+          fixedExpense: Math.round(data.fixedExpense),
+          flexibleExpense: Math.round(data.flexibleExpense),
+          nonMonthlyExpense: Math.round(data.nonMonthlyExpense),
           net: Math.round(net),
           savingsRate
         };
@@ -800,6 +841,22 @@ export function useTransactions(
     }
   };
 
+  const backfillSpendingBuckets = useCallback(async (classifiedMap: Record<string, SpendingBucket>) => {
+    if (!activeProject || !storageAdapter) return false;
+    const updated = transactions.map(t => {
+      if (classifiedMap[t.id]) {
+        const bucket = classifiedMap[t.id];
+        const labels = ensureLabelsArray(t.labels);
+        const newLabels = labels.includes(bucket) ? labels : [...labels, bucket];
+        return { ...t, spendingBucket: bucket, labels: newLabels };
+      }
+      return t;
+    });
+    const modified = updated.filter((t, idx) => t !== transactions[idx]);
+    if (modified.length === 0) return true;
+    return await executeSaveTransactions(modified);
+  }, [activeProject, storageAdapter, transactions, executeSaveTransactions]);
+
   return {
     transactions,
     setTransactions,
@@ -807,6 +864,8 @@ export function useTransactions(
     setSelectedMonth,
     selectedTagFilter,
     setSelectedTagFilter,
+    selectedBucket,
+    setSelectedBucket,
     sortBy,
     setSortBy,
     filteredTransactions,
@@ -814,6 +873,14 @@ export function useTransactions(
     totalExpenses,
     totalIncome,
     totalTransfers,
+    fixedExpenses,
+    flexibleExpenses,
+    nonMonthlyExpenses,
+    flexNumber,
+    savingsAmount,
+    savingsRate,
+    unclassifiedCount,
+    backfillSpendingBuckets,
     availableMonths,
     availableTags,
     trendPathData,

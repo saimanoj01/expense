@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { X, Save, Sparkles } from 'lucide-react';
+import { X, Save, Sparkles, Shield, ShoppingBag, Calendar } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { Category, Transaction, DEFAULT_CATEGORIES } from '../../services/storage';
+import { Category, Transaction, DEFAULT_CATEGORIES, SpendingBucket } from '../../services/storage';
 import { computeTxHash } from '../../utils/crypto';
-import { suggestCategory, detectTransactionType } from '../../utils/categorizer';
+import { suggestCategory, detectTransactionType, suggestSpendingBucket } from '../../utils/categorizer';
 
 interface TransactionModalProps {
   showTxnModal: boolean;
@@ -31,6 +31,8 @@ export function TransactionModal({
   setShowCategoryManagerModal
 }: TransactionModalProps) {
   const [txnType, setTxnType] = useState<'income' | 'expense' | 'transfer'>('expense');
+  const [txnBucket, setTxnBucket] = useState<SpendingBucket>('flexible');
+  const [userManuallySelectedBucket, setUserManuallySelectedBucket] = useState(false);
   const [txnAmount, setTxnAmount] = useState('');
   const [txnDate, setTxnDate] = useState('');
   const [txnCategory, setTxnCategory] = useState('');
@@ -46,12 +48,18 @@ export function TransactionModal({
 
   useEffect(() => {
     if (showTxnModal) {
-      setTxnType(initialData?.type || 'expense');
+      const type = initialData?.type || 'expense';
+      setTxnType(type);
       setTxnAmount(initialData?.amount?.toString() || '');
       setTxnDate(initialData?.date || '');
-      setTxnCategory(initialData?.category || categories[0]?.id || 'food');
+      const cat = initialData?.category || categories[0]?.id || 'food';
+      setTxnCategory(cat);
       setTxnSubCategory(initialData?.subCategory || null);
-      setTxnDescription(initialData?.description || '');
+      const desc = initialData?.description || '';
+      setTxnDescription(desc);
+      const bucket = initialData?.spendingBucket || suggestSpendingBucket(desc, cat);
+      setTxnBucket(bucket);
+      setUserManuallySelectedBucket(!!editingTxnId && !!initialData?.spendingBucket);
       const rawLabels = Array.isArray(initialData?.labels) ? initialData.labels : typeof initialData?.labels === 'string' ? [initialData.labels] : [];
       setTxnLabels(rawLabels.join(', '));
       setUserManuallySelectedCategory(!!editingTxnId);
@@ -91,6 +99,10 @@ export function TransactionModal({
       .map(s => s.trim().toLowerCase())
       .filter(Boolean);
 
+    if (txnType === 'expense' && txnBucket && !parsedLabels.includes(txnBucket)) {
+      parsedLabels.push(txnBucket);
+    }
+
     const hash = await computeTxHash(txnDate, txnDescription, amtNum, txnType);
     const targetId = editingTxnId || (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2));
     
@@ -101,6 +113,7 @@ export function TransactionModal({
       subCategory: txnSubCategory,
       amount: amtNum,
       type: txnType,
+      spendingBucket: txnType === 'expense' ? txnBucket : undefined,
       description: txnDescription,
       notes: txnNotes,
       labels: parsedLabels,
@@ -168,6 +181,51 @@ export function TransactionModal({
               Transfer
             </button>
           </div>
+
+          {txnType === 'expense' && (
+            <div>
+              <div className="flex justify-between items-center mb-1">
+                <label className="block text-xs font-bold text-muted-foreground uppercase tracking-wider">Spending Bucket</label>
+                {!userManuallySelectedBucket && txnDescription.trim() && (
+                  <span className="text-[11px] text-primary font-semibold flex items-center gap-1">
+                    <Sparkles className="w-3 h-3" /> Auto-suggested
+                  </span>
+                )}
+              </div>
+              <div className="flex gap-1.5 p-1 bg-card/50 rounded-xl border border-border/50" data-testid="transaction-bucket-toggle">
+                <button
+                  type="button"
+                  className={`flex-1 py-1.5 px-2 rounded-lg font-bold text-xs flex items-center justify-center gap-1 transition-all ${txnBucket === 'fixed' ? 'bg-blue-500 text-white shadow-md' : 'text-muted-foreground hover:text-foreground'}`}
+                  onClick={() => {
+                    setTxnBucket('fixed');
+                    setUserManuallySelectedBucket(true);
+                  }}
+                >
+                  <Shield className="w-3.5 h-3.5" /> Fixed
+                </button>
+                <button
+                  type="button"
+                  className={`flex-1 py-1.5 px-2 rounded-lg font-bold text-xs flex items-center justify-center gap-1 transition-all ${txnBucket === 'flexible' ? 'bg-emerald-500 text-white shadow-md' : 'text-muted-foreground hover:text-foreground'}`}
+                  onClick={() => {
+                    setTxnBucket('flexible');
+                    setUserManuallySelectedBucket(true);
+                  }}
+                >
+                  <ShoppingBag className="w-3.5 h-3.5" /> Flexible
+                </button>
+                <button
+                  type="button"
+                  className={`flex-1 py-1.5 px-2 rounded-lg font-bold text-xs flex items-center justify-center gap-1 transition-all ${txnBucket === 'non-monthly' ? 'bg-amber-500 text-white shadow-md' : 'text-muted-foreground hover:text-foreground'}`}
+                  onClick={() => {
+                    setTxnBucket('non-monthly');
+                    setUserManuallySelectedBucket(true);
+                  }}
+                >
+                  <Calendar className="w-3.5 h-3.5" /> Non-Monthly
+                </button>
+              </div>
+            </div>
+          )}
           
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -212,7 +270,14 @@ export function TransactionModal({
                   }
                   if (!userManuallySelectedCategory) {
                     const suggested = suggestCategory(val, '', categories);
-                    if (suggested) setTxnCategory(suggested);
+                    if (suggested) {
+                      setTxnCategory(suggested);
+                      if (!userManuallySelectedBucket) {
+                        setTxnBucket(suggestSpendingBucket(val, suggested));
+                      }
+                    }
+                  } else if (!userManuallySelectedBucket) {
+                    setTxnBucket(suggestSpendingBucket(val, txnCategory));
                   }
                 }
               }}

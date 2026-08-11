@@ -479,15 +479,66 @@ export function TrendChart({
                         className="fill-emerald-500/80 group-hover:fill-emerald-400 transition-colors"
                       />
 
-                      {/* Expense Bar (Rose) */}
-                      <rect
-                        x={groupX + groupWidth / 2 + 2}
-                        y={expenseY}
-                        width={barW}
-                        height={Math.max(2, expenseH)}
-                        rx="3"
-                        className="fill-rose-500/80 group-hover:fill-rose-400 transition-colors"
-                      />
+                      {/* Stacked Expense Bar (Fixed / Flexible / Non-Monthly) */}
+                      {(() => {
+                        const expX = groupX + groupWidth / 2 + 2;
+                        const fixedH = ((cf.fixedExpense || 0) / maxScale) * 130;
+                        const flexH = ((cf.flexibleExpense || 0) / maxScale) * 130;
+                        const nonMonthH = ((cf.nonMonthlyExpense || 0) / maxScale) * 130;
+
+                        if (fixedH > 0 || flexH > 0 || nonMonthH > 0) {
+                          let currentY = 165;
+                          return (
+                            <g>
+                              {/* Fixed Segment (Blue) */}
+                              {fixedH > 0 && (
+                                <rect
+                                  x={expX}
+                                  y={currentY - fixedH}
+                                  width={barW}
+                                  height={fixedH}
+                                  rx="2"
+                                  className="fill-blue-500/90 group-hover:fill-blue-400 transition-colors"
+                                />
+                              )}
+                              {/* Flexible Segment (Emerald) */}
+                              {flexH > 0 && (
+                                <rect
+                                  x={expX}
+                                  y={currentY - fixedH - flexH}
+                                  width={barW}
+                                  height={flexH}
+                                  rx="2"
+                                  className="fill-emerald-500/90 group-hover:fill-emerald-400 transition-colors"
+                                />
+                              )}
+                              {/* Non-Monthly Segment (Amber) */}
+                              {nonMonthH > 0 && (
+                                <rect
+                                  x={expX}
+                                  y={currentY - fixedH - flexH - nonMonthH}
+                                  width={barW}
+                                  height={nonMonthH}
+                                  rx="2"
+                                  className="fill-amber-500/90 group-hover:fill-amber-400 transition-colors"
+                                />
+                              )}
+                            </g>
+                          );
+                        }
+
+                        // Fallback single bar if bucket details unavailable
+                        return (
+                          <rect
+                            x={expX}
+                            y={expenseY}
+                            width={barW}
+                            height={Math.max(2, expenseH)}
+                            rx="3"
+                            className="fill-rose-500/80 group-hover:fill-rose-400 transition-colors"
+                          />
+                        );
+                      })()}
 
                       {/* Month Label */}
                       <text
@@ -521,7 +572,14 @@ export function TrendChart({
                   <p className="text-xs font-bold text-foreground mb-1">{hoveredCashFlowMonth.formattedMonth}</p>
                   <div className="space-y-0.5 text-xs">
                     <p className="text-emerald-400 font-medium">Income: ${hoveredCashFlowMonth.income.toLocaleString()}</p>
-                    <p className="text-rose-400 font-medium">Expenses: ${hoveredCashFlowMonth.expense.toLocaleString()}</p>
+                    <p className="text-rose-400 font-medium">Total Expenses: ${hoveredCashFlowMonth.expense.toLocaleString()}</p>
+                    {hoveredCashFlowMonth.fixedExpense !== undefined && (
+                      <div className="pl-2 border-l border-border text-[11px] text-muted-foreground space-y-0.5 py-0.5">
+                        <p className="text-blue-400">🔵 Fixed: ${hoveredCashFlowMonth.fixedExpense.toLocaleString()}</p>
+                        <p className="text-emerald-400">🟢 Flexible: ${(hoveredCashFlowMonth.flexibleExpense || 0).toLocaleString()}</p>
+                        <p className="text-amber-400">🟠 Non-Monthly: ${(hoveredCashFlowMonth.nonMonthlyExpense || 0).toLocaleString()}</p>
+                      </div>
+                    )}
                     <p className={`font-extrabold ${hoveredCashFlowMonth.net >= 0 ? 'text-teal-400' : 'text-rose-500'}`}>
                       Net Savings: ${hoveredCashFlowMonth.net.toLocaleString()} ({hoveredCashFlowMonth.savingsRate}%)
                     </p>
@@ -533,16 +591,23 @@ export function TrendChart({
           </div>
 
           {/* Bar Chart Legend */}
-          <div className="flex items-center justify-center gap-6 mt-4 pt-3 border-t border-border/40 text-xs text-muted-foreground">
-            <div className="flex items-center gap-2">
-              <span className="w-3 h-3 bg-emerald-500 rounded-sm"></span>
+          <div className="flex flex-wrap items-center justify-center gap-4 mt-4 pt-3 border-t border-border/40 text-xs text-muted-foreground">
+            <div className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 bg-emerald-500 rounded-sm"></span>
               <span>Income</span>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="w-3 h-3 bg-rose-500 rounded-sm"></span>
-              <span>Expenses</span>
+            <div className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 bg-blue-500 rounded-sm"></span>
+              <span>Fixed</span>
             </div>
-            <span className="text-[11px] text-muted-foreground/80 italic">💡 Click any month bar to inspect its daily cumulative pacing</span>
+            <div className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 bg-emerald-500 rounded-sm"></span>
+              <span>Flexible</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="w-2.5 h-2.5 bg-amber-500 rounded-sm"></span>
+              <span>Non-Monthly</span>
+            </div>
           </div>
         </div>
       )}

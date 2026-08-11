@@ -1,3 +1,5 @@
+export type SpendingBucket = 'fixed' | 'flexible' | 'non-monthly';
+
 export interface Transaction {
   id: string;          // Unique UUID (generated on creation)
   date: string;        // ISO 8601 Date String (YYYY-MM-DD)
@@ -9,6 +11,7 @@ export interface Transaction {
   notes: string;       // Extended details/comments
   labels: string[];    // Array of tags/labels
   hash: string;        // SHA-256 hash of transaction properties used for deduplication
+  spendingBucket?: SpendingBucket; // Spending classification bucket
 }
 
 export interface Category {
@@ -861,11 +864,11 @@ export class GoogleSheetsAdapter implements StorageAdapter {
 
     let valueRanges: any[] = [];
     try {
-      const res = await this.fetchApi(`https://sheets.googleapis.com/v4/spreadsheets/${project.spreadsheetId}/values:batchGet?ranges=Transactions!A:J&ranges=Categories!A:E&ranges=Budgets!A:B&ranges=Locks!A:C&ranges=Notes!A:B`);
+      const res = await this.fetchApi(`https://sheets.googleapis.com/v4/spreadsheets/${project.spreadsheetId}/values:batchGet?ranges=Transactions!A:K&ranges=Categories!A:E&ranges=Budgets!A:B&ranges=Locks!A:C&ranges=Notes!A:B`);
       valueRanges = res.valueRanges || [];
     } catch {
       // Fallback if Notes tab doesn't exist yet
-      const res = await this.fetchApi(`https://sheets.googleapis.com/v4/spreadsheets/${project.spreadsheetId}/values:batchGet?ranges=Transactions!A:J&ranges=Categories!A:E&ranges=Budgets!A:B&ranges=Locks!A:C`);
+      const res = await this.fetchApi(`https://sheets.googleapis.com/v4/spreadsheets/${project.spreadsheetId}/values:batchGet?ranges=Transactions!A:K&ranges=Categories!A:E&ranges=Budgets!A:B&ranges=Locks!A:C`);
       valueRanges = res.valueRanges || [];
     }
 
@@ -883,8 +886,10 @@ export class GoogleSheetsAdapter implements StorageAdapter {
       } else if (typeof rawL === 'string' && rawL.trim()) {
         labels = [rawL.trim()];
       }
+      const rawBucket = r[10];
+      const validBucket: SpendingBucket | undefined = (rawBucket === 'fixed' || rawBucket === 'flexible' || rawBucket === 'non-monthly') ? rawBucket : undefined;
       return {
-        id: r[0], date: r[1], category: r[2], subCategory: r[3] || null, amount: parseFloat(r[4]), type: r[5], description: r[6], notes: r[7] || '', labels, hash: r[9] || ''
+        id: r[0], date: r[1], category: r[2], subCategory: r[3] || null, amount: parseFloat(r[4]), type: r[5], description: r[6], notes: r[7] || '', labels, hash: r[9] || '', spendingBucket: validBucket
       };
     }).filter((t: any) => t.id);
 
@@ -936,9 +941,9 @@ export class GoogleSheetsAdapter implements StorageAdapter {
   }
 
   private async saveTransactionsToSheet(projectId: string, txs: Transaction[]) {
-    const header = ['id', 'date', 'category', 'subCategory', 'amount', 'type', 'description', 'notes', 'labels', 'hash'];
-    const rows = txs.map(t => [t.id, t.date, t.category, t.subCategory || '', t.amount, t.type, t.description, t.notes, JSON.stringify(t.labels), t.hash]);
-    await this.writeSheet(projectId, 'Transactions!A:J', [header, ...rows]);
+    const header = ['id', 'date', 'category', 'subCategory', 'amount', 'type', 'description', 'notes', 'labels', 'hash', 'spendingBucket'];
+    const rows = txs.map(t => [t.id, t.date, t.category, t.subCategory || '', t.amount, t.type, t.description, t.notes, JSON.stringify(t.labels), t.hash, t.spendingBucket || '']);
+    await this.writeSheet(projectId, 'Transactions!A:K', [header, ...rows]);
   }
 
   private async saveCategoriesToSheet(projectId: string, cats: Category[]) {

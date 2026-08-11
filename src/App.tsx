@@ -1,9 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
+import { Sparkles, Loader2 } from 'lucide-react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { AppProvider, useApp } from './context/AppContext';
 import { useHashRouting } from './hooks/useHashRouting';
-import { Transaction } from './services/storage';
+import { Transaction, SpendingBucket } from './services/storage';
+import { classifyTransactionsWithLLM } from './services/llmCategorizer';
+import { hasGeminiApiKey } from './services/ai/geminiClient';
+import { suggestSpendingBucket } from './utils/categorizer';
 
 // Layout & UI
 import { AppLayout } from './components/layout/AppLayout';
@@ -69,6 +73,7 @@ function AppInner() {
   const [showShareModal, setShowShareModal] = useState(false);
   const [showGeminiKeyModal, setShowGeminiKeyModal] = useState(false);
   const [locks, setLocks] = useState<any[]>([]);
+  const [isBackfilling, setIsBackfilling] = useState(false);
 
   // Modals
   const [showTxnModal, setShowTxnModal] = useState(false);
@@ -232,12 +237,85 @@ function AppInner() {
           </div>
         ) : activeProject ? (
           <>
+            {/* Backfill Banner */}
+            {txnHooks.unclassifiedCount > 0 && (
+              <div className="mb-6 p-4 rounded-2xl bg-gradient-to-r from-primary/10 via-primary/5 to-card border border-primary/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-lg shadow-primary/5" data-testid="backfill-banner">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-xl bg-primary/20 text-primary shrink-0">
+                    <Sparkles className="w-5 h-5 animate-pulse" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-sm text-foreground flex items-center gap-2">
+                      Classify your existing expenses
+                      <span className="px-2 py-0.5 rounded-full text-[10px] bg-primary/20 text-primary font-extrabold uppercase">{txnHooks.unclassifiedCount} unclassified</span>
+                    </h4>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Auto-assign your transactions into Fixed, Flexible, or Non-Monthly to unlock your Flex Number.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={async () => {
+                    if (!activeProject || !storageAdapter) return;
+                    setIsBackfilling(true);
+                    try {
+                      const unclassified = txnHooks.transactions.filter(t => t.type === 'expense' && !t.spendingBucket);
+                      if (unclassified.length === 0) return;
+
+                      const classificationMap: Record<string, SpendingBucket> = {};
+                      if (hasGeminiApiKey()) {
+                        const aiResults = await classifyTransactionsWithLLM(unclassified, budgetHooks.categories);
+                        for (const [id, res] of Object.entries(aiResults)) {
+                          if (res.spendingBucket) {
+                            classificationMap[id] = res.spendingBucket;
+                          } else {
+                            const t = unclassified.find(item => item.id === id);
+                            classificationMap[id] = suggestSpendingBucket(t?.description || '', res.categoryId);
+                          }
+                        }
+                      } else {
+                        for (const t of unclassified) {
+                          classificationMap[t.id] = suggestSpendingBucket(t.description, t.category);
+                        }
+                      }
+
+                      await txnHooks.backfillSpendingBuckets(classificationMap);
+                      showToast(`Successfully classified ${Object.keys(classificationMap).length} expenses!`);
+                    } catch (err: any) {
+                      showToast(err.message || 'Backfill classification failed');
+                    } finally {
+                      setIsBackfilling(false);
+                    }
+                  }}
+                  disabled={isBackfilling}
+                  data-testid="backfill-btn"
+                  className="px-4 py-2 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-bold shadow-md shadow-primary/20 transition-all shrink-0 flex items-center gap-2 disabled:opacity-50"
+                >
+                  {isBackfilling ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" /> Classifying...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4" /> Classify Expenses with AI
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
+
             <KpiGrid
               totalBudget={budgetHooks.totalBudget}
               totalExpenses={txnHooks.totalExpenses}
               totalIncome={txnHooks.totalIncome}
               totalTransfers={txnHooks.totalTransfers}
               budgetRemaining={budgetHooks.totalBudget - txnHooks.totalExpenses}
+              fixedExpenses={txnHooks.fixedExpenses}
+              flexibleExpenses={txnHooks.flexibleExpenses}
+              nonMonthlyExpenses={txnHooks.nonMonthlyExpenses}
+              flexNumber={txnHooks.flexNumber}
+              savingsAmount={txnHooks.savingsAmount}
+              savingsRate={txnHooks.savingsRate}
             />
 
             <div className="flex flex-col lg:flex-row gap-6 mb-8">
@@ -271,10 +349,12 @@ function AppInner() {
               availableMonths={txnHooks.availableMonths}
               availableTags={txnHooks.availableTags}
               selectedTagFilter={txnHooks.selectedTagFilter}
+              selectedBucket={txnHooks.selectedBucket}
               sortBy={txnHooks.sortBy}
               isCurrentMonthLocked={isCurrentMonthLocked}
               setSelectedMonth={txnHooks.setSelectedMonth}
               setSelectedTagFilter={txnHooks.setSelectedTagFilter}
+              setSelectedBucket={txnHooks.setSelectedBucket}
               setSortBy={txnHooks.setSortBy}
               handleOpenAddTxn={handleOpenAddTxn}
               handleCsvFileUpload={csvHooks.handleCsvFileUpload}

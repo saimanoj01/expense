@@ -1,10 +1,11 @@
-import { Category, DEFAULT_CATEGORIES } from './storage';
-import { suggestCategory } from '../utils/categorizer';
+import { Category, DEFAULT_CATEGORIES, SpendingBucket } from './storage';
+import { suggestCategory, suggestSpendingBucket } from '../utils/categorizer';
 import { callGemini, hasGeminiApiKey } from './ai/geminiClient';
 
 export interface ClassifiedResultItem {
   categoryId: string;
   subCategoryId?: string;
+  spendingBucket?: SpendingBucket;
 }
 
 export type ClassificationResultMap = Record<string, ClassifiedResultItem>;
@@ -13,7 +14,7 @@ export type ClassificationResultMap = Record<string, ClassifiedResultItem>;
  * Service interface for Gemini LLM Auto-Classification.
  * Formats categories and transactions into a structured JSON prompt,
  * calls gemini-3.5-flash-lite via callGemini(), and maps the returned
- * parent and sub-category selections.
+ * parent, sub-category, and spending bucket selections.
  */
 export async function classifyTransactionsWithLLM(
   items: { id: string; description: string; amount?: number; type?: 'income' | 'expense' | 'transfer'; rawCategory?: string }[],
@@ -45,13 +46,17 @@ export async function classifyTransactionsWithLLM(
   }).join('\n\n');
 
   const systemInstruction = `You are a precise personal finance transaction categorizer.
-Your goal is to categorize each given financial transaction into the single best matching Parent Category ID, and if applicable, a Sub-Category ID from the provided category list.
+Your goal is to categorize each given financial transaction into:
+1. The single best matching Parent Category ID, and optional Sub-Category ID.
+2. A spendingBucket classification:
+   - "fixed": Unavoidable recurring obligations (mortgage, rent, utilities, insurance, subscriptions, loan payments).
+   - "flexible": Day-to-day discretionary spending (groceries, dining, coffee, shopping, entertainment, transport).
+   - "non-monthly": Irregular but inevitable costs (annual fees, vehicle registration, property tax, holiday gifts, home/car repairs).
 
 CRITICAL RULES:
 1. ONLY return categoryId and subCategoryId values that EXACTLY match one of the Category IDs listed in the provided hierarchy.
-2. If a sub-category matches, subCategoryId MUST be a valid child ID of the chosen categoryId.
-3. If no sub-category fits well, omit subCategoryId or leave it null/empty.
-4. Do NOT invent new category IDs.`;
+2. spendingBucket MUST be one of: "fixed", "flexible", or "non-monthly".
+3. Do NOT invent new category IDs.`;
 
   const jsonSchema = {
     type: 'OBJECT',
@@ -63,9 +68,10 @@ CRITICAL RULES:
           properties: {
             id: { type: 'STRING' },
             categoryId: { type: 'STRING' },
-            subCategoryId: { type: 'STRING' }
+            subCategoryId: { type: 'STRING' },
+            spendingBucket: { type: 'STRING', enum: ['fixed', 'flexible', 'non-monthly'] }
           },
-          required: ['id', 'categoryId']
+          required: ['id', 'categoryId', 'spendingBucket']
         }
       }
     },
@@ -97,7 +103,7 @@ CRITICAL RULES:
         model: 'gemini-3.5-flash-lite',
         jsonSchema,
         temperature: 0.1
-      })) as { classifications?: { id: string; categoryId: string; subCategoryId?: string }[] };
+      })) as { classifications?: { id: string; categoryId: string; subCategoryId?: string; spendingBucket?: SpendingBucket }[] };
 
       if (response && Array.isArray(response.classifications)) {
         for (const res of response.classifications) {
@@ -117,31 +123,40 @@ CRITICAL RULES:
             }
           }
 
+          const bucket: SpendingBucket = (res.spendingBucket === 'fixed' || res.spendingBucket === 'flexible' || res.spendingBucket === 'non-monthly')
+            ? res.spendingBucket
+            : suggestSpendingBucket(originalItem?.description || '', finalParent);
+
           resultMap[res.id] = {
             categoryId: finalParent,
-            subCategoryId: finalSub
+            subCategoryId: finalSub,
+            spendingBucket: bucket
           };
         }
       }
     } catch (err) {
       console.error(`Gemini classification failed for batch starting at index ${i}:`, err);
       batchErrors.push(err instanceof Error ? err : new Error(String(err)));
-      // Fallback: use local keyword categorizer for this batch, then continue with remaining batches
+      // Fallback: use local keyword categorizer for this batch
       for (const item of batch) {
         if (!resultMap[item.id]) {
+          const cat = suggestCategory(item.description, item.rawCategory, categories);
           resultMap[item.id] = {
-            categoryId: suggestCategory(item.description, item.rawCategory, categories)
+            categoryId: cat,
+            spendingBucket: suggestSpendingBucket(item.description, cat)
           };
         }
       }
     }
   }
 
-  // Ensure all requested item IDs have a result (covers items the model may have skipped)
+  // Ensure all requested item IDs have a result
   for (const item of items) {
     if (!resultMap[item.id]) {
+      const cat = suggestCategory(item.description, item.rawCategory, categories);
       resultMap[item.id] = {
-        categoryId: suggestCategory(item.description, item.rawCategory, categories)
+        categoryId: cat,
+        spendingBucket: suggestSpendingBucket(item.description, cat)
       };
     }
   }

@@ -187,9 +187,22 @@ export function TransactionItem({
       <div className="flex items-center gap-4 pl-4 flex-shrink-0">
         {(() => {
           const { formattedAmount, colorClass } = formatTransactionAmount(transaction.amount, transaction.type);
+          const bucket = transaction.spendingBucket;
+          const dotColor = bucket === 'fixed' ? 'bg-blue-500' : bucket === 'non-monthly' ? 'bg-amber-500' : bucket === 'flexible' ? 'bg-emerald-500' : null;
+          const bucketLabel = bucket === 'fixed' ? 'Fixed Expense' : bucket === 'non-monthly' ? 'Non-Monthly Expense' : bucket === 'flexible' ? 'Flexible Expense' : null;
+
           return (
-            <div className={`font-bold tabular-nums text-right ${colorClass}`}>
-              {formattedAmount}
+            <div className="flex items-center gap-2">
+              {dotColor && transaction.type === 'expense' && (
+                <span 
+                  className={`w-2.5 h-2.5 rounded-full ${dotColor} shrink-0`} 
+                  title={bucketLabel || ''} 
+                  data-testid={`bucket-dot-${transaction.id}-${bucket}`}
+                />
+              )}
+              <div className={`font-bold tabular-nums text-right ${colorClass}`}>
+                {formattedAmount}
+              </div>
             </div>
           );
         })()}

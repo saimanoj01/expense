@@ -7,10 +7,12 @@ interface TransactionToolbarProps {
   availableMonths: string[];
   availableTags?: string[];
   selectedTagFilter?: string | null;
+  selectedBucket?: 'fixed' | 'flexible' | 'non-monthly' | null;
   sortBy?: string;
   isCurrentMonthLocked: boolean;
   setSelectedMonth: (m: string) => void;
   setSelectedTagFilter?: (t: string | null) => void;
+  setSelectedBucket?: (b: 'fixed' | 'flexible' | 'non-monthly' | null) => void;
   setSortBy?: (s: string) => void;
   handleOpenAddTxn: () => void;
   handleCsvFileUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
@@ -24,10 +26,12 @@ export function TransactionToolbar({
   availableMonths,
   availableTags = [],
   selectedTagFilter,
+  selectedBucket,
   sortBy,
   isCurrentMonthLocked,
   setSelectedMonth,
   setSelectedTagFilter,
+  setSelectedBucket,
   setSortBy,
   handleOpenAddTxn,
   handleCsvFileUpload,
@@ -74,6 +78,39 @@ export function TransactionToolbar({
               <option value="cat-asc" className="bg-card text-card-foreground">Category: A to Z</option>
               <option value="cat-desc" className="bg-card text-card-foreground">Category: Z to A</option>
             </select>
+          </div>
+        )}
+
+        {/* Bucket Filter Chips */}
+        {setSelectedBucket && (
+          <div className="flex items-center gap-1 bg-card/40 p-1 rounded-xl border border-border/50" data-testid="toolbar-bucket-filters">
+            <button
+              onClick={() => setSelectedBucket(selectedBucket === 'fixed' ? null : 'fixed')}
+              data-testid="filter-bucket-fixed"
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${
+                selectedBucket === 'fixed' ? 'bg-blue-500 text-white shadow-sm' : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              🔵 Fixed
+            </button>
+            <button
+              onClick={() => setSelectedBucket(selectedBucket === 'flexible' ? null : 'flexible')}
+              data-testid="filter-bucket-flexible"
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${
+                selectedBucket === 'flexible' ? 'bg-emerald-500 text-white shadow-sm' : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              🟢 Flexible
+            </button>
+            <button
+              onClick={() => setSelectedBucket(selectedBucket === 'non-monthly' ? null : 'non-monthly')}
+              data-testid="filter-bucket-non-monthly"
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${
+                selectedBucket === 'non-monthly' ? 'bg-amber-500 text-white shadow-sm' : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              🟠 Non-Monthly
+            </button>
           </div>
         )}
         

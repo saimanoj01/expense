@@ -124,6 +124,8 @@ export function BudgetUtilization({
   const overallKey = `${selectedMonth}:__overall__`;
   const overallNote = isSpecificMonth ? budgetNotes[overallKey] : undefined;
 
+  const [activeBucketTab, setActiveBucketTab] = useState<'flexible' | 'fixed' | 'non-monthly' | 'all'>('flexible');
+
   return (
     <motion.div 
       initial={{ opacity: 0, scale: 0.95 }}
@@ -164,6 +166,34 @@ export function BudgetUtilization({
             </button>
           )}
         </div>
+      </div>
+
+      {/* Bucket Filter Tabs */}
+      <div className="flex items-center gap-1.5 mb-4 p-1 bg-card/50 rounded-xl border border-border/50" data-testid="budget-bucket-tabs">
+        <button
+          onClick={() => setActiveBucketTab('flexible')}
+          className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all ${activeBucketTab === 'flexible' ? 'bg-emerald-500 text-white shadow-md' : 'text-muted-foreground hover:text-foreground'}`}
+        >
+          🟢 Flexible
+        </button>
+        <button
+          onClick={() => setActiveBucketTab('fixed')}
+          className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all ${activeBucketTab === 'fixed' ? 'bg-blue-500 text-white shadow-md' : 'text-muted-foreground hover:text-foreground'}`}
+        >
+          🔵 Fixed
+        </button>
+        <button
+          onClick={() => setActiveBucketTab('non-monthly')}
+          className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all ${activeBucketTab === 'non-monthly' ? 'bg-amber-500 text-white shadow-md' : 'text-muted-foreground hover:text-foreground'}`}
+        >
+          🟠 Non-Monthly
+        </button>
+        <button
+          onClick={() => setActiveBucketTab('all')}
+          className={`py-1.5 px-3 rounded-lg text-xs font-bold transition-all ${activeBucketTab === 'all' ? 'bg-primary text-primary-foreground shadow-md' : 'text-muted-foreground hover:text-foreground'}`}
+        >
+          All
+        </button>
       </div>
 
       {/* Monthly Overview Note Banner (Item 5: Mood tags & Whole Month Note) */}

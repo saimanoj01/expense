@@ -317,6 +317,7 @@ export function CsvImportWizard({
                       <th className="p-3 font-medium">Date</th>
                       <th className="p-3 font-medium">Description</th>
                       <th className="p-3 font-medium">Category</th>
+                      <th className="p-3 font-medium">Bucket</th>
                       <th className="p-3 font-medium">Tags</th>
                       <th className="p-3 font-medium text-right">Amount</th>
                       <th className="p-3 font-medium">Type</th>
@@ -390,6 +391,31 @@ export function CsvImportWizard({
                                 </select>
                               );
                             })()}
+                          </td>
+                          <td className="p-3">
+                            {item.type === 'expense' ? (
+                              <select
+                                value={item.spendingBucket || 'flexible'}
+                                onChange={(e) => {
+                                  const bucket = e.target.value as 'fixed' | 'flexible' | 'non-monthly';
+                                  setParsedCsvItems(prev => {
+                                    const next = [...prev];
+                                    const curLabels = next[idx].labels || [];
+                                    const updatedLabels = curLabels.filter(l => l !== 'fixed' && l !== 'flexible' && l !== 'non-monthly');
+                                    updatedLabels.push(bucket);
+                                    next[idx] = { ...next[idx], spendingBucket: bucket, labels: updatedLabels };
+                                    return next;
+                                  });
+                                }}
+                                className="bg-card/70 border border-border/70 rounded-lg px-2 py-1 text-xs font-semibold focus:ring-1 focus:ring-primary outline-none"
+                              >
+                                <option value="flexible" className="bg-card text-card-foreground">🟢 Flexible</option>
+                                <option value="fixed" className="bg-card text-card-foreground">🔵 Fixed</option>
+                                <option value="non-monthly" className="bg-card text-card-foreground">🟠 Non-Monthly</option>
+                              </select>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">—</span>
+                            )}
                           </td>
                           <td className="p-3 relative">
                             <div className="flex flex-wrap items-center gap-1">

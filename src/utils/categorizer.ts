@@ -96,3 +96,49 @@ export function suggestCategory(
   if (availableCategories.some(c => c.id === 'misc')) return 'misc';
   return availableCategories[0]?.id || 'misc';
 }
+
+const FIXED_KEYWORDS = [
+  'mortgage', 'rent', 'lease', 'landlord', 'insurance', 'loan', 'car payment', 'auto loan',
+  'utility', 'electric', 'water', 'power', 'internet', 'wifi', 'comcast', 'verizon', 'at&t',
+  'pge', 'pg&e', 'trash', 'sewer', 'hoa', 'tuition', 'daycare', 'subscription', 'monthly fee'
+];
+
+const NON_MONTHLY_KEYWORDS = [
+  'annual', 'yearly', 'quarterly', 'semi-annual', 'registration', 'dmv', 'renewal',
+  'property tax', 'tax return', 'gift', 'holiday', 'christmas', 'birthday', 'vacation',
+  'car repair', 'home repair'
+];
+
+/**
+ * Suggests spending bucket ('fixed', 'flexible', or 'non-monthly') based on description and category.
+ */
+export function suggestSpendingBucket(
+  description: string,
+  category: string = ''
+): 'fixed' | 'flexible' | 'non-monthly' {
+  const cleanDesc = (description || '').toLowerCase().trim();
+  const cleanCat = (category || '').toLowerCase().trim();
+  const combined = `${cleanDesc} ${cleanCat}`;
+
+  // Category heuristics
+  if (cleanCat === 'housing' || cleanCat === 'utilities') {
+    // Unless it has non-monthly keyword like repair
+    for (const kw of NON_MONTHLY_KEYWORDS) {
+      if (cleanDesc.includes(kw)) return 'non-monthly';
+    }
+    return 'fixed';
+  }
+
+  // Non-monthly keywords check
+  for (const kw of NON_MONTHLY_KEYWORDS) {
+    if (combined.includes(kw)) return 'non-monthly';
+  }
+
+  // Fixed keywords check
+  for (const kw of FIXED_KEYWORDS) {
+    if (combined.includes(kw)) return 'fixed';
+  }
+
+  return 'flexible';
+}
+
