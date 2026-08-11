@@ -316,6 +316,8 @@ function AppInner() {
               flexNumber={txnHooks.flexNumber}
               savingsAmount={txnHooks.savingsAmount}
               savingsRate={txnHooks.savingsRate}
+              selectedBucket={txnHooks.selectedBucket}
+              onSelectBucket={txnHooks.setSelectedBucket}
             />
 
             <div className="flex flex-col lg:flex-row gap-6 mb-8">
