@@ -93,11 +93,11 @@ export function KpiGrid({
       </div>
 
       {/* 5-Step Pipeline Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 lg:gap-2 mb-6">
+      <div className="flex flex-col sm:grid sm:grid-cols-2 lg:flex lg:flex-row lg:items-stretch gap-3 lg:gap-0 mb-6">
         {/* Step 1: Total Income */}
         <motion.div 
           variants={item} 
-          className="p-4 rounded-xl bg-emerald-500/5 border border-emerald-500/20 relative group hover:border-emerald-500/40 transition-all flex flex-col justify-between"
+          className="flex-1 p-4 rounded-xl bg-emerald-500/5 border border-emerald-500/20 relative group hover:border-emerald-500/40 transition-all flex flex-col justify-between"
         >
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-bold text-emerald-500/90 uppercase tracking-wider">1. Income</span>
@@ -114,7 +114,7 @@ export function KpiGrid({
         </motion.div>
 
         {/* Connector 1 */}
-        <div className="hidden lg:flex items-center justify-center -mx-3 z-10 text-muted-foreground/40 pointer-events-none">
+        <div className="hidden lg:flex items-center justify-center px-1 text-muted-foreground/40 pointer-events-none shrink-0">
           <ArrowRight className="w-4 h-4" />
         </div>
 
@@ -123,7 +123,7 @@ export function KpiGrid({
           variants={item}
           type="button"
           onClick={() => onSelectBucket && onSelectBucket(selectedBucket === 'fixed' ? null : 'fixed')}
-          className={`p-4 rounded-xl text-left transition-all relative group flex flex-col justify-between ${
+          className={`flex-1 p-4 rounded-xl text-left transition-all relative group flex flex-col justify-between ${
             selectedBucket === 'fixed'
               ? 'bg-blue-500/20 border-2 border-blue-500 shadow-md shadow-blue-500/10'
               : 'bg-blue-500/5 border border-blue-500/20 hover:border-blue-500/40'
@@ -146,7 +146,7 @@ export function KpiGrid({
         </motion.button>
 
         {/* Connector 2 */}
-        <div className="hidden lg:flex items-center justify-center -mx-3 z-10 text-muted-foreground/40 pointer-events-none">
+        <div className="hidden lg:flex items-center justify-center px-1 text-muted-foreground/40 pointer-events-none shrink-0">
           <ArrowRight className="w-4 h-4" />
         </div>
 
@@ -155,7 +155,7 @@ export function KpiGrid({
           variants={item}
           type="button"
           onClick={() => onSelectBucket && onSelectBucket(selectedBucket === 'non-monthly' ? null : 'non-monthly')}
-          className={`p-4 rounded-xl text-left transition-all relative group flex flex-col justify-between ${
+          className={`flex-1 p-4 rounded-xl text-left transition-all relative group flex flex-col justify-between ${
             selectedBucket === 'non-monthly'
               ? 'bg-amber-500/20 border-2 border-amber-500 shadow-md shadow-amber-500/10'
               : 'bg-amber-500/5 border border-amber-500/20 hover:border-amber-500/40'
@@ -178,7 +178,7 @@ export function KpiGrid({
         </motion.button>
 
         {/* Connector 3 */}
-        <div className="hidden lg:flex items-center justify-center -mx-3 z-10 text-muted-foreground/40 pointer-events-none">
+        <div className="hidden lg:flex items-center justify-center px-1 text-muted-foreground/40 pointer-events-none shrink-0">
           <ArrowRight className="w-4 h-4" />
         </div>
 
@@ -187,7 +187,7 @@ export function KpiGrid({
           variants={item}
           type="button"
           onClick={() => onSelectBucket && onSelectBucket(selectedBucket === 'flexible' ? null : 'flexible')}
-          className={`p-4 rounded-xl text-left transition-all relative group flex flex-col justify-between ${
+          className={`flex-1 p-4 rounded-xl text-left transition-all relative group flex flex-col justify-between ${
             selectedBucket === 'flexible'
               ? 'bg-rose-500/20 border-2 border-rose-500 shadow-md shadow-rose-500/10'
               : 'bg-rose-500/5 border border-rose-500/20 hover:border-rose-500/40'
@@ -210,14 +210,14 @@ export function KpiGrid({
         </motion.button>
 
         {/* Connector 4 */}
-        <div className="hidden lg:flex items-center justify-center -mx-3 z-10 text-muted-foreground/40 pointer-events-none">
+        <div className="hidden lg:flex items-center justify-center px-1 text-muted-foreground/40 pointer-events-none shrink-0">
           <ArrowRight className="w-4 h-4" />
         </div>
 
         {/* Step 5: Net Saved */}
         <motion.div 
           variants={item} 
-          className="p-4 rounded-xl bg-purple-500/10 border border-purple-500/30 relative group hover:border-purple-500/50 transition-all flex flex-col justify-between shadow-sm"
+          className="flex-1 p-4 rounded-xl bg-purple-500/10 border border-purple-500/30 relative group hover:border-purple-500/50 transition-all flex flex-col justify-between shadow-sm"
         >
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-bold text-purple-400 uppercase tracking-wider">5. Net Saved</span>
