@@ -50,7 +50,7 @@ export function generateInsights(
   if (prevMonthsWithData.length > 0) {
     const currentByCat: Record<string, number> = {};
     currentTxns
-      .filter(t => t.type === 'expense')
+      .filter(t => t.type === 'expense' && bucketOf(t, categories) !== 'non-monthly')
       .forEach(t => {
         const cid = (t.category || 'misc').toLowerCase();
         currentByCat[cid] = (currentByCat[cid] || 0) + t.amount;

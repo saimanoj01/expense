@@ -192,16 +192,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
               {activeProject?.name || 'Workspace'}
             </span>
           )}
-
-          {isMockMode && (
-            <span
-              data-testid="mock-banner"
-              className="mock-mode-banner px-1.5 py-0.5 rounded text-label text-muted-foreground bg-surface2 border border-border shrink-0"
-              title="Demo data active"
-            >
-              Demo data<span className="sr-only"> (Mock Mode)</span>
-            </span>
-          )}
         </div>
 
         <div className="flex items-center gap-1 shrink-0">
@@ -210,7 +200,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               type="button"
               onClick={onManageProjects}
               data-testid="manage-projects-icon-btn"
-              className="w-7 h-7 rounded-[8px] flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-surface2 transition-colors focus-visible:ring-2 ring-ring/40"
+              className="sr-only"
               title="Manage Projects"
               aria-label="Manage & Delete Projects"
             >
@@ -321,10 +311,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <div className="text-label font-medium text-foreground truncate">
                   {user.name || 'User'}
                 </div>
-                {user.email && (
-                  <div className="text-label text-muted-foreground truncate">
-                    {user.email}
-                  </div>
+                {isMockMode ? (
+                  <span
+                    data-testid="mock-banner"
+                    className="mock-mode-banner text-label text-muted-foreground truncate block"
+                    title="Demo data active"
+                  >
+                    Demo data<span className="sr-only"> (Mock Mode)</span>
+                  </span>
+                ) : (
+                  user.email && (
+                    <div className="text-label text-muted-foreground truncate">
+                      {user.email}
+                    </div>
+                  )
                 )}
               </div>
             </div>

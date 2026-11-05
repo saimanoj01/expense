@@ -19,6 +19,7 @@ import { delta, deltaToneClass } from '../../utils/delta';
 import { bucketOf } from '../../utils/categorizer';
 import { deriveCategoryBucket } from '../../hooks/useBudgets';
 import { bucketColor, negativeColor } from '../../theme/buckets';
+import { spring } from '../../theme/motion';
 
 export interface Level2BucketViewProps {
   bucketId: SpendingBucket | 'income';
@@ -233,6 +234,7 @@ export const Level2BucketView: React.FC<Level2BucketViewProps> = ({
     : 0;
 
   const Icon = bucketMeta.icon;
+  const routeSlug = bucketId === 'flexible' ? 'variable' : bucketId;
 
   return (
     <div
@@ -251,8 +253,7 @@ export const Level2BucketView: React.FC<Level2BucketViewProps> = ({
       </button>
 
       {/* Hero Bucket Banner (Morphed Shared Element) */}
-      <motion.div
-        layoutId={`bucket-card-${bucketId === 'flexible' ? 'variable' : bucketId}`}
+      <div
         className={`p-6 rounded-2xl border bg-gradient-to-br ${bucketMeta.bgGradient} ${bucketMeta.borderColor} shadow-xl relative overflow-hidden`}
       >
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 relative z-10">
@@ -281,7 +282,10 @@ export const Level2BucketView: React.FC<Level2BucketViewProps> = ({
             <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               Total Spent
             </span>
-            <div
+            <motion.div
+              layoutId={`bucket-amount-${routeSlug}`}
+              layout="position"
+              transition={spring}
               data-testid="bucket-total-spent"
               className="text-3xl sm:text-4xl font-semibold tracking-tight tabular-nums num text-foreground mt-0.5"
             >
@@ -294,7 +298,7 @@ export const Level2BucketView: React.FC<Level2BucketViewProps> = ({
                   </>
                 );
               })()}
-            </div>
+            </motion.div>
             <div className="flex items-center gap-2 text-xs mt-1">
               <span className="text-muted-foreground">
                 {pctOfIncome.toFixed(0)}% of income
@@ -307,43 +311,48 @@ export const Level2BucketView: React.FC<Level2BucketViewProps> = ({
         </div>
 
         {/* Bucket Budget Utilization Progress Bar */}
-        {totalBucketBudget > 0 && (() => {
+        {(() => {
           const utilColor = getUtilizationColor(bucketUtilization);
+          const barWidth = totalBucketBudget > 0 ? Math.min(100, bucketUtilization) : 100;
           return (
             <div className="mt-5 pt-4 border-t border-border/40 relative z-10">
-              <div className="flex items-center justify-between text-xs font-semibold mb-1.5">
-                <div className="flex items-center gap-2">
-                  <span className="text-muted-foreground">Bucket Target Budget:</span>
-                  <span className="tabular-nums num text-foreground">{formatMoney(totalBucketBudget)}</span>
+              {totalBucketBudget > 0 && (
+                <div className="flex items-center justify-between text-xs font-semibold mb-1.5">
+                  <div className="flex items-center gap-2">
+                    <span className="text-muted-foreground">Bucket Target Budget:</span>
+                    <span className="tabular-nums num text-foreground">{formatMoney(totalBucketBudget)}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className={`tabular-nums num font-semibold ${utilColor.text}`}>{bucketUtilization.toFixed(0)}% Used</span>
+                    {bucketUtilization <= 90 ? (
+                      <span className="inline-flex items-center gap-1 text-xs font-semibold text-bucket-saved bg-bucket-saved/10 px-2 py-0.5 rounded-full border border-bucket-saved/20">
+                        <CheckCircle2 className="w-3 h-3" /> On Track
+                      </span>
+                    ) : bucketUtilization <= 100 ? (
+                      <span className="inline-flex items-center gap-1 text-xs font-semibold text-bucket-nonmonthly bg-bucket-nonmonthly/10 px-2 py-0.5 rounded-full border border-bucket-nonmonthly/20">
+                        <AlertTriangle className="w-3 h-3" /> Near Limit
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-xs font-semibold text-negative bg-negative/10 px-2 py-0.5 rounded-full border border-negative/20">
+                        <AlertTriangle className="w-3 h-3" /> Exceeded
+                      </span>
+                    )}
+                  </div>
                 </div>
-                <div className="flex items-center gap-1.5">
-                  <span className={`tabular-nums num font-semibold ${utilColor.text}`}>{bucketUtilization.toFixed(0)}% Used</span>
-                  {bucketUtilization <= 90 ? (
-                    <span className="inline-flex items-center gap-1 text-xs font-semibold text-bucket-saved bg-bucket-saved/10 px-2 py-0.5 rounded-full border border-bucket-saved/20">
-                      <CheckCircle2 className="w-3 h-3" /> On Track
-                    </span>
-                  ) : bucketUtilization <= 100 ? (
-                    <span className="inline-flex items-center gap-1 text-xs font-semibold text-bucket-nonmonthly bg-bucket-nonmonthly/10 px-2 py-0.5 rounded-full border border-bucket-nonmonthly/20">
-                      <AlertTriangle className="w-3 h-3" /> Near Limit
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1 text-xs font-semibold text-negative bg-negative/10 px-2 py-0.5 rounded-full border border-negative/20">
-                      <AlertTriangle className="w-3 h-3" /> Exceeded
-                    </span>
-                  )}
-                </div>
-              </div>
+              )}
 
-              <div className="h-2.5 w-full bg-surface2 rounded-full overflow-hidden border border-border/40 p-0.5">
-                <div
-                  style={{ width: `${Math.min(100, bucketUtilization)}%`, backgroundColor: utilColor.hex }}
-                  className="h-full rounded-full transition-all duration-500"
+              <div className="h-2 w-full bg-surface2 rounded-full overflow-hidden">
+                <motion.div
+                  layoutId={`bucket-bar-${routeSlug}`}
+                  transition={spring}
+                  style={{ width: `${barWidth}%`, backgroundColor: totalBucketBudget > 0 && bucketUtilization > 100 ? utilColor.hex : bucketMeta.accentColor }}
+                  className="h-full rounded-full"
                 />
               </div>
             </div>
           );
         })()}
-      </motion.div>
+      </div>
 
       {/* Ranked Categories Breakdown */}
       <div className="space-y-3">
@@ -415,9 +424,14 @@ export const Level2BucketView: React.FC<Level2BucketViewProps> = ({
                 >
                   <div className="flex items-center justify-between gap-3">
                     <div className="flex items-center gap-3">
-                      <span className="text-xl p-2 rounded-xl bg-secondary/60 shrink-0">
+                      <motion.span
+                        layoutId={`cat-emoji-${cat.id}`}
+                        layout="position"
+                        transition={spring}
+                        className="text-xl p-2 rounded-xl bg-secondary/60 shrink-0 inline-block"
+                      >
                         {cat.emoji}
-                      </span>
+                      </motion.span>
                       <div>
                         <h4 className="font-semibold text-sm text-foreground group-hover:text-primary transition-colors flex items-center gap-2">
                           {cat.name}
@@ -444,9 +458,14 @@ export const Level2BucketView: React.FC<Level2BucketViewProps> = ({
 
                     <div className="flex items-center gap-4">
                       <div className="text-right">
-                        <div className="text-base sm:text-lg font-semibold text-foreground tabular-nums num">
+                        <motion.div
+                          layoutId={`cat-amount-${cat.id}`}
+                          layout="position"
+                          transition={spring}
+                          className="text-base sm:text-lg font-semibold text-foreground tabular-nums num"
+                        >
                           {formatMoney(cat.spent)}
-                        </div>
+                        </motion.div>
                         <span className="text-xs text-muted-foreground tabular-nums num">
                           {cat.pctOfBucket.toFixed(0)}% of bucket
                         </span>

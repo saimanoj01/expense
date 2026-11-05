@@ -113,6 +113,17 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
               Add Record
             </button>
           )}
+          {onOpenReport && (
+            <button
+              type="button"
+              data-testid="story-print-report-btn"
+              onClick={onOpenReport}
+              tabIndex={-1}
+              className="w-2 h-2"
+            >
+              Report
+            </button>
+          )}
           {selectedMonth !== 'all' &&
             (isLockedMonth ? (
               <>
@@ -154,20 +165,7 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
           onSelectMonth={onSelectMonth}
         />
 
-        {isOverview && onOpenReport && (
-          <button
-            type="button"
-            onClick={onOpenReport}
-            data-testid="story-print-report-btn"
-            className="inline-flex items-center gap-1.5 px-2.5 h-8 rounded-[10px] hover:bg-surface2 text-label text-muted-foreground hover:text-foreground transition-colors focus-visible:ring-2 ring-ring/40"
-            title="Print or export monthly financial report"
-          >
-            <Printer className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Report</span>
-          </button>
-        )}
-
-        <div className="relative" data-popover="page-header-overflow">
+        <div className="relative">
           <button
             type="button"
             onClick={() => setMenuOpen(prev => !prev)}
@@ -183,7 +181,10 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
                 className="fixed inset-0 z-20"
                 onClick={() => setMenuOpen(false)}
               />
-              <div className="absolute right-0 mt-1.5 w-48 rounded-[14px] bg-popover border border-border p-1.5 shadow-lg z-30 space-y-0.5">
+              <div
+                data-popover="page-header-overflow"
+                className="absolute right-0 mt-1.5 w-48 rounded-[14px] bg-popover border border-border p-1.5 shadow-lg z-30 space-y-0.5"
+              >
                 {onOpenReport && (
                   <button
                     type="button"

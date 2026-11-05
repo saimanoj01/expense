@@ -90,7 +90,7 @@ export const MonthSwitcher: React.FC<MonthSwitcherProps> = ({
         <ChevronLeft className="w-4 h-4" />
       </button>
 
-      <div className="relative flex items-center justify-center min-w-[112px] sm:min-w-[128px] h-8 px-2.5 rounded-[8px] hover:bg-card transition-colors overflow-hidden">
+      <div className="relative flex items-center justify-center min-w-0 sm:min-w-[128px] h-8 px-1.5 sm:px-2.5 rounded-[8px] hover:bg-card transition-colors overflow-hidden">
         <AnimatePresence mode="wait" initial={false}>
           <motion.span
             key={selectedMonth}

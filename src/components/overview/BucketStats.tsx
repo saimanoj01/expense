@@ -2,6 +2,7 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { ChevronRight } from 'lucide-react';
 import { BUCKETS, bucketColor, BucketKey } from '../../theme/buckets';
+import { spring } from '../../theme/motion';
 import { splitMoneyParts } from '../../utils/formatters';
 import { delta, deltaToneClass, DeltaKind } from '../../utils/delta';
 import { useNavigation } from '../../hooks/useNavigation';
@@ -121,9 +122,8 @@ export const BucketStats: React.FC<BucketStatsProps> = ({
             key={col.key}
             type="button"
             data-testid={col.drillTestId}
-            layoutId={`bucket-card-${col.route}`}
             onClick={() => navigate(`#/month/${selectedMonth}/bucket/${col.route}`)}
-            className="w-full min-h-[52px] sm:min-h-[44px] py-2.5 sm:p-2.5 rounded-none sm:rounded-[10px] hover:bg-surface2 transition-colors text-left flex sm:flex-col items-center sm:items-start justify-between gap-2 focus-visible:ring-2 ring-ring/40"
+            className="w-full min-h-[52px] sm:min-h-[44px] py-2.5 sm:p-2.5 rounded-none sm:rounded-[10px] hover:bg-surface2 transition-colors text-left flex sm:flex-col items-center sm:items-start justify-between gap-2 focus-visible:ring-2 ring-ring/40 ring-offset-2 ring-offset-background"
           >
             {/* Dot + Label */}
             <div className="flex items-center gap-2">
@@ -138,13 +138,16 @@ export const BucketStats: React.FC<BucketStatsProps> = ({
 
             {/* Amount + % + Mobile Chevron */}
             <div className="flex items-baseline gap-2 sm:mt-1">
-              <span
+              <motion.span
+                layoutId={`bucket-amount-${col.route}`}
+                layout="position"
+                transition={spring}
                 data-testid={col.testId}
-                className="text-[18px] sm:text-[20px] leading-[24px] font-semibold tracking-tight tabular-nums num text-foreground"
+                className="text-[18px] sm:text-[20px] leading-[24px] font-semibold tracking-tight tabular-nums num text-foreground inline-block"
               >
                 {parts.whole}
                 <span className="sr-only">{parts.cents}</span>
-              </span>
+              </motion.span>
               <span className="text-label text-muted-foreground tabular-nums num">
                 {pct}%
               </span>

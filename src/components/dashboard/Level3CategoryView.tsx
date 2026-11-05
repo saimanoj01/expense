@@ -19,6 +19,7 @@ import { formatMoney, splitMoneyParts } from '../../utils/formatters';
 import { suggestSpendingBucket } from '../../utils/categorizer';
 import { DailySpendTimeline } from './DailySpendTimeline';
 import { bucketColor, negativeColor } from '../../theme/buckets';
+import { spring } from '../../theme/motion';
 
 export interface Level3CategoryViewProps {
   categoryId: string;
@@ -155,9 +156,14 @@ export const Level3CategoryView: React.FC<Level3CategoryViewProps> = ({
       >
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 relative z-10">
           <div className="flex items-start gap-4">
-            <span className="text-3xl p-3.5 rounded-2xl bg-secondary/80 border border-border/60 shrink-0 shadow-sm">
+            <motion.span
+              layoutId={`cat-emoji-${category.id}`}
+              layout="position"
+              transition={spring}
+              className="text-3xl p-3.5 rounded-2xl bg-secondary/80 border border-border/60 shrink-0 shadow-sm inline-block"
+            >
               {category.emoji}
-            </span>
+            </motion.span>
             <div>
               <div className="flex items-center gap-2">
                 <button
@@ -184,7 +190,10 @@ export const Level3CategoryView: React.FC<Level3CategoryViewProps> = ({
             <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               Total Spent
             </span>
-            <div
+            <motion.div
+              layoutId={`cat-amount-${category.id}`}
+              layout="position"
+              transition={spring}
               data-testid="category-total-spent"
               className="text-3xl sm:text-4xl font-semibold tracking-tight tabular-nums num text-foreground mt-0.5"
             >
@@ -197,7 +206,7 @@ export const Level3CategoryView: React.FC<Level3CategoryViewProps> = ({
                   </>
                 );
               })()}
-            </div>
+            </motion.div>
 
             {budget > 0 && (() => {
               const utilColor = getUtilizationColor(utilization);

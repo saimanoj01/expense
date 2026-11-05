@@ -12,6 +12,7 @@ interface NavigationProviderProps {
   categories?: Category[];
   categoryTxnCount?: number;
   monthTxnCount?: number;
+  mainRef?: React.RefObject<HTMLElement>;
 }
 
 export const NavigationProvider: React.FC<NavigationProviderProps> = ({
@@ -21,14 +22,21 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({
   onSelectProject,
   categories = [],
   categoryTxnCount,
-  monthTxnCount
+  monthTxnCount,
+  mainRef: externalMainRef,
 }) => {
+  const internalMainRef = useRef<HTMLElement>(null);
+  const mainRef = externalMainRef || internalMainRef;
+
   const [currentRoute, setCurrentRoute] = useState<AppRoute>(() => {
     if (typeof window !== 'undefined') {
       return parseHash(window.location.hash, activeMonth);
     }
     return { view: 'overview', level: 1, month: activeMonth };
   });
+
+  const prevRouteRef = useRef<AppRoute>(currentRoute);
+  const [direction, setDirection] = useState<number>(0);
 
   const onMonthChangeRef = useRef(onMonthChange);
   onMonthChangeRef.current = onMonthChange;
@@ -45,6 +53,11 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({
     }
 
     const parsed = parseHash(hash, activeMonthRef.current);
+    const d = Math.sign((parsed.level || 1) - (prevRouteRef.current.level || 1));
+    if (d !== 0) {
+      setDirection(d);
+    }
+    prevRouteRef.current = parsed;
     setCurrentRoute(parsed);
 
     // Sync project if present in query or if navigating to projects
@@ -88,6 +101,7 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({
         if (window.location.hash !== newHash) {
           window.location.hash = newHash;
         }
+        prevRouteRef.current = next;
         return next;
       });
     }
@@ -95,25 +109,34 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({
 
   // Navigate helper
   const navigate = useCallback((target: AppRoute | string) => {
-    if (typeof target === 'string') {
-      const formatted = target.startsWith('#') ? target : `#${target.startsWith('/') ? target : '/' + target}`;
-      if (window.location.hash !== formatted) {
-        window.location.hash = formatted;
-      }
-    } else {
-      const newHash = routeToHash(target, activeMonth);
-      if (window.location.hash !== newHash) {
-        window.location.hash = newHash;
-      }
+    const newHash =
+      typeof target === 'string'
+        ? target.startsWith('#')
+          ? target
+          : `#${target.startsWith('/') ? target : '/' + target}`
+        : routeToHash(target, activeMonth);
+
+    const nextParsed =
+      typeof target === 'string' ? parseHash(newHash, activeMonth) : target;
+    const d = Math.sign((nextParsed.level || 1) - (prevRouteRef.current.level || 1));
+    setDirection(d);
+
+    // Scroll reset before measure when drilling deeper
+    if (d > 0) {
+      mainRef.current?.scrollTo({ top: 0 });
     }
-  }, [activeMonth]);
+
+    if (window.location.hash !== newHash) {
+      window.location.hash = newHash;
+    }
+  }, [activeMonth, mainRef]);
 
   // Go back helper
   const canGoBack = currentRoute.level > 1 || ['budgets', 'trends', 'reports', 'settings', 'transactions'].includes(currentRoute.view);
 
   const goBack = useCallback(() => {
-    // If we have history and can pop
     if (canGoBack) {
+      setDirection(-1);
       const parent = computeParentRoute(currentRoute, categories);
       const parentHash = routeToHash(parent, activeMonth);
       if (window.location.hash !== parentHash) {
@@ -125,14 +148,15 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({
   // Keyboard navigation shortcuts: Escape or Alt + ArrowLeft
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Ignore if focus is in an input, textarea, or contentEditable element
       const target = e.target as HTMLElement | null;
       const isInput = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable);
-      
-      // Also ignore if a modal is open (modals handle their own Escape)
-      const hasOpenModal = !!document.querySelector('[role="dialog"], .fixed.inset-0.z-50');
 
-      if (!isInput && !hasOpenModal) {
+      // Ignore if a modal, popover, or listbox is open
+      const hasOpenOverlay = !!document.querySelector(
+        '[data-radix-popper-content-wrapper], [role="dialog"], [role="listbox"], [data-popover], .fixed.inset-0.z-50'
+      );
+
+      if (!isInput && !hasOpenOverlay) {
         if (e.key === 'Escape' || (e.altKey && e.key === 'ArrowLeft')) {
           if (canGoBack) {
             e.preventDefault();
@@ -155,8 +179,10 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({
     breadcrumbs,
     navigate,
     goBack,
-    canGoBack
-  }), [currentRoute, breadcrumbs, navigate, goBack, canGoBack]);
+    canGoBack,
+    direction,
+    mainRef,
+  }), [currentRoute, breadcrumbs, navigate, goBack, canGoBack, direction, mainRef]);
 
   return (
     <NavigationContext.Provider value={value}>

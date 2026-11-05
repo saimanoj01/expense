@@ -1,6 +1,7 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { BUCKETS, bucketColor } from '../../theme/buckets';
+import { spring } from '../../theme/motion';
 import { formatMoney } from '../../utils/formatters';
 import { useNavigation } from '../../hooks/useNavigation';
 
@@ -72,6 +73,7 @@ export const IncomeRibbon: React.FC<IncomeRibbonProps> = ({
               key={seg.key}
               type="button"
               layoutId={`bucket-bar-${seg.route}`}
+              transition={spring}
               onClick={() => navigate(`#/month/${selectedMonth}/bucket/${seg.route}`)}
               aria-label={`${seg.label}, ${formatMoney(seg.amount)}, ${pct}% of income. Open ${seg.label}`}
               style={{
@@ -104,6 +106,7 @@ export const IncomeRibbon: React.FC<IncomeRibbonProps> = ({
             key="saved"
             type="button"
             layoutId="bucket-bar-income"
+            transition={spring}
             onClick={() => navigate(`#/month/${selectedMonth}/bucket/income`)}
             aria-label={`Saved, ${formatMoney(savedPositive)}, ${Math.round((savedPositive / total) * 100)}% of income. Open Income & saved`}
             style={{

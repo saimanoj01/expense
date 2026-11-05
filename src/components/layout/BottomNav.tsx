@@ -45,11 +45,11 @@ export const BottomNav: React.FC<BottomNavProps> = ({
               setShowMoreMenu(false);
               navigate(`#/month/${activeMonth}`);
             }}
-            className={`flex flex-col items-center justify-center flex-1 py-1 text-[10px] font-semibold transition-colors ${
-              isOverview ? 'text-primary' : 'text-muted-foreground hover:text-foreground'
+            className={`flex flex-col items-center justify-center flex-1 py-1 text-label font-medium transition-colors ${
+              isOverview ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
             }`}
           >
-            <LayoutDashboard className={`w-5 h-5 mb-0.5 ${isOverview ? 'text-primary' : ''}`} />
+            <LayoutDashboard className={`w-5 h-5 mb-0.5 ${isOverview ? 'text-foreground' : ''}`} />
             <span>Overview</span>
           </button>
 
@@ -61,25 +61,25 @@ export const BottomNav: React.FC<BottomNavProps> = ({
               setShowMoreMenu(false);
               navigate('#/transactions');
             }}
-            className={`flex flex-col items-center justify-center flex-1 py-1 text-[10px] font-semibold transition-colors ${
-              currentRoute.view === 'transactions' ? 'text-primary' : 'text-muted-foreground hover:text-foreground'
+            className={`flex flex-col items-center justify-center flex-1 py-1 text-label font-medium transition-colors ${
+              currentRoute.view === 'transactions' ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
             }`}
           >
-            <Receipt className={`w-5 h-5 mb-0.5 ${currentRoute.view === 'transactions' ? 'text-primary' : ''}`} />
+            <Receipt className={`w-5 h-5 mb-0.5 ${currentRoute.view === 'transactions' ? 'text-foreground' : ''}`} />
             <span>Txns</span>
           </button>
 
           {/* 3. Center Quick Add Button */}
-          <div className="flex-1 flex justify-center -mt-5">
+          <div className="flex-1 flex justify-center -mt-4">
             <button
               type="button"
               data-testid="bottom-nav-add"
               onClick={onOpenAddTxn}
-              className="w-12 h-12 rounded-full bg-gradient-to-tr from-primary to-emerald-400 text-primary-foreground flex items-center justify-center shadow-lg shadow-primary/30 hover:scale-105 active:scale-95 transition-all"
+              className="w-11 h-11 rounded-full bg-primary text-primary-foreground border border-border flex items-center justify-center shadow-sm hover:opacity-90 active:scale-95 transition-all"
               aria-label="Add Transaction"
               title="Add Transaction"
             >
-              <Plus className="w-6 h-6 stroke-[2.5]" />
+              <Plus className="w-5 h-5 stroke-[2.2]" />
             </button>
           </div>
 
@@ -91,11 +91,11 @@ export const BottomNav: React.FC<BottomNavProps> = ({
               setShowMoreMenu(false);
               navigate('#/budgets');
             }}
-            className={`flex flex-col items-center justify-center flex-1 py-1 text-[10px] font-semibold transition-colors ${
-              currentRoute.view === 'budgets' ? 'text-primary' : 'text-muted-foreground hover:text-foreground'
+            className={`flex flex-col items-center justify-center flex-1 py-1 text-label font-medium transition-colors ${
+              currentRoute.view === 'budgets' ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
             }`}
           >
-            <Target className={`w-5 h-5 mb-0.5 ${currentRoute.view === 'budgets' ? 'text-primary' : ''}`} />
+            <Target className={`w-5 h-5 mb-0.5 ${currentRoute.view === 'budgets' ? 'text-foreground' : ''}`} />
             <span>Budgets</span>
           </button>
 
@@ -104,9 +104,9 @@ export const BottomNav: React.FC<BottomNavProps> = ({
             type="button"
             data-testid="bottom-nav-more"
             onClick={() => setShowMoreMenu(prev => !prev)}
-            className={`flex flex-col items-center justify-center flex-1 py-1 text-[10px] font-semibold transition-colors ${
+            className={`flex flex-col items-center justify-center flex-1 py-1 text-label font-medium transition-colors ${
               showMoreMenu || ['trends', 'reports', 'settings'].includes(currentRoute.view)
-                ? 'text-primary'
+                ? 'text-foreground'
                 : 'text-muted-foreground hover:text-foreground'
             }`}
           >

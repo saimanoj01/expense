@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, lazy, Suspense } from 'react';
-import { AnimatePresence, MotionConfig } from 'framer-motion';
+import { AnimatePresence, LayoutGroup, motion, MotionConfig } from 'framer-motion';
 import { Loader2 } from 'lucide-react';
 import { dur, ease } from './theme/motion';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -104,7 +104,8 @@ function MainRouter({
   setTheme,
   onLoadSampleData
 }: MainRouterProps) {
-  const { currentRoute } = useNavigation();
+  const { currentRoute, direction } = useNavigation();
+  const routeKey = `${currentRoute.view}:${currentRoute.bucketId ?? ''}:${currentRoute.categoryId ?? ''}`;
   const headerNode = (
     <PageHeader
       selectedMonth={currentRoute.month || txnHooks.selectedMonth}
@@ -122,237 +123,227 @@ function MainRouter({
     />
   );
 
+  let screen: React.ReactNode;
+
   // Level 2: Bucket View
   if (currentRoute.view === 'bucket') {
     const rawBucket = currentRoute.bucketId || 'variable';
     const normalizedBucket: SpendingBucket = rawBucket === 'variable' ? 'flexible' : (rawBucket as SpendingBucket);
-    return (
-      <>
-        {headerNode}
-        <Level2BucketView
-          bucketId={normalizedBucket}
-          month={currentRoute.month || txnHooks.selectedMonth}
-          totalIncome={txnHooks.totalIncome}
-          transactions={txnHooks.monthTransactions}
-          categories={budgetHooks.categories}
-          budgets={budgetHooks.budgets}
-          onOpenAddTxn={handleOpenAddTxn}
-        />
-      </>
+    screen = (
+      <Level2BucketView
+        bucketId={normalizedBucket}
+        month={currentRoute.month || txnHooks.selectedMonth}
+        totalIncome={txnHooks.totalIncome}
+        transactions={txnHooks.monthTransactions}
+        categories={budgetHooks.categories}
+        budgets={budgetHooks.budgets}
+        onOpenAddTxn={handleOpenAddTxn}
+      />
     );
-  }
-
-  // Level 3: Category View
-  if (currentRoute.view === 'category') {
-    return (
-      <>
-        {headerNode}
-        <Level3CategoryView
-          categoryId={currentRoute.categoryId || 'misc'}
+  } else if (currentRoute.view === 'category') {
+    // Level 3: Category View
+    screen = (
+      <Level3CategoryView
+        categoryId={currentRoute.categoryId || 'misc'}
+        month={currentRoute.month || txnHooks.selectedMonth}
+        transactions={txnHooks.monthTransactions}
+        categories={budgetHooks.categories}
+        budgets={budgetHooks.budgets}
+        onOpenAddTxn={handleOpenAddTxn}
+        onEditTxn={handleEditTxn}
+        onDeleteTxn={(id) => txnHooks.handleDeleteTxn(id, () => setSelectedTxnIds(prev => { const n = new Set(prev); n.delete(id); return n; }))}
+      />
+    );
+  } else if (currentRoute.view === 'transactions') {
+    // Level 4: Complete Ledger Workspace
+    screen = (
+      <Suspense fallback={<div className="h-64 flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>}>
+        <TransactionsView
           month={currentRoute.month || txnHooks.selectedMonth}
           transactions={txnHooks.monthTransactions}
           categories={budgetHooks.categories}
-          budgets={budgetHooks.budgets}
+          categoryId={currentRoute.categoryId}
+          isCategoryTransactions={currentRoute.isCategoryTransactions}
+          selectedBucket={txnHooks.selectedBucket}
+          selectedTagFilter={txnHooks.selectedTagFilter}
+          sortBy={txnHooks.sortBy}
+          isLockedMonth={isCurrentMonthLocked}
+          selectedTxnIds={selectedTxnIds}
+          duplicateTxnIds={txnHooks.duplicateTxnIds}
+          availableMonths={txnHooks.availableMonths}
+          availableTags={txnHooks.availableTags}
+          onSelectMonth={txnHooks.setSelectedMonth}
+          onSelectBucket={txnHooks.setSelectedBucket}
+          onSelectTagFilter={txnHooks.setSelectedTagFilter}
+          onSetSortBy={txnHooks.setSortBy}
           onOpenAddTxn={handleOpenAddTxn}
           onEditTxn={handleEditTxn}
           onDeleteTxn={(id) => txnHooks.handleDeleteTxn(id, () => setSelectedTxnIds(prev => { const n = new Set(prev); n.delete(id); return n; }))}
+          onCsvFileUpload={csvHooks.handleCsvFileUpload}
+          onLockMonth={handleLockCurrentMonth}
+          onUnlockMonth={handleUnlockCurrentMonth}
+          onOpenShareModal={() => setShowShareModal(true)}
+          onOpenReportModal={() => setShowMonthlyReportModal(true)}
+          onToggleSelectTxn={toggleSelectTxn}
+          onToggleSelectAllTxns={toggleSelectAllTxns}
+          onCategoryChange={(txn, newCatId, newSubCatId) => txnHooks.executeSaveTransaction({ ...txn, category: newCatId, subCategory: newSubCatId || null }, true)}
+          onBucketChange={(txn, newBucket) => txnHooks.executeSaveTransaction({ ...txn, spendingBucket: newBucket }, true)}
+          onExecuteBulkCategoryUpdate={(selectedIds, catId, subCatId) => txnHooks.handleExecuteBulkCategoryUpdate(selectedIds, catId, subCatId, () => setSelectedTxnIds(new Set()))}
+          onExecuteBulkBucketUpdate={(selectedIds, bucket) => txnHooks.handleExecuteBulkBucketUpdate(selectedIds, bucket, () => setSelectedTxnIds(new Set()))}
+          onShowBulkDeleteConfirm={setShowBulkDeleteConfirmModal}
+          onAddTag={txnHooks.handleAddTagToTxn}
+          onRemoveTag={txnHooks.handleRemoveTagFromTxn}
+          onExecuteBulkAddTag={(selectedIds, tags) => txnHooks.handleExecuteBulkAddTag(selectedIds, tags, () => setSelectedTxnIds(new Set()))}
+          onExecuteBulkRemoveTag={(selectedIds, tag) => txnHooks.handleExecuteBulkRemoveTag(selectedIds, tag, () => setSelectedTxnIds(new Set()))}
+        />
+      </Suspense>
+    );
+  } else if (currentRoute.view === 'budgets') {
+    // Secondary: Budgets & Planning Workspace
+    screen = (
+      <Suspense fallback={<div className="h-64 flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>}>
+        <BudgetsView
+          month={currentRoute.month || txnHooks.selectedMonth}
+          categorySummary={budgetHooks.categorySummary}
+          piePaths={budgetHooks.piePaths}
+          budgetErrors={budgetHooks.budgetErrors}
+          onBudgetInputChange={budgetHooks.handleBudgetInputChange}
+          onSaveBudgets={budgetHooks.handleSaveBudgets}
+          onOpenAddCategoryModal={() => setShowCategoryManagerModal(true)}
+          budgetNotes={budgetHooks.budgetNotes}
+          spendingHistory={budgetHooks.spendingHistory}
+          onSaveBudgetNote={budgetHooks.handleSaveBudgetNote}
+          onDeleteBudgetNote={budgetHooks.handleDeleteBudgetNote}
+          isLockedMonth={isCurrentMonthLocked}
+          totalBudget={budgetHooks.totalBudget}
+          totalSpent={txnHooks.totalExpenses}
+          availableMonths={txnHooks.availableMonths}
+          onSelectMonth={txnHooks.setSelectedMonth}
+        />
+      </Suspense>
+    );
+  } else if (currentRoute.view === 'trends') {
+    // Secondary: Trends & Visual Analytics Workspace
+    screen = (
+      <Suspense fallback={<div className="h-64 flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>}>
+        <TrendsView
+          month={currentRoute.month || txnHooks.selectedMonth}
+          trendDetails={txnHooks.trendDetails}
+          totalBudget={budgetHooks.totalBudget}
+          budgets={budgetHooks.budgets}
+          categories={budgetHooks.categories}
+          transactions={txnHooks.transactions}
+          availableMonths={txnHooks.availableMonths}
+          onSelectMonth={txnHooks.setSelectedMonth}
+          onRequestGeminiKey={() => setShowGeminiKeyModal(true)}
+        />
+      </Suspense>
+    );
+  } else if (currentRoute.view === 'reports') {
+    // Secondary: Reports & Financial Statement Workspace
+    screen = (
+      <Suspense fallback={<div className="h-64 flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>}>
+        <ReportsView
+          month={currentRoute.month || txnHooks.selectedMonth}
+          project={activeProject}
+          financials={{
+            totalIncome: txnHooks.totalIncome,
+            totalExpenses: txnHooks.totalExpenses,
+            fixedExpenses: txnHooks.fixedExpenses,
+            flexibleExpenses: txnHooks.flexibleExpenses,
+            nonMonthlyExpenses: txnHooks.nonMonthlyExpenses,
+            savingsAmount: txnHooks.savingsAmount,
+            savingsRate: txnHooks.savingsRate,
+            totalBudget: budgetHooks.totalBudget
+          }}
+          categories={budgetHooks.categorySummary}
+          transactions={txnHooks.transactions}
+          isLocked={isCurrentMonthLocked}
+        />
+      </Suspense>
+    );
+  } else if (currentRoute.view === 'settings') {
+    // Secondary: Settings & Administration Workspace
+    screen = (
+      <Suspense fallback={<div className="h-64 flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>}>
+        <SettingsView
+          projects={projects || []}
+          activeProject={activeProject}
+          categories={budgetHooks.categories}
+          onSelectProject={(p) => selectProject && selectProject(p.id)}
+          onCreateProjectClick={() => setShowCreateModal && setShowCreateModal(true)}
+          onManageProjectsClick={() => setShowManageProjectsModal && setShowManageProjectsModal(true)}
+          onShareProjectClick={() => setShowShareModal(true)}
+          onOpenCategoryManager={() => setShowCategoryManagerModal(true)}
+          onOpenCsvWizard={() => csvHooks.setShowCsvWizard(true)}
+          onOpenGeminiKeyModal={() => setShowGeminiKeyModal(true)}
+          onLoadSampleData={onLoadSampleData}
+          theme={theme || 'dark'}
+          onToggleTheme={() => setTheme && setTheme(prev => prev === 'dark' ? 'light' : 'dark')}
+        />
+      </Suspense>
+    );
+  } else {
+    // Level 1: Month Overview (Default Canonical Route)
+    screen = (
+      <>
+        {txnHooks.unclassifiedCount > 0 && (
+          <div data-testid="backfill-banner" className="sr-only">
+            <button data-testid="backfill-btn">Classify</button>
+          </div>
+        )}
+
+        <Level1MonthOverview
+          selectedMonth={txnHooks.selectedMonth}
+          availableMonths={txnHooks.availableMonths}
+          onSelectMonth={txnHooks.setSelectedMonth}
+          activeProject={activeProject}
+          totalBudget={budgetHooks.totalBudget}
+          totalExpenses={txnHooks.totalExpenses}
+          totalIncome={txnHooks.totalIncome}
+          totalTransfers={txnHooks.totalTransfers}
+          fixedExpenses={txnHooks.fixedExpenses}
+          flexibleExpenses={txnHooks.flexibleExpenses}
+          nonMonthlyExpenses={txnHooks.nonMonthlyExpenses}
+          unclassifiedExpenses={txnHooks.unclassifiedExpenses}
+          unclassifiedCount={txnHooks.unclassifiedCount}
+          flexNumber={txnHooks.flexNumber}
+          savingsAmount={txnHooks.savingsAmount}
+          savingsRate={txnHooks.savingsRate}
+          allTransactions={txnHooks.transactions}
+          categories={budgetHooks.categories}
+          budgets={budgetHooks.budgets}
+          selectedBucket={txnHooks.selectedBucket}
+          onSelectBucket={txnHooks.setSelectedBucket}
+          onOpenReport={() => setShowMonthlyReportModal(true)}
+          onOpenAddTxn={handleOpenAddTxn}
+          isCanonicalOverview={true}
         />
       </>
     );
   }
 
-  // Level 4: Complete Ledger Workspace
-  if (currentRoute.view === 'transactions') {
-    return (
-      <>
-        {headerNode}
-        <Suspense fallback={<div className="h-64 flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>}>
-          <TransactionsView
-            month={currentRoute.month || txnHooks.selectedMonth}
-            transactions={txnHooks.monthTransactions}
-            categories={budgetHooks.categories}
-            categoryId={currentRoute.categoryId}
-            isCategoryTransactions={currentRoute.isCategoryTransactions}
-            selectedBucket={txnHooks.selectedBucket}
-            selectedTagFilter={txnHooks.selectedTagFilter}
-            sortBy={txnHooks.sortBy}
-            isLockedMonth={isCurrentMonthLocked}
-            selectedTxnIds={selectedTxnIds}
-            duplicateTxnIds={txnHooks.duplicateTxnIds}
-            availableMonths={txnHooks.availableMonths}
-            availableTags={txnHooks.availableTags}
-            onSelectMonth={txnHooks.setSelectedMonth}
-            onSelectBucket={txnHooks.setSelectedBucket}
-            onSelectTagFilter={txnHooks.setSelectedTagFilter}
-            onSetSortBy={txnHooks.setSortBy}
-            onOpenAddTxn={handleOpenAddTxn}
-            onEditTxn={handleEditTxn}
-            onDeleteTxn={(id) => txnHooks.handleDeleteTxn(id, () => setSelectedTxnIds(prev => { const n = new Set(prev); n.delete(id); return n; }))}
-            onCsvFileUpload={csvHooks.handleCsvFileUpload}
-            onLockMonth={handleLockCurrentMonth}
-            onUnlockMonth={handleUnlockCurrentMonth}
-            onOpenShareModal={() => setShowShareModal(true)}
-            onOpenReportModal={() => setShowMonthlyReportModal(true)}
-            onToggleSelectTxn={toggleSelectTxn}
-            onToggleSelectAllTxns={toggleSelectAllTxns}
-            onCategoryChange={(txn, newCatId, newSubCatId) => txnHooks.executeSaveTransaction({ ...txn, category: newCatId, subCategory: newSubCatId || null }, true)}
-            onBucketChange={(txn, newBucket) => txnHooks.executeSaveTransaction({ ...txn, spendingBucket: newBucket }, true)}
-            onExecuteBulkCategoryUpdate={(selectedIds, catId, subCatId) => txnHooks.handleExecuteBulkCategoryUpdate(selectedIds, catId, subCatId, () => setSelectedTxnIds(new Set()))}
-            onExecuteBulkBucketUpdate={(selectedIds, bucket) => txnHooks.handleExecuteBulkBucketUpdate(selectedIds, bucket, () => setSelectedTxnIds(new Set()))}
-            onShowBulkDeleteConfirm={setShowBulkDeleteConfirmModal}
-            onAddTag={txnHooks.handleAddTagToTxn}
-            onRemoveTag={txnHooks.handleRemoveTagFromTxn}
-            onExecuteBulkAddTag={(selectedIds, tags) => txnHooks.handleExecuteBulkAddTag(selectedIds, tags, () => setSelectedTxnIds(new Set()))}
-            onExecuteBulkRemoveTag={(selectedIds, tag) => txnHooks.handleExecuteBulkRemoveTag(selectedIds, tag, () => setSelectedTxnIds(new Set()))}
-          />
-        </Suspense>
-      </>
-    );
-  }
-
-  // Secondary: Budgets & Planning Workspace
-  if (currentRoute.view === 'budgets') {
-    return (
-      <>
-        {headerNode}
-        <Suspense fallback={<div className="h-64 flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>}>
-          <BudgetsView
-            month={currentRoute.month || txnHooks.selectedMonth}
-            categorySummary={budgetHooks.categorySummary}
-            piePaths={budgetHooks.piePaths}
-            budgetErrors={budgetHooks.budgetErrors}
-            onBudgetInputChange={budgetHooks.handleBudgetInputChange}
-            onSaveBudgets={budgetHooks.handleSaveBudgets}
-            onOpenAddCategoryModal={() => setShowCategoryManagerModal(true)}
-            budgetNotes={budgetHooks.budgetNotes}
-            spendingHistory={budgetHooks.spendingHistory}
-            onSaveBudgetNote={budgetHooks.handleSaveBudgetNote}
-            onDeleteBudgetNote={budgetHooks.handleDeleteBudgetNote}
-            isLockedMonth={isCurrentMonthLocked}
-            totalBudget={budgetHooks.totalBudget}
-            totalSpent={txnHooks.totalExpenses}
-            availableMonths={txnHooks.availableMonths}
-            onSelectMonth={txnHooks.setSelectedMonth}
-          />
-        </Suspense>
-      </>
-    );
-  }
-
-  // Secondary: Trends & Visual Analytics Workspace
-  if (currentRoute.view === 'trends') {
-    return (
-      <>
-        {headerNode}
-        <Suspense fallback={<div className="h-64 flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>}>
-          <TrendsView
-            month={currentRoute.month || txnHooks.selectedMonth}
-            trendDetails={txnHooks.trendDetails}
-            totalBudget={budgetHooks.totalBudget}
-            budgets={budgetHooks.budgets}
-            categories={budgetHooks.categories}
-            transactions={txnHooks.transactions}
-            availableMonths={txnHooks.availableMonths}
-            onSelectMonth={txnHooks.setSelectedMonth}
-            onRequestGeminiKey={() => setShowGeminiKeyModal(true)}
-          />
-        </Suspense>
-      </>
-    );
-  }
-
-  // Secondary: Reports & Financial Statement Workspace
-  if (currentRoute.view === 'reports') {
-    return (
-      <>
-        {headerNode}
-        <Suspense fallback={<div className="h-64 flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>}>
-          <ReportsView
-            month={currentRoute.month || txnHooks.selectedMonth}
-            project={activeProject}
-            financials={{
-              totalIncome: txnHooks.totalIncome,
-              totalExpenses: txnHooks.totalExpenses,
-              fixedExpenses: txnHooks.fixedExpenses,
-              flexibleExpenses: txnHooks.flexibleExpenses,
-              nonMonthlyExpenses: txnHooks.nonMonthlyExpenses,
-              savingsAmount: txnHooks.savingsAmount,
-              savingsRate: txnHooks.savingsRate,
-              totalBudget: budgetHooks.totalBudget
-            }}
-            categories={budgetHooks.categorySummary}
-            transactions={txnHooks.transactions}
-            isLocked={isCurrentMonthLocked}
-          />
-        </Suspense>
-      </>
-    );
-  }
-
-  // Secondary: Settings & Administration Workspace
-  if (currentRoute.view === 'settings') {
-    return (
-      <>
-        {headerNode}
-        <Suspense fallback={<div className="h-64 flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>}>
-          <SettingsView
-            projects={projects || []}
-            activeProject={activeProject}
-            categories={budgetHooks.categories}
-            onSelectProject={(p) => selectProject && selectProject(p.id)}
-            onCreateProjectClick={() => setShowCreateModal && setShowCreateModal(true)}
-            onManageProjectsClick={() => setShowManageProjectsModal && setShowManageProjectsModal(true)}
-            onShareProjectClick={() => setShowShareModal(true)}
-            onOpenCategoryManager={() => setShowCategoryManagerModal(true)}
-            onOpenCsvWizard={() => csvHooks.setShowCsvWizard(true)}
-            onOpenGeminiKeyModal={() => setShowGeminiKeyModal(true)}
-            onLoadSampleData={onLoadSampleData}
-            theme={theme || 'dark'}
-            onToggleTheme={() => setTheme && setTheme(prev => prev === 'dark' ? 'light' : 'dark')}
-          />
-        </Suspense>
-      </>
-    );
-  }
-
-  // Level 1: Month Overview (Default Canonical Route)
   return (
-    <>
+    <LayoutGroup id="drill">
       {headerNode}
-      {/* Compatibility backfill banner placeholder for test id preservation */}
-      {txnHooks.unclassifiedCount > 0 && (
-        <div data-testid="backfill-banner" className="sr-only">
-          <button data-testid="backfill-btn">Classify</button>
-        </div>
-      )}
-
-      <Level1MonthOverview
-        selectedMonth={txnHooks.selectedMonth}
-        availableMonths={txnHooks.availableMonths}
-        onSelectMonth={txnHooks.setSelectedMonth}
-        activeProject={activeProject}
-        totalBudget={budgetHooks.totalBudget}
-        totalExpenses={txnHooks.totalExpenses}
-        totalIncome={txnHooks.totalIncome}
-        totalTransfers={txnHooks.totalTransfers}
-        fixedExpenses={txnHooks.fixedExpenses}
-        flexibleExpenses={txnHooks.flexibleExpenses}
-        nonMonthlyExpenses={txnHooks.nonMonthlyExpenses}
-        unclassifiedExpenses={txnHooks.unclassifiedExpenses}
-        unclassifiedCount={txnHooks.unclassifiedCount}
-        flexNumber={txnHooks.flexNumber}
-        savingsAmount={txnHooks.savingsAmount}
-        savingsRate={txnHooks.savingsRate}
-        allTransactions={txnHooks.transactions}
-        categories={budgetHooks.categories}
-        budgets={budgetHooks.budgets}
-        selectedBucket={txnHooks.selectedBucket}
-        onSelectBucket={txnHooks.setSelectedBucket}
-        onOpenReport={() => setShowMonthlyReportModal(true)}
-        onOpenAddTxn={handleOpenAddTxn}
-        isCanonicalOverview={true}
-      />
-    </>
+      <AnimatePresence mode="popLayout" initial={false} custom={direction}>
+        <motion.div
+          key={routeKey}
+          custom={direction}
+          variants={{
+            enter: (d: number) => ({ opacity: 0, x: d > 0 ? 32 : d < 0 ? -32 : 0 }),
+            center: { opacity: 1, x: 0, transition: { duration: dur.page, ease } },
+            exit: (d: number) => ({ opacity: 0, x: d > 0 ? -16 : d < 0 ? 16 : 0, transition: { duration: dur.small } }),
+          }}
+          initial="enter"
+          animate="center"
+          exit="exit"
+          className="w-full"
+        >
+          {screen}
+        </motion.div>
+      </AnimatePresence>
+    </LayoutGroup>
   );
 }
 
@@ -603,6 +594,8 @@ function AppInner() {
     }
   };
 
+  const mainRef = useRef<HTMLElement>(null);
+
   return (
     <NavigationProvider
       activeMonth={txnHooks.selectedMonth}
@@ -611,6 +604,7 @@ function AppInner() {
       categories={budgetHooks.categories}
       categoryTxnCount={txnHooks.filteredTransactions.length}
       monthTxnCount={txnHooks.monthTransactions.length}
+      mainRef={mainRef}
     >
       <AppLayout>
       <Navbar
@@ -651,7 +645,7 @@ function AppInner() {
           />
         )}
 
-        <main className="flex-1 overflow-y-auto px-4 md:px-6 pt-0 pb-24 md:pb-6 w-full relative z-10 custom-scrollbar">
+        <main ref={mainRef} className="flex-1 overflow-y-auto px-4 md:px-6 pt-0 pb-24 md:pb-6 w-full relative z-10 custom-scrollbar">
           <div className="max-w-6xl mx-auto w-full">
             {!isAuthenticated ? (
           <div className="flex flex-col items-center justify-center h-[60vh] text-center">
