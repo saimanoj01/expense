@@ -3,7 +3,7 @@ import { TrendChart } from '../dashboard/TrendChart';
 import { TrendChartDetails } from '../../hooks/useTransactions';
 import { Category, Budget, Transaction } from '../../services/storage';
 import { formatMonthLabel } from '../../utils/navigation';
-import { bucketOf } from '../../utils/categorizer';
+import { computeMonthMetrics } from '../../utils/metrics';
 import { bucketColor, negativeColor } from '../../theme/buckets';
 import { WaterfallItem } from '../dashboard/WaterfallChart';
 
@@ -31,29 +31,14 @@ export function TrendsView({
   onSelectMonth,
   onRequestGeminiKey,
 }: TrendsViewProps) {
-  // Waterfall Chart Data for cash flow breakdown
+  // Waterfall Chart Data for cash flow breakdown via computeMonthMetrics
   const waterfallData = useMemo<WaterfallItem[]>(() => {
-    const periodTxns =
-      month === 'all'
-        ? transactions.filter(t => t.type !== 'transfer')
-        : transactions.filter(
-            t => t.date && t.date.startsWith(month) && t.type !== 'transfer'
-          );
-
-    const totalIncome = periodTxns
-      .filter(t => t.type === 'income')
-      .reduce((s, t) => s + t.amount, 0);
-    const fixedExpenses = periodTxns
-      .filter(t => t.type === 'expense' && bucketOf(t, categories) === 'fixed')
-      .reduce((s, t) => s + t.amount, 0);
-    const flexibleExpenses = periodTxns
-      .filter(t => t.type === 'expense' && bucketOf(t, categories) === 'flexible')
-      .reduce((s, t) => s + t.amount, 0);
-    const nonMonthlyExpenses = periodTxns
-      .filter(t => t.type === 'expense' && bucketOf(t, categories) === 'non-monthly')
-      .reduce((s, t) => s + t.amount, 0);
-    const totalExpenses = fixedExpenses + flexibleExpenses + nonMonthlyExpenses;
-    const savingsAmount = totalIncome - totalExpenses;
+    const m = computeMonthMetrics(transactions, month, categories);
+    const totalIncome = m.income;
+    const fixedExpenses = m.fixed;
+    const flexibleExpenses = m.flexible;
+    const nonMonthlyExpenses = m.nonMonthly;
+    const savingsAmount = m.savings;
 
     const items: WaterfallItem[] = [];
 
