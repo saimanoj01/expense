@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { Target, Plus, Save, ChevronDown, ChevronRight, FileText, Edit2, Trash2, Check, Sparkles, Calendar, Edit3, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { BudgetNote } from '../../services/storage';
+import { bucketColor } from '../../theme/buckets';
 
 export interface SubCategorySummary {
   id: string;
@@ -155,20 +156,20 @@ export function BudgetUtilization({
 
   return (
     <motion.div 
-      initial={{ opacity: 0, scale: 0.95 }}
+      initial={{ opacity: 0, scale: 0.98 }}
       animate={{ opacity: 1, scale: 1 }}
-      transition={{ delay: 0.3 }}
-      className="glass-card p-6 rounded-2xl flex-1 flex flex-col"
+      transition={{ duration: 0.16 }}
+      className="bg-card border border-border p-6 rounded-[14px] flex-1 flex flex-col"
     >
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div className="flex items-center gap-3">
-          <div className="p-2 rounded-xl bg-primary/10 text-primary">
-            <Target className="w-5 h-5" />
+          <div className="p-2 rounded-[10px] bg-surface2 text-muted-foreground">
+            <Target className="w-4 h-4" />
           </div>
           <div>
-            <h3 className="text-lg font-bold">Budget Utilization</h3>
-            <p className="text-xs text-muted-foreground">Monitor spending vs limits</p>
+            <h3 className="text-section font-semibold text-foreground">Budget Utilization</h3>
+            <p className="text-label text-muted-foreground">Monitor spending vs limits</p>
           </div>
         </div>
 
@@ -177,7 +178,7 @@ export function BudgetUtilization({
             <button
               onClick={() => setShowAddCatModal(true)}
               data-testid="open-add-category-btn"
-              className="flex items-center gap-1 text-xs font-bold px-3 py-1.5 rounded-lg bg-card/60 hover:bg-card border border-border transition-colors"
+              className="flex items-center gap-1 text-label font-medium px-3 py-1.5 rounded-[10px] bg-card hover:bg-surface2 border border-border transition-colors focus-visible:ring-2 ring-ring/40"
             >
               <Plus className="w-3.5 h-3.5" /> Category
             </button>
@@ -186,7 +187,7 @@ export function BudgetUtilization({
           <button
             onClick={() => setShowEditDrawer(prev => !prev)}
             data-testid="toggle-budget-drawer-btn"
-            className="flex items-center gap-1 text-xs font-bold px-3 py-1.5 rounded-lg bg-card/60 hover:bg-card border border-border transition-colors text-foreground"
+            className="flex items-center gap-1 text-label font-medium px-3 py-1.5 rounded-[10px] bg-card hover:bg-surface2 border border-border transition-colors text-foreground focus-visible:ring-2 ring-ring/40"
           >
             <Edit3 className="w-3.5 h-3.5" />
             <span>{showEditDrawer ? 'Close Targets' : 'Quick Targets'}</span>
@@ -196,7 +197,7 @@ export function BudgetUtilization({
             <button
               onClick={handleSaveBudgets}
               data-testid="save-budgets-btn"
-              className="flex items-center gap-1 text-xs font-bold px-3 py-1.5 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors shadow-sm"
+              className="flex items-center gap-1 text-label font-medium px-3 py-1.5 rounded-[10px] bg-primary text-primary-foreground hover:bg-primary/90 transition-colors focus-visible:ring-2 ring-ring/40"
             >
               <Save className="w-3.5 h-3.5" /> Save Budgets
             </button>
@@ -205,32 +206,35 @@ export function BudgetUtilization({
       </div>
 
       {/* Bucket Filter Tabs */}
-      <div className="flex items-center gap-1.5 mb-4 p-1 bg-card/50 rounded-xl border border-border/50" data-testid="budget-bucket-tabs">
+      <div className="flex items-center gap-1 mb-4 p-1 bg-card rounded-[10px] border border-border" data-testid="budget-bucket-tabs">
         <button
           onClick={() => setActiveBucketTab('flexible')}
           aria-label="Flexible / Variable"
-          className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all ${activeBucketTab === 'flexible' ? 'bg-violet-500 text-white shadow-md' : 'text-muted-foreground hover:text-foreground'}`}
+          className={`flex-1 py-1.5 px-3 rounded-[8px] text-label font-medium transition-colors flex items-center justify-center gap-2 focus-visible:ring-2 ring-ring/40 ${activeBucketTab === 'flexible' ? 'bg-surface2 text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
         >
-          🟣 Flexible
+          <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: bucketColor('flexible') }} />
+          <span>Variable</span>
         </button>
         <button
           onClick={() => setActiveBucketTab('fixed')}
           aria-label="Fixed"
-          className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all ${activeBucketTab === 'fixed' ? 'bg-blue-500 text-white shadow-md' : 'text-muted-foreground hover:text-foreground'}`}
+          className={`flex-1 py-1.5 px-3 rounded-[8px] text-label font-medium transition-colors flex items-center justify-center gap-2 focus-visible:ring-2 ring-ring/40 ${activeBucketTab === 'fixed' ? 'bg-surface2 text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
         >
-          🔵 Fixed
+          <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: bucketColor('fixed') }} />
+          <span>Fixed</span>
         </button>
         <button
           onClick={() => setActiveBucketTab('non-monthly')}
           aria-label="Non-Monthly"
-          className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all ${activeBucketTab === 'non-monthly' ? 'bg-amber-500 text-white shadow-md' : 'text-muted-foreground hover:text-foreground'}`}
+          className={`flex-1 py-1.5 px-3 rounded-[8px] text-label font-medium transition-colors flex items-center justify-center gap-2 focus-visible:ring-2 ring-ring/40 ${activeBucketTab === 'non-monthly' ? 'bg-surface2 text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
         >
-          🟠 Non-Monthly
+          <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: bucketColor('non-monthly') }} />
+          <span>Non-Monthly</span>
         </button>
         <button
           onClick={() => setActiveBucketTab('all')}
           aria-label="All"
-          className={`py-1.5 px-3 rounded-lg text-xs font-bold transition-all ${activeBucketTab === 'all' ? 'bg-primary text-primary-foreground shadow-md' : 'text-muted-foreground hover:text-foreground'}`}
+          className={`py-1.5 px-3 rounded-[8px] text-label font-medium transition-colors focus-visible:ring-2 ring-ring/40 ${activeBucketTab === 'all' ? 'bg-surface2 text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
         >
           All
         </button>
@@ -344,12 +348,12 @@ export function BudgetUtilization({
       {/* Visual Charts Container for E2E and User Analytics */}
       <div data-testid="charts-container" className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
         {/* SVG Pie Chart */}
-        <div className="glass-card p-4 rounded-xl border border-border/40 flex flex-col items-center">
-          <span className="text-xs font-semibold text-muted-foreground mb-2">Category Breakdown (Pie)</span>
+        <div className="bg-card p-4 rounded-[14px] border border-border flex flex-col items-center">
+          <span className="text-label font-medium text-muted-foreground mb-2">Category Breakdown (Pie)</span>
           <svg className="w-full h-40" data-testid="chart-svg-pie" viewBox="0 0 300 192">
             <rect width="100%" height="100%" fill="rgba(255,255,255,0.02)" rx="8" />
             {(!piePaths || piePaths.totalPieExpense === 0) ? (
-              <text x="50%" y="50%" textAnchor="middle" fill="currentColor" className="no-data-text text-muted-foreground text-xs">
+              <text x="50%" y="50%" textAnchor="middle" fill="currentColor" className="no-data-text text-muted-foreground text-label">
                 No data available
               </text>
             ) : (
@@ -364,7 +368,7 @@ export function BudgetUtilization({
             )}
           </svg>
           {piePaths?.segments && piePaths.segments.length > 0 && (
-            <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 mt-3 pt-2 border-t border-border/30 w-full text-[11px] text-muted-foreground">
+            <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 mt-3 pt-2 border-t border-border/30 w-full text-label text-muted-foreground">
               {piePaths.segments.map(seg => {
                 const pct = piePaths.totalPieExpense > 0 ? Math.round((seg.expense / piePaths.totalPieExpense) * 100) : 0;
                 return (
@@ -380,8 +384,8 @@ export function BudgetUtilization({
         </div>
 
         {/* SVG Budget vs Actual Chart */}
-        <div className="glass-card p-4 rounded-xl border border-border/40 flex flex-col items-center">
-          <span className="text-xs font-semibold text-muted-foreground mb-2">Budget vs Actual</span>
+        <div className="bg-card p-4 rounded-[14px] border border-border flex flex-col items-center">
+          <span className="text-label font-medium text-muted-foreground mb-2">Budget vs Actual</span>
           <svg className="w-full h-40" data-testid="chart-svg-budget" viewBox="0 0 360 180">
             <rect width="100%" height="100%" fill="rgba(255,255,255,0.02)" rx="8" />
             <g className="budget-bar">
@@ -434,7 +438,7 @@ export function BudgetUtilization({
             })}
             <line x1="10" y1="130" x2="350" y2="130" stroke="rgba(255,255,255,0.15)" strokeWidth="1" />
           </svg>
-          <div className="flex flex-wrap items-center justify-center gap-4 mt-3 pt-2 border-t border-border/30 w-full text-[11px] text-muted-foreground">
+          <div className="flex flex-wrap items-center justify-center gap-4 mt-3 pt-2 border-t border-border/30 w-full text-label text-muted-foreground">
             <div className="flex items-center gap-1.5">
               <span className="w-3 h-3 rounded-sm bg-white/20 inline-block border border-border/50 shadow-sm" />
               <span className="font-medium text-foreground">Budget Limit</span>
@@ -448,11 +452,11 @@ export function BudgetUtilization({
       </div>
 
       {/* Target Policy Label & Quick Drawer (C10 & U8) */}
-      <div className="flex items-center justify-between text-xs text-muted-foreground px-1 mb-2">
-        <span className="font-semibold text-foreground/90">
-          Monthly Budget Target <span className="text-[11px] font-normal text-muted-foreground">(applies across months)</span>
+      <div className="flex items-center justify-between text-label text-muted-foreground px-1 mb-2">
+        <span className="font-medium text-foreground/90">
+          Monthly Budget Target <span className="text-label font-normal text-muted-foreground">(applies across months)</span>
         </span>
-        <span className="text-[11px]">
+        <span className="text-label">
           {displayedCategories.length} {displayedCategories.length === 1 ? 'category' : 'categories'}
         </span>
       </div>
@@ -520,9 +524,9 @@ export function BudgetUtilization({
             const catKey = item.id === 'food' ? 'Food' : (item.id === 'meals' ? 'Meals' : (item.id === 'housing' ? 'Rent' : item.name));
             if (item.isNonBudgetable) {
               return (
-                <div key={item.id} className="glass-card p-4 rounded-xl border border-border/50 space-y-2 bg-card/25">
+                <div key={item.id} className="bg-card p-4 rounded-[14px] border border-border space-y-2">
                   <div className="flex items-center justify-between gap-2">
-                    <div className="font-semibold flex items-center gap-2.5 text-base truncate min-w-0">
+                    <div className="font-medium flex items-center gap-2.5 text-row truncate min-w-0">
                       <span 
                       data-testid={`category-badge-${catKey}`}
                       className="text-base leading-none shrink-0"
@@ -532,11 +536,11 @@ export function BudgetUtilization({
                     </span>
                       <span className="truncate" data-testid={`budget-label-${item.id === 'food' ? 'Food' : item.name}`}>{item.name}</span>
                     </div>
-                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-secondary/15 text-secondary border border-secondary/30 shrink-0">
+                    <span className="px-2.5 py-0.5 rounded-full text-label font-medium uppercase tracking-wider bg-surface2 text-muted-foreground border border-border shrink-0">
                       {item.name.toLowerCase().includes('income') || item.id.toLowerCase().includes('income') ? 'Inflow (Non-budgetable)' : 'Transfer (Non-budgetable)'}
                     </span>
                   </div>
-                  <p className="text-[11px] text-muted-foreground/80 italic">
+                  <p className="text-label text-muted-foreground/80 italic">
                     Tracked in cash flow waterfall — excluded from expense budget limits.
                   </p>
                 </div>
@@ -568,12 +572,12 @@ export function BudgetUtilization({
             }
 
             return (
-              <div key={item.id} className="glass-card p-4 rounded-xl border border-border/50 space-y-3">
+              <div key={item.id} className="bg-card p-4 rounded-[14px] border border-border space-y-3">
                 {/* Line 1: Category Header & Status Badge */}
                 <div className="flex items-center justify-between gap-2">
                   <div 
                     onClick={() => toggleExpand(item.id)}
-                    className="font-semibold flex items-center gap-2.5 text-base cursor-pointer hover:text-primary transition-colors truncate min-w-0"
+                    className="font-medium flex items-center gap-2.5 text-row cursor-pointer hover:text-primary transition-colors truncate min-w-0"
                   >
                     <span className="text-muted-foreground shrink-0">
                       {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
@@ -589,7 +593,7 @@ export function BudgetUtilization({
 
                     {/* Note indicator icon (Item 1: Note indicator on collapsed cards) */}
                     {isSpecificMonth && parentNote && (
-                      <span className="shrink-0 flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-primary/10 text-primary border border-primary/20">
+                      <span className="shrink-0 flex items-center gap-1 px-1.5 py-0.5 rounded text-label font-medium bg-surface2 text-foreground border border-border">
                         <FileText className="w-3 h-3" />
                         <span>Note</span>
                       </span>
@@ -599,39 +603,39 @@ export function BudgetUtilization({
                   {/* Status Badge */}
                   {item.budget > 0 ? (
                     <span
-                      className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider shrink-0 ${
+                      className={`px-2.5 py-0.5 rounded-full text-label font-medium uppercase tracking-wider shrink-0 ${
                         isOver
-                          ? 'bg-destructive/20 text-destructive border border-destructive/30'
+                          ? 'bg-destructive/15 text-destructive border border-destructive/30'
                           : isNearCap
-                          ? 'bg-amber-500/20 text-amber-500 border border-amber-500/30'
+                          ? 'bg-amber-500/15 text-amber-500 border border-amber-500/30'
                           : 'bg-emerald-500/15 text-emerald-500 border border-emerald-500/30'
                       }`}
                     >
                       {isOver ? `Over by $${Math.abs(remaining).toFixed(0)}` : isNearCap ? 'Near Limit' : 'On Track'}
                     </span>
                   ) : (
-                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-card text-muted-foreground border border-border/60 shrink-0">
+                    <span className="px-2.5 py-0.5 rounded-full text-label font-medium bg-card text-muted-foreground border border-border shrink-0">
                       No Target
                     </span>
                   )}
                 </div>
 
                 {/* Line 2 & 3: Stacked Metrics (Spent on top, Budget below it) */}
-                <div className="bg-card/40 rounded-lg p-3 border border-border/30 space-y-2">
+                <div className="bg-background/40 rounded-[10px] p-3 border border-border/50 space-y-2">
                   {/* Spent Line */}
-                  <div className="flex justify-between items-center text-sm">
+                  <div className="flex justify-between items-center text-row">
                     <span className="text-muted-foreground font-medium">Spent</span>
-                    <span className={`font-bold text-base tabular-nums ${isOver ? 'text-destructive' : 'text-foreground'}`}>
+                    <span className={`font-semibold tabular-nums ${isOver ? 'text-destructive' : 'text-foreground'}`}>
                       ${item.spent.toFixed(0)}
                     </span>
                   </div>
 
                   {/* Budget Line */}
-                  <div className="flex justify-between items-center text-sm pt-1 border-t border-border/20">
+                  <div className="flex justify-between items-center text-row pt-1 border-t border-border/40">
                     <span className="text-muted-foreground font-medium">Budget</span>
                     {handleBudgetInputChange ? (
-                      <div className="flex items-center gap-1 bg-card border border-border/80 hover:border-primary/50 focus-within:border-primary focus-within:ring-1 focus-within:ring-primary/40 rounded-lg px-2.5 py-1 transition-all">
-                        <span className="text-xs text-muted-foreground font-semibold">$</span>
+                      <div className="flex items-center gap-1 bg-card border border-border hover:border-primary/50 focus-within:border-primary focus-within:ring-2 focus-within:ring-ring/40 rounded-[8px] px-2.5 py-1 transition-colors">
+                        <span className="text-label text-muted-foreground font-medium">$</span>
                         <input
                           disabled={isLockedMonth}
                           type="number"
@@ -640,17 +644,17 @@ export function BudgetUtilization({
                           value={item.budget === 0 ? '0' : (item.budget || '')}
                           placeholder="0"
                           onChange={e => handleBudgetInputChange(item.id, e.target.value)}
-                          className="w-16 bg-transparent text-sm font-bold text-foreground tabular-nums outline-none text-right disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="w-16 bg-transparent text-row font-semibold text-foreground tabular-nums outline-none text-right disabled:opacity-50 disabled:cursor-not-allowed"
                         />
                       </div>
                     ) : (
-                      <span className="font-bold text-foreground tabular-nums">${item.budget}</span>
+                      <span className="font-semibold text-foreground tabular-nums">${item.budget}</span>
                     )}
                   </div>
                 </div>
 
                 {budgetErrors[item.id] && (
-                  <p className={`text-[10px] text-destructive font-bold budget-error-${catKey}`} data-testid="budget-error">
+                  <p className={`text-label text-destructive font-semibold budget-error-${catKey}`} data-testid="budget-error">
                     {budgetErrors[item.id]}
                   </p>
                 )}
@@ -658,17 +662,17 @@ export function BudgetUtilization({
                 {/* Line 4: Progress Bar & Status Text */}
                 {item.budget > 0 ? (
                   <div className="space-y-1 pt-0.5">
-                    <div className="h-2 bg-card/60 rounded-full overflow-hidden border border-border/40">
+                    <div className="h-2 bg-surface2 rounded-full overflow-hidden">
                       <motion.div
                         data-testid={`budget-indicator-${catKey}`}
                         initial={{ width: 0 }}
                         animate={{ width: `${Math.min(item.percent, 100)}%` }}
-                        transition={{ duration: 0.8, delay: 0.1 }}
+                        transition={{ duration: 0.4 }}
                         className={`h-full rounded-full ${isOver || item.percent > 100 ? 'bg-destructive bg-red-500 budget-overspent' : ''}`}
                         style={{ backgroundColor: !isOver && item.percent <= 100 ? item.color : undefined }}
                       />
                     </div>
-                    <div className="flex justify-between items-center text-[11px] text-muted-foreground px-0.5 font-medium tabular-nums">
+                    <div className="flex justify-between items-center text-label text-muted-foreground px-0.5 font-medium tabular-nums">
                       <span data-testid={`budget-utilization-${catKey}`}>{item.percent.toFixed(0)}% used</span>
                       <span 
                         data-testid={`budget-remaining-${catKey}`}
@@ -681,7 +685,7 @@ export function BudgetUtilization({
                     </div>
                   </div>
                 ) : (
-                  <div className="text-[11px] text-muted-foreground/70 italic px-0.5 pt-0.5">
+                  <div className="text-label text-muted-foreground/70 italic px-0.5 pt-0.5">
                     Enter a budget target above to track utilization
                   </div>
                 )}
