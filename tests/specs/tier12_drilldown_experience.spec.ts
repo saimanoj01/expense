@@ -285,4 +285,60 @@ test.describe('Tier 12: v3 Progressive Disclosure Drill-Down Experience', () => 
       expect(box.height).toBeLessThan(900);
     }
   });
+
+  test('11. Level 2 Bucket View renders Hero Bucket Banner, Ranked Categories, and transitions to Level 3', async ({ page }) => {
+    // Navigate directly to Level 2 Fixed Bucket
+    await page.goto('/#month/2026-11/bucket/fixed');
+
+    const bucketView = page.getByTestId('level2-bucket-view');
+    await expect(bucketView).toBeVisible();
+
+    // Verify Bucket Total Spent
+    const totalSpent = page.getByTestId('bucket-total-spent');
+    await expect(totalSpent).toBeVisible();
+    await expect(totalSpent).toContainText('$2,400.00');
+
+    // Verify Ranked Categories in this bucket
+    const housingRow = page.getByTestId('category-row-housing');
+    await expect(housingRow).toBeVisible();
+    await expect(housingRow).toContainText('Housing');
+
+    // Click Category row to transition to Level 3
+    await housingRow.click();
+    await expect(page.getByTestId('level3-category-view')).toBeVisible();
+    await expect(page.getByTestId('breadcrumb-item-category-housing')).toBeVisible();
+  });
+
+  test('12. Level 3 Category View renders Daily Spending Sparkline, Top Payees, and search filter', async ({ page }) => {
+    // Navigate directly to Level 3 Housing Category
+    await page.goto('/#month/2026-11/category/housing');
+
+    const categoryView = page.getByTestId('level3-category-view');
+    await expect(categoryView).toBeVisible();
+
+    // Verify category spent
+    const categorySpent = page.getByTestId('category-total-spent');
+    await expect(categorySpent).toBeVisible();
+    await expect(categorySpent).toContainText('$2,400.00');
+
+    // Verify Daily Spend Timeline SVG sparkline
+    const sparkline = page.getByTestId('daily-spend-timeline');
+    await expect(sparkline).toBeVisible();
+
+    // Verify Top Payees breakdown
+    const payees = page.getByTestId('top-merchants-breakdown');
+    await expect(payees).toBeVisible();
+
+    // Test Category Transaction search filter
+    const searchInput = page.getByTestId('category-txn-search');
+    await expect(searchInput).toBeVisible();
+    await searchInput.fill('Apartment');
+    await expect(page.getByTestId('category-txn-tx-rent')).toBeVisible();
+
+    // Test Back to Bucket button
+    const backBtn = page.getByTestId('back-to-bucket-btn');
+    await expect(backBtn).toBeVisible();
+    await backBtn.click();
+    await expect(page.getByTestId('level2-bucket-view')).toBeVisible();
+  });
 });
