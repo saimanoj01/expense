@@ -1,5 +1,7 @@
 const GEMINI_KEY_STORAGE_KEY = 'expense_gemini_api_key';
 
+export const DEFAULT_GEMINI_MODEL = 'gemini-3.5-flash-lite';
+
 export class GeminiApiError extends Error {
   status?: number;
   constructor(message: string, status?: number) {
@@ -86,7 +88,7 @@ export async function callGemini(config: GeminiConfig): Promise<unknown> {
     throw new GeminiApiError('Gemini API key is not configured. Please add your key in AI Settings.');
   }
 
-  const model = config.model || 'gemini-3.5-flash-lite';
+  const model = config.model || DEFAULT_GEMINI_MODEL;
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
 
   const contents: GeminiContentItem[] = [

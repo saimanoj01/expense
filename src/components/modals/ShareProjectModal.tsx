@@ -20,6 +20,9 @@ export function ShareProjectModal({ showModal, onClose, collaborators, onAddColl
     try {
       await onAddCollaborator(email.trim());
       setEmail('');
+      setTimeout(() => {
+        onClose();
+      }, 600);
     } catch (err) {
       console.error(err);
     } finally {

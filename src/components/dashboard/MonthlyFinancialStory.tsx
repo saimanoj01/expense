@@ -8,7 +8,8 @@ import {
   ArrowRight,
   AlertTriangle,
   CheckCircle2,
-  BarChart3
+  BarChart3,
+  Printer
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Project, Transaction, Category } from '../../services/storage';
@@ -38,6 +39,7 @@ export interface MonthlyFinancialStoryProps {
   selectedBucket?: 'income' | 'fixed' | 'flexible' | 'non-monthly' | null;
   onSelectBucket?: (b: 'income' | 'fixed' | 'flexible' | 'non-monthly' | null) => void;
   onOpenBackfill?: () => void;
+  onOpenReport?: () => void;
 }
 
 function getPriorMonthKey(monthStr: string): string | null {
@@ -80,7 +82,8 @@ export function MonthlyFinancialStory({
   categories = [],
   selectedBucket,
   onSelectBucket,
-  onOpenBackfill
+  onOpenBackfill,
+  onOpenReport
 }: MonthlyFinancialStoryProps) {
   // Exclude transfers from calculations per specification
   const monthTitle = formatMonthTitle(selectedMonth);
@@ -345,6 +348,18 @@ export function MonthlyFinancialStory({
               {totalIncome > 0 ? `${savingsRate.toFixed(1)}%` : '—'}
             </span>
           </div>
+
+          {onOpenReport && (
+            <button
+              onClick={onOpenReport}
+              data-testid="story-print-report-btn"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-card/80 hover:bg-card border border-border/60 shadow-sm text-xs font-semibold transition-all text-muted-foreground hover:text-foreground"
+              title="Print or export monthly financial report"
+            >
+              <Printer className="w-3.5 h-3.5 text-primary" />
+              <span>Report</span>
+            </button>
+          )}
         </div>
       </div>
 

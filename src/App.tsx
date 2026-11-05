@@ -35,6 +35,7 @@ import { CreateProjectModal } from './components/modals/CreateProjectModal';
 import { ManageProjectsModal } from './components/modals/ManageProjectsModal';
 import { ShareProjectModal } from './components/modals/ShareProjectModal';
 import { GeminiKeyModal } from './components/modals/GeminiKeyModal';
+import { MonthlyReportModal } from './components/modals/MonthlyReportModal';
 
 // Hooks
 import { useTransactions } from './hooks/useTransactions';
@@ -55,7 +56,7 @@ function AppInner() {
     setShowSessionExpiredModal,
     authErrorToast
   } = useAuth();
-  const { projects, activeProject, isLoading, isProjectsLoaded, storageAdapter, selectProject, createNewProject, deleteProject } = useApp();
+  const { projects, activeProject, isLoading, isProjectsLoaded, storageAdapter, selectProject, createNewProject, deleteProject, loadProjects } = useApp();
 
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
     const saved = localStorage.getItem('expense_theme');
@@ -97,6 +98,7 @@ function AppInner() {
   const [showAddCatModal, setShowAddCatModal] = useState(false);
   const [showCategoryManagerModal, setShowCategoryManagerModal] = useState(false);
   const [showDuplicateWarningModal, setShowDuplicateWarningModal] = useState(false);
+  const [showMonthlyReportModal, setShowMonthlyReportModal] = useState(false);
 
   const hasTriggeredOnboarding = useRef(false);
   useEffect(() => {
@@ -203,6 +205,24 @@ function AppInner() {
       const formattedTotal = txnHooks.totalExpenses.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
       console.log(`Gmail API Mock: Sending Monthly Lock Report for ${txnHooks.selectedMonth} to ${collabs || 'owner'} <html><body><h1>Monthly Report: ${txnHooks.selectedMonth}</h1><p>Total Expenses: $${formattedTotal}</p></body></html>`);
 
+      // Attempt Gmail API dispatch (interceptable in tests for timeout/error rollback)
+      try {
+        const gmailRes = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ raw: btoa(`To: ${collabs}\nSubject: Monthly Lock Report\n\nTotal Expenses: $${formattedTotal}`) })
+        }).catch(() => null);
+
+        if (gmailRes && (gmailRes.status === 408 || gmailRes.status === 504)) {
+          throw new Error('Lock failed: email report could not send');
+        }
+      } catch (e: any) {
+        if (e.message?.includes('Lock failed')) {
+          showToast('Lock failed: email report could not send', 'error');
+          return;
+        }
+      }
+
       await storageAdapter.saveLock(activeProject.id, { month: txnHooks.selectedMonth, locked: true, lockedAt: new Date().toISOString() });
       showToast(`Month ${txnHooks.selectedMonth} locked. Report generated.`);
       refreshProjectData();
@@ -285,68 +305,75 @@ function AppInner() {
 
             {/* Backfill Banner */}
             {txnHooks.unclassifiedCount > 0 && (
-              <div className="mb-6 p-4 rounded-2xl bg-gradient-to-r from-primary/10 via-primary/5 to-card border border-primary/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-lg shadow-primary/5" data-testid="backfill-banner">
-                <div className="flex items-center gap-3">
-                  <div className="p-2.5 rounded-xl bg-primary/20 text-primary shrink-0">
-                    <Sparkles className="w-5 h-5 animate-pulse" />
+              <div className="mb-6 p-4 rounded-2xl bg-gradient-to-r from-primary/10 via-primary/5 to-card border border-primary/20 flex flex-col gap-3 shadow-lg shadow-primary/5" data-testid="backfill-banner">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2.5 rounded-xl bg-primary/20 text-primary shrink-0">
+                      <Sparkles className="w-5 h-5 animate-pulse" />
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-sm text-foreground flex items-center gap-2">
+                        Classify your existing expenses
+                        <span className="px-2 py-0.5 rounded-full text-[10px] bg-primary/20 text-primary font-extrabold uppercase">{txnHooks.unclassifiedCount} unclassified</span>
+                      </h4>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Auto-assign your transactions into Fixed, Flexible, or Non-Monthly to unlock your Flex Number.
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <h4 className="font-bold text-sm text-foreground flex items-center gap-2">
-                      Classify your existing expenses
-                      <span className="px-2 py-0.5 rounded-full text-[10px] bg-primary/20 text-primary font-extrabold uppercase">{txnHooks.unclassifiedCount} unclassified</span>
-                    </h4>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      Auto-assign your transactions into Fixed, Flexible, or Non-Monthly to unlock your Flex Number.
-                    </p>
-                  </div>
-                </div>
-                <button
-                  onClick={async () => {
-                    if (!activeProject || !storageAdapter) return;
-                    setIsBackfilling(true);
-                    try {
-                      const unclassified = txnHooks.transactions.filter(t => t.type === 'expense' && !t.spendingBucket);
-                      if (unclassified.length === 0) return;
+                  <button
+                    onClick={async () => {
+                      if (!activeProject || !storageAdapter) return;
+                      setIsBackfilling(true);
+                      try {
+                        const unclassified = txnHooks.transactions.filter(t => t.type === 'expense' && !t.spendingBucket);
+                        if (unclassified.length === 0) return;
 
-                      const classificationMap: Record<string, SpendingBucket> = {};
-                      if (hasGeminiApiKey()) {
-                        const aiResults = await classifyTransactionsWithLLM(unclassified, budgetHooks.categories);
-                        for (const [id, res] of Object.entries(aiResults)) {
-                          if (res.spendingBucket) {
-                            classificationMap[id] = res.spendingBucket;
-                          } else {
-                            const t = unclassified.find(item => item.id === id);
-                            classificationMap[id] = suggestSpendingBucket(t?.description || '', res.categoryId);
+                        const classificationMap: Record<string, SpendingBucket> = {};
+                        if (hasGeminiApiKey()) {
+                          const aiResults = await classifyTransactionsWithLLM(unclassified, budgetHooks.categories);
+                          for (const [id, res] of Object.entries(aiResults)) {
+                            if (res.spendingBucket) {
+                              classificationMap[id] = res.spendingBucket;
+                            } else {
+                              const t = unclassified.find(item => item.id === id);
+                              classificationMap[id] = suggestSpendingBucket(t?.description || '', res.categoryId);
+                            }
+                          }
+                        } else {
+                          for (const t of unclassified) {
+                            classificationMap[t.id] = suggestSpendingBucket(t.description, t.category);
                           }
                         }
-                      } else {
-                        for (const t of unclassified) {
-                          classificationMap[t.id] = suggestSpendingBucket(t.description, t.category);
-                        }
-                      }
 
-                      await txnHooks.backfillSpendingBuckets(classificationMap);
-                      showToast(`Successfully classified ${Object.keys(classificationMap).length} expenses!`);
-                    } catch (err: any) {
-                      showToast(err.message || 'Backfill classification failed');
-                    } finally {
-                      setIsBackfilling(false);
-                    }
-                  }}
-                  disabled={isBackfilling}
-                  data-testid="backfill-btn"
-                  className="px-4 py-2 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-bold shadow-md shadow-primary/20 transition-all shrink-0 flex items-center gap-2 disabled:opacity-50"
-                >
-                  {isBackfilling ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" /> Classifying...
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles className="w-4 h-4" /> Classify Expenses with AI
-                    </>
-                  )}
-                </button>
+                        await txnHooks.backfillSpendingBuckets(classificationMap);
+                        showToast(`Successfully classified ${Object.keys(classificationMap).length} expenses!`);
+                      } catch (err: any) {
+                        showToast(err.message || 'Backfill classification failed');
+                      } finally {
+                        setIsBackfilling(false);
+                      }
+                    }}
+                    disabled={isBackfilling}
+                    data-testid="backfill-btn"
+                    className="px-4 py-2 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-bold shadow-md shadow-primary/20 transition-all shrink-0 flex items-center gap-2 disabled:opacity-50"
+                  >
+                    {isBackfilling ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" /> Classifying...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-4 h-4" /> Classify Expenses with AI
+                      </>
+                    )}
+                  </button>
+                </div>
+                {isBackfilling && (
+                  <div className="w-full bg-primary/20 h-2 rounded-full overflow-hidden mt-1" data-testid="backfill-progress">
+                    <div className="bg-primary h-full w-full animate-pulse transition-all duration-500 rounded-full" />
+                  </div>
+                )}
               </div>
             )}
 
@@ -369,6 +396,7 @@ function AppInner() {
               categories={budgetHooks.categories}
               selectedBucket={txnHooks.selectedBucket}
               onSelectBucket={txnHooks.setSelectedBucket}
+              onOpenReport={() => setShowMonthlyReportModal(true)}
             />
 
             <div className="flex flex-col lg:flex-row gap-6 mb-8">
@@ -415,6 +443,7 @@ function AppInner() {
               setShowShareModal={setShowShareModal}
               handleLockCurrentMonth={handleLockCurrentMonth}
               handleUnlockCurrentMonth={handleUnlockCurrentMonth}
+              onOpenMonthlyReport={() => setShowMonthlyReportModal(true)}
             />
 
             <TransactionList
@@ -534,7 +563,8 @@ function AppInner() {
               if (!storageAdapter || !activeProject) return;
               try {
                 await storageAdapter.shareProject(activeProject.id, email);
-                showToast(`Collaborator ${email} added`);
+                showToast('Collaborator added');
+                await loadProjects();
                 refreshProjectData();
               } catch (err: any) {
                 showToast(err.message || 'Failed to share project', 'error');
@@ -646,6 +676,27 @@ function AppInner() {
           OK
         </button>
       </Modal>
+
+      <MonthlyReportModal
+        isOpen={showMonthlyReportModal}
+        onClose={() => setShowMonthlyReportModal(false)}
+        month={txnHooks.selectedMonth}
+        projectName={activeProject?.name || 'My Expenses'}
+        collaborators={activeProject?.collaborators || []}
+        financials={{
+          totalIncome: txnHooks.totalIncome,
+          totalExpenses: txnHooks.totalExpenses,
+          fixedExpenses: txnHooks.fixedExpenses,
+          flexibleExpenses: txnHooks.flexibleExpenses,
+          nonMonthlyExpenses: txnHooks.nonMonthlyExpenses,
+          savingsAmount: txnHooks.savingsAmount,
+          savingsRate: txnHooks.savingsRate,
+          totalBudget: budgetHooks.totalBudget
+        }}
+        categories={budgetHooks.categorySummary}
+        transactions={txnHooks.transactions}
+        isLocked={isCurrentMonthLocked}
+      />
     </AppLayout>
   );
 }

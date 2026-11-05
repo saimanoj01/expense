@@ -312,4 +312,20 @@ test.describe('Tier 11: The Monthly Financial Story & Cash Flow Analytics', () =
     await bucketSelect.selectOption('fixed');
     await expect(bucketSelect).toHaveValue('fixed');
   });
+
+  test('11. Printable Monthly Financial Report modal opens and provides print and CSV download options', async ({ page }) => {
+    const reportBtn = page.getByTestId('story-print-report-btn');
+    await expect(reportBtn).toBeVisible();
+    await reportBtn.click();
+
+    const reportModal = page.getByTestId('monthly-report-modal');
+    await expect(reportModal).toBeVisible();
+    await expect(reportModal.getByTestId('print-report-btn')).toBeVisible();
+    await expect(reportModal.getByTestId('download-report-csv-btn')).toBeVisible();
+    await expect(reportModal).toContainText('Executive Monthly Financial Report');
+
+    // Close dialog
+    await reportModal.getByTestId('close-report-btn').click();
+    await expect(reportModal).not.toBeVisible();
+  });
 });

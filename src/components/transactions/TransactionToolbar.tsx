@@ -1,5 +1,5 @@
 import React from 'react';
-import { Upload, Plus, Lock, Unlock, Share2, Tag, ArrowUpDown } from 'lucide-react';
+import { Upload, Plus, Lock, Unlock, Share2, Tag, ArrowUpDown, FileText } from 'lucide-react';
 import { motion } from 'framer-motion';
 
 interface TransactionToolbarProps {
@@ -19,6 +19,7 @@ interface TransactionToolbarProps {
   handleLockCurrentMonth: () => void;
   handleUnlockCurrentMonth: () => void;
   setShowShareModal: (v: boolean) => void;
+  onOpenMonthlyReport?: () => void;
 }
 
 export function TransactionToolbar({
@@ -37,7 +38,8 @@ export function TransactionToolbar({
   handleCsvFileUpload,
   handleLockCurrentMonth,
   handleUnlockCurrentMonth,
-  setShowShareModal
+  setShowShareModal,
+  onOpenMonthlyReport
 }: TransactionToolbarProps) {
   return (
     <motion.div 
@@ -113,18 +115,31 @@ export function TransactionToolbar({
         )}
         
         {selectedMonth !== 'all' && (
-          <button
-            onClick={isCurrentMonthLocked ? handleUnlockCurrentMonth : handleLockCurrentMonth}
-            data-testid={isCurrentMonthLocked ? "unlock-month-btn" : "lock-month-btn"}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-colors border ${
-              isCurrentMonthLocked 
-                ? 'bg-destructive/10 text-destructive border-destructive/20 hover:bg-destructive/20' 
-                : 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20 hover:bg-emerald-500/20'
-            }`}
-          >
-            {isCurrentMonthLocked ? <Lock className="w-4 h-4" /> : <Unlock className="w-4 h-4" />}
-            <span data-testid="lock-status-indicator">{isCurrentMonthLocked ? 'Locked' : 'Lock Month'}</span>
-          </button>
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={isCurrentMonthLocked ? handleUnlockCurrentMonth : handleLockCurrentMonth}
+              data-testid={isCurrentMonthLocked ? "unlock-month-btn" : "lock-month-btn"}
+              className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-colors border ${
+                isCurrentMonthLocked 
+                  ? 'bg-destructive/10 text-destructive border-destructive/20 hover:bg-destructive/20' 
+                  : 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20 hover:bg-emerald-500/20'
+              }`}
+            >
+              {isCurrentMonthLocked ? <Lock className="w-4 h-4" /> : <Unlock className="w-4 h-4" />}
+              <span data-testid="lock-status-indicator">{isCurrentMonthLocked ? 'Locked' : 'Unlocked'}</span>
+            </button>
+            {onOpenMonthlyReport && (
+              <button
+                onClick={onOpenMonthlyReport}
+                data-testid="view-monthly-report-btn"
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-card/60 hover:bg-card border border-border/80 text-foreground transition-all"
+                title="View Printable Monthly Report"
+              >
+                <FileText className="w-4 h-4 text-primary" />
+                <span className="hidden sm:inline">Report</span>
+              </button>
+            )}
+          </div>
         )}
 
         {/* Tag Filters */}
