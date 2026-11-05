@@ -212,9 +212,9 @@ export function TrendChart({
 
       {/* TAB 1: MONTHLY CUMULATIVE PACING VIEW */}
       {activeTab === 'pacing' && (
-        <div className="flex-1 flex flex-col justify-between">
+        <div className="flex flex-col gap-4">
           {/* Quick Stat Badges */}
-          <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
             <div className="flex flex-wrap items-center gap-2">
               {highestSpendDay && (
                 <div className="px-3 py-1.5 rounded-lg bg-card/60 border border-border/60 flex items-center gap-2 text-xs">
@@ -259,7 +259,7 @@ export function TrendChart({
           </div>
 
           {/* SVG / Recharts Pacing Chart Frame */}
-          <div className="flex-1 min-h-[220px] relative w-full flex items-center justify-center select-none">
+          <div className="min-h-[220px] relative w-full flex items-center justify-center select-none">
             {pacingEngine === 'recharts' && hasData ? (
               <Suspense fallback={<div className="h-48 w-full animate-pulse bg-card/20 rounded-xl" />}>
                 <PacingChart 

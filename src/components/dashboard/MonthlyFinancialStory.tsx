@@ -492,39 +492,7 @@ export function MonthlyFinancialStory({
           <ArrowRight className="w-4 h-4" />
         </div>
 
-        {/* Step 3: Non-Monthly */}
-        <motion.button
-          variants={item}
-          type="button"
-          onClick={() => onSelectBucket && onSelectBucket(selectedBucket === 'non-monthly' ? null : 'non-monthly')}
-          className={`flex-1 p-4 rounded-xl text-left transition-all relative group flex flex-col justify-between ${
-            selectedBucket === 'non-monthly'
-              ? 'bg-amber-500/20 border-2 border-amber-500 shadow-md shadow-amber-500/10'
-              : 'bg-amber-500/5 border border-amber-500/20 hover:border-amber-500/40'
-          }`}
-        >
-          <div className="flex items-center justify-between mb-2 w-full">
-            <span className="text-xs font-bold text-amber-400 uppercase tracking-wider">3. Non-Monthly</span>
-            <div className="p-1.5 rounded-lg bg-amber-500/10 text-amber-400">
-              <Calendar className="w-4 h-4" />
-            </div>
-          </div>
-          <div>
-            <div className="text-2xl font-bold tracking-tight text-amber-400" data-testid="kpi-non-monthly">
-              {formatExpenseCurrency(nonMonthlyExpenses)}
-            </div>
-            <p className="text-[11px] text-muted-foreground mt-1 font-medium">
-              Irregular ({nonMonthlyPct.toFixed(0)}%)
-            </p>
-          </div>
-        </motion.button>
-
-        {/* Connector 3 */}
-        <div className="hidden lg:flex items-center justify-center px-1 text-muted-foreground/40 pointer-events-none shrink-0">
-          <ArrowRight className="w-4 h-4" />
-        </div>
-
-        {/* Step 4: Variable / Flexible Spend */}
+        {/* Step 3: Variable / Flexible Spend */}
         <motion.button
           variants={item}
           type="button"
@@ -536,7 +504,7 @@ export function MonthlyFinancialStory({
           }`}
         >
           <div className="flex items-center justify-between mb-2 w-full">
-            <span className="text-xs font-bold text-violet-400 uppercase tracking-wider">4. Variable Spend</span>
+            <span className="text-xs font-bold text-violet-400 uppercase tracking-wider">3. Variable Spend</span>
             <div className="p-1.5 rounded-lg bg-violet-500/10 text-violet-400">
               <ShoppingBag className="w-4 h-4" />
             </div>
@@ -567,6 +535,38 @@ export function MonthlyFinancialStory({
                 </span>
               )}
             </div>
+          </div>
+        </motion.button>
+
+        {/* Connector 3 */}
+        <div className="hidden lg:flex items-center justify-center px-1 text-muted-foreground/40 pointer-events-none shrink-0">
+          <ArrowRight className="w-4 h-4" />
+        </div>
+
+        {/* Step 4: Non-Monthly */}
+        <motion.button
+          variants={item}
+          type="button"
+          onClick={() => onSelectBucket && onSelectBucket(selectedBucket === 'non-monthly' ? null : 'non-monthly')}
+          className={`flex-1 p-4 rounded-xl text-left transition-all relative group flex flex-col justify-between ${
+            selectedBucket === 'non-monthly'
+              ? 'bg-amber-500/20 border-2 border-amber-500 shadow-md shadow-amber-500/10'
+              : 'bg-amber-500/5 border border-amber-500/20 hover:border-amber-500/40'
+          }`}
+        >
+          <div className="flex items-center justify-between mb-2 w-full">
+            <span className="text-xs font-bold text-amber-400 uppercase tracking-wider">4. Non-Monthly</span>
+            <div className="p-1.5 rounded-lg bg-amber-500/10 text-amber-400">
+              <Calendar className="w-4 h-4" />
+            </div>
+          </div>
+          <div>
+            <div className="text-2xl font-bold tracking-tight text-amber-400" data-testid="kpi-non-monthly">
+              {formatExpenseCurrency(nonMonthlyExpenses)}
+            </div>
+            <p className="text-[11px] text-muted-foreground mt-1 font-medium">
+              Irregular ({nonMonthlyPct.toFixed(0)}%)
+            </p>
           </div>
         </motion.button>
 

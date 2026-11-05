@@ -328,4 +328,28 @@ test.describe('Tier 11: The Monthly Financial Story & Cash Flow Analytics', () =
     await reportModal.getByTestId('close-report-btn').click();
     await expect(reportModal).not.toBeVisible();
   });
+
+  test('12. Transfer transactions are strictly excluded from income, expenses, and net savings', async ({ page }) => {
+    const monthSelect = page.getByTestId('month-selector');
+    await monthSelect.selectOption('2026-07');
+
+    // In July 2026 pre-seeded data:
+    // Income = $12,000.00
+    // Fixed = $2,400.00
+    // Variable = $1,200.00
+    // Non-monthly = $600.00
+    // Transfer = $500.00 (id: 't5')
+    // Total Expenses must strictly be $4,200.00 (excluding $500 transfer)
+    // Net Saved must strictly be $7,800.00
+    await expect(page.getByTestId('kpi-total-income')).toContainText('$12,000.00');
+    await expect(page.getByTestId('kpi-total-expenses')).toContainText('$4,200.00');
+    await expect(page.getByTestId('kpi-fixed-expenses')).toContainText('$2,400.00');
+    await expect(page.getByTestId('kpi-flexible-spent')).toContainText('$1,200.00');
+    await expect(page.getByTestId('kpi-non-monthly')).toContainText('$600.00');
+    await expect(page.getByTestId('kpi-savings-amount')).toContainText('$7,800.00');
+
+    // Cash flow waterfall is visible and excludes transfers
+    const waterfall = page.getByTestId('cash-flow-waterfall');
+    await expect(waterfall).toBeVisible();
+  });
 });

@@ -484,24 +484,27 @@ export function useTransactions(
     const nowYear = now.getFullYear();
     const nowMonth = now.getMonth() + 1; // 1-indexed
     const isCurrentCalendarMonth = (validYear === nowYear && validMonth === nowMonth);
+    let maxDayWithTx = 0;
+    for (let d = daysInMonth; d >= 1; d--) {
+      if (currentMonthDailyExpenses[d - 1] > 0) {
+        maxDayWithTx = d;
+        break;
+      }
+    }
+
     let lastActiveDay = 1;
     if (isCurrentCalendarMonth) {
-      // For the current real-world month, use today's date as the baseline
-      lastActiveDay = now.getDate();
+      // For the current real-world month, account for both today and any existing transactions
+      lastActiveDay = Math.max(now.getDate(), maxDayWithTx);
     } else {
       // For past/future months, use the last day with actual data, or the full month
-      for (let d = daysInMonth; d >= 1; d--) {
-        if (currentMonthDailyExpenses[d - 1] > 0) {
-          lastActiveDay = d;
-          break;
-        }
-      }
+      lastActiveDay = maxDayWithTx || 1;
       // If it's a past month with data, treat the full month as elapsed
       if (validYear < nowYear || (validYear === nowYear && validMonth < nowMonth)) {
         lastActiveDay = daysInMonth;
       }
     }
-    const daysElapsed = Math.max(lastActiveDay, 1);
+    const daysElapsed = Math.min(Math.max(lastActiveDay, 1), daysInMonth);
 
     // Calculate Cumulative amounts
     const currentCumulative: number[] = [];
@@ -594,9 +597,16 @@ export function useTransactions(
 
     const idealPacingPathData = '';
 
-    // EOM Projection (pacing status is computed in TrendChart with totalBudget)
-    const currentSpent = currentCumulative[daysElapsed - 1] || 0;
-    const eomProjection = daysElapsed > 0 ? Math.round((currentSpent / daysElapsed) * daysInMonth) : 0;
+    // EOM Projection (smart proration: fixed & non-monthly obligations are one-time/scheduled, only flexible spend prorates)
+    let eomProjection = 0;
+    if (totalExpenses === 0) {
+      eomProjection = 0;
+    } else if (daysElapsed >= daysInMonth) {
+      eomProjection = Math.round(totalExpenses);
+    } else {
+      const proratedFlexible = daysElapsed > 0 ? (flexibleExpenses / daysElapsed) * daysInMonth : 0;
+      eomProjection = Math.round(fixedExpenses + nonMonthlyExpenses + proratedFlexible);
+    }
     const pacingStatus: 'under_budget' | 'on_track' | 'over_budget' = 'on_track';
 
     // 4. Multi-Month Cash Flow Summaries
@@ -689,8 +699,8 @@ export function useTransactions(
       maxAmt: range,
       minAmt: 0,
       highestSpendDay: highestPoint,
-      dailyAvg: daysElapsed > 0 ? Math.round(currentSpent / daysElapsed) : 0,
-      totalSpent: currentSpent,
+      dailyAvg: daysElapsed > 0 ? Math.round(totalExpenses / daysElapsed) : 0,
+      totalSpent: totalExpenses,
       yTicks,
       xTicks,
       cumulativePoints,
@@ -711,7 +721,7 @@ export function useTransactions(
       worstCashFlowMonth,
       maxCashFlowValue
     };
-  }, [filteredTransactions, transactions, selectedMonth, selectedTagFilter, availableMonths]);
+  }, [filteredTransactions, transactions, selectedMonth, selectedTagFilter, availableMonths, fixedExpenses, nonMonthlyExpenses, flexibleExpenses, totalExpenses]);
 
   const trendPathData = trendDetails.pathData;
 

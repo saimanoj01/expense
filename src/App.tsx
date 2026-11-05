@@ -399,7 +399,7 @@ function AppInner() {
               onOpenReport={() => setShowMonthlyReportModal(true)}
             />
 
-            <div className="flex flex-col lg:flex-row gap-6 mb-8">
+            <div className="flex flex-col lg:flex-row items-start gap-6 mb-8">
               <TrendChart
                 trendDetails={txnHooks.trendDetails}
                 totalBudget={budgetHooks.totalBudget}

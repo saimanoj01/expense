@@ -355,6 +355,20 @@ export function BudgetUtilization({
               ))
             )}
           </svg>
+          {piePaths?.segments && piePaths.segments.length > 0 && (
+            <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 mt-3 pt-2 border-t border-border/30 w-full text-[11px] text-muted-foreground">
+              {piePaths.segments.map(seg => {
+                const pct = piePaths.totalPieExpense > 0 ? Math.round((seg.expense / piePaths.totalPieExpense) * 100) : 0;
+                return (
+                  <div key={seg.category} className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full shrink-0 shadow-sm" style={{ backgroundColor: seg.color }} />
+                    <span className="font-semibold text-foreground truncate max-w-[80px]">{seg.category}</span>
+                    <span className="tabular-nums font-medium">${Math.round(seg.expense).toLocaleString()} ({pct}%)</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {/* SVG Budget vs Actual Chart */}
@@ -412,6 +426,16 @@ export function BudgetUtilization({
             })}
             <line x1="10" y1="130" x2="350" y2="130" stroke="rgba(255,255,255,0.15)" strokeWidth="1" />
           </svg>
+          <div className="flex flex-wrap items-center justify-center gap-4 mt-3 pt-2 border-t border-border/30 w-full text-[11px] text-muted-foreground">
+            <div className="flex items-center gap-1.5">
+              <span className="w-3 h-3 rounded-sm bg-white/20 inline-block border border-border/50 shadow-sm" />
+              <span className="font-medium text-foreground">Budget Limit</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="w-3 h-3 rounded-sm bg-primary inline-block shadow-sm" />
+              <span className="font-medium text-foreground">Actual Spent</span>
+            </div>
+          </div>
         </div>
       </div>
 

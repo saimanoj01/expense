@@ -30,10 +30,17 @@ export async function generateSampleData(): Promise<{
     labels: string[];
   }> = [];
 
+  const currentDay = now.getDate();
+  const pushTx = (tx: (typeof rawTxList)[0]) => {
+    // For the current month (idx === 3), do NOT generate transactions on future days (day > now.getDate())
+    if (tx.monthIdx === 3 && tx.day > currentDay) return;
+    rawTxList.push(tx);
+  };
+
   // Populate data across 4 months
   months.forEach((_, idx) => {
     // Income
-    rawTxList.push({
+    pushTx({
       monthIdx: idx,
       day: 1,
       category: 'salary',
@@ -44,7 +51,7 @@ export async function generateSampleData(): Promise<{
     });
 
     // Fixed: Rent
-    rawTxList.push({
+    pushTx({
       monthIdx: idx,
       day: 1,
       category: 'housing',
@@ -56,7 +63,7 @@ export async function generateSampleData(): Promise<{
     });
 
     // Fixed: Utilities
-    rawTxList.push({
+    pushTx({
       monthIdx: idx,
       day: 4,
       category: 'utilities',
@@ -68,7 +75,7 @@ export async function generateSampleData(): Promise<{
     });
 
     // Fixed: Internet
-    rawTxList.push({
+    pushTx({
       monthIdx: idx,
       day: 5,
       category: 'utilities',
@@ -80,7 +87,7 @@ export async function generateSampleData(): Promise<{
     });
 
     // Flexible: Groceries 1
-    rawTxList.push({
+    pushTx({
       monthIdx: idx,
       day: 7,
       category: 'food',
@@ -92,7 +99,7 @@ export async function generateSampleData(): Promise<{
     });
 
     // Flexible: Dining out
-    rawTxList.push({
+    pushTx({
       monthIdx: idx,
       day: 10,
       category: 'food',
@@ -104,7 +111,7 @@ export async function generateSampleData(): Promise<{
     });
 
     // Flexible: Gas
-    rawTxList.push({
+    pushTx({
       monthIdx: idx,
       day: 12,
       category: 'transport',
@@ -116,7 +123,7 @@ export async function generateSampleData(): Promise<{
     });
 
     // Flexible: Groceries 2
-    rawTxList.push({
+    pushTx({
       monthIdx: idx,
       day: 18,
       category: 'food',
@@ -128,7 +135,7 @@ export async function generateSampleData(): Promise<{
     });
 
     // Flexible: Entertainment
-    rawTxList.push({
+    pushTx({
       monthIdx: idx,
       day: 22,
       category: 'entertainment',
@@ -141,7 +148,7 @@ export async function generateSampleData(): Promise<{
 
     // Non-monthly expenses distributed across history
     if (idx === 1) {
-      rawTxList.push({
+      pushTx({
         monthIdx: idx,
         day: 20,
         category: 'transport',
@@ -154,7 +161,7 @@ export async function generateSampleData(): Promise<{
     }
 
     if (idx === 3) {
-      rawTxList.push({
+      pushTx({
         monthIdx: idx,
         day: 15,
         category: 'misc',
