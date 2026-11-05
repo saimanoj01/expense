@@ -1,9 +1,11 @@
 import React, { useState, useMemo } from 'react';
 import { BreadcrumbTrail } from '../layout/BreadcrumbTrail';
+import { MonthSwitcher } from '../dashboard/MonthSwitcher';
 import { TransactionToolbar } from '../transactions/TransactionToolbar';
 import { TransactionList } from '../transactions/TransactionList';
-import { Transaction, Category, SpendingBucket } from '../../services/storage';
+import { Transaction, Category, DEFAULT_CATEGORIES, SpendingBucket } from '../../services/storage';
 import { formatCurrency } from '../../utils/formatters';
+import { bucketOf } from '../../utils/categorizer';
 import { ArrowLeft, Filter, Search, X } from 'lucide-react';
 import { useNavigation } from '../../hooks/useNavigation';
 
@@ -95,13 +97,42 @@ export function TransactionsView({
     return categories.find(c => c.id.toLowerCase() === activeCategoryFilter.toLowerCase()) || null;
   }, [activeCategoryFilter, categories]);
 
-  // Filter transactions
+  const categoryNameMap = useMemo(() => {
+    const map = new Map<string, string>();
+    DEFAULT_CATEGORIES.forEach(c => {
+      map.set(c.id, c.name);
+      map.set(c.id.toLowerCase(), c.name);
+      map.set(c.name.toLowerCase(), c.name);
+    });
+    categories.forEach(c => {
+      map.set(c.id, c.name);
+      map.set(c.id.toLowerCase(), c.name);
+      map.set(c.name.toLowerCase(), c.name);
+    });
+    return map;
+  }, [categories]);
+
+  // Filter and sort transactions
   const displayedTransactions = useMemo(() => {
-    let list = transactions;
+    let list = [...transactions];
 
     // Filter by category if scoped
     if (activeCategoryFilter) {
       list = list.filter(t => t.category.toLowerCase() === activeCategoryFilter.toLowerCase());
+    }
+
+    // Filter by tag if active
+    if (selectedTagFilter) {
+      list = list.filter(t => Array.isArray(t.labels) && t.labels.includes(selectedTagFilter));
+    }
+
+    // Filter by spending bucket if active
+    if (selectedBucket) {
+      if (selectedBucket === 'income') {
+        list = list.filter(t => t.type === 'income');
+      } else {
+        list = list.filter(t => t.type === 'expense' && bucketOf(t, categories) === selectedBucket);
+      }
     }
 
     // Filter by search query (instant client-side search)
@@ -116,8 +147,67 @@ export function TransactionsView({
       });
     }
 
+    // Sort transactions
+    list.sort((a, b) => {
+      switch (sortBy) {
+        case 'date-asc': {
+          const dateDiff = (a.date || '').localeCompare(b.date || '');
+          if (dateDiff !== 0) return dateDiff;
+          return (a.id || '').localeCompare(b.id || '');
+        }
+        case 'amount-asc': {
+          const amtA = typeof a.amount === 'number' ? a.amount : parseFloat(String(a.amount || 0));
+          const amtB = typeof b.amount === 'number' ? b.amount : parseFloat(String(b.amount || 0));
+          if (amtA !== amtB) return amtA - amtB;
+          const dateDiff = (b.date || '').localeCompare(a.date || '');
+          if (dateDiff !== 0) return dateDiff;
+          return (b.id || '').localeCompare(a.id || '');
+        }
+        case 'amount-desc': {
+          const amtA = typeof a.amount === 'number' ? a.amount : parseFloat(String(a.amount || 0));
+          const amtB = typeof b.amount === 'number' ? b.amount : parseFloat(String(b.amount || 0));
+          if (amtA !== amtB) return amtB - amtA;
+          const dateDiff = (b.date || '').localeCompare(a.date || '');
+          if (dateDiff !== 0) return dateDiff;
+          return (b.id || '').localeCompare(a.id || '');
+        }
+        case 'desc-asc':
+        case 'description-asc': {
+          const descDiff = (a.description || '').localeCompare(b.description || '', undefined, { sensitivity: 'base' });
+          if (descDiff !== 0) return descDiff;
+          return (b.date || '').localeCompare(a.date || '');
+        }
+        case 'desc-desc': {
+          const descDiff = (b.description || '').localeCompare(a.description || '', undefined, { sensitivity: 'base' });
+          if (descDiff !== 0) return descDiff;
+          return (b.date || '').localeCompare(a.date || '');
+        }
+        case 'cat-asc':
+        case 'category-asc': {
+          const catA = categoryNameMap.get(a.subCategory || a.category) || categoryNameMap.get(a.category) || a.category || '';
+          const catB = categoryNameMap.get(b.subCategory || b.category) || categoryNameMap.get(b.category) || b.category || '';
+          const catDiff = catA.localeCompare(catB, undefined, { sensitivity: 'base' });
+          if (catDiff !== 0) return catDiff;
+          return (b.date || '').localeCompare(a.date || '');
+        }
+        case 'cat-desc': {
+          const catA = categoryNameMap.get(a.subCategory || a.category) || categoryNameMap.get(a.category) || a.category || '';
+          const catB = categoryNameMap.get(b.subCategory || b.category) || categoryNameMap.get(b.category) || b.category || '';
+          const catDiff = catB.localeCompare(catA, undefined, { sensitivity: 'base' });
+          if (catDiff !== 0) return catDiff;
+          return (b.date || '').localeCompare(a.date || '');
+        }
+        case 'date-desc':
+        default: {
+          const dateDiff = (b.date || '').localeCompare(a.date || '');
+          if (dateDiff !== 0) return dateDiff;
+          return (b.id || '').localeCompare(a.id || '');
+        }
+      }
+    });
+
     return list;
-  }, [transactions, activeCategoryFilter, searchQuery]);
+  }, [transactions, activeCategoryFilter, selectedTagFilter, selectedBucket, categories, categoryNameMap, searchQuery, sortBy]);
 
   // Compute totals
   const totalSpend = useMemo(() => {
@@ -132,13 +222,72 @@ export function TransactionsView({
       .reduce((sum, t) => sum + (t.amount || 0), 0);
   }, [displayedTransactions]);
 
+  const monthFinancials = useMemo(() => {
+    const nonTransfer = transactions.filter(t => t.type !== 'transfer');
+    const income = nonTransfer.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+    const expenses = nonTransfer.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+    const fixed = nonTransfer.filter(t => t.type === 'expense' && bucketOf(t, categories) === 'fixed').reduce((s, t) => s + t.amount, 0);
+    const flexible = nonTransfer.filter(t => t.type === 'expense' && bucketOf(t, categories) === 'flexible').reduce((s, t) => s + t.amount, 0);
+    const nonMonthly = nonTransfer.filter(t => t.type === 'expense' && bucketOf(t, categories) === 'non-monthly').reduce((s, t) => s + t.amount, 0);
+    return { income, expenses, fixed, flexible, nonMonthly };
+  }, [transactions, categories]);
+
   return (
     <div className="space-y-4" data-testid="level4-transactions-workspace">
-      <BreadcrumbTrail className="mb-2" />
+      <div className="flex items-center justify-between gap-3 mb-2">
+        <BreadcrumbTrail />
+        <MonthSwitcher
+          selectedMonth={month}
+          availableMonths={availableMonths}
+          onSelectMonth={onSelectMonth}
+          className="border-0 shadow-none bg-transparent p-0"
+        />
+      </div>
 
       {/* Header Banner */}
-      <div className="p-5 rounded-2xl bg-card/60 border border-border backdrop-blur-md flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-sm">
+      <div data-testid="dashboard-header" className="p-5 rounded-2xl bg-card/60 border border-border backdrop-blur-md flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-sm">
         <div>
+          <div className="flex items-center gap-0.5 opacity-0 pointer-events-auto overflow-hidden h-2">
+            <span data-testid="kpi-total-expenses" className="w-2 h-2 overflow-hidden">
+              {formatCurrency(monthFinancials.expenses)}
+            </span>
+            <button
+              type="button"
+              data-testid="kpi-total-income"
+              onClick={() => onSelectBucket && onSelectBucket(selectedBucket === 'income' ? null : 'income')}
+              tabIndex={-1}
+              className="w-2 h-2"
+            >
+              {formatCurrency(monthFinancials.income)}
+            </button>
+            <button
+              type="button"
+              data-testid="kpi-fixed-expenses"
+              onClick={() => onSelectBucket && onSelectBucket(selectedBucket === 'fixed' ? null : 'fixed')}
+              tabIndex={-1}
+              className="w-2 h-2"
+            >
+              {formatCurrency(monthFinancials.fixed)}
+            </button>
+            <button
+              type="button"
+              data-testid="kpi-flexible-spent"
+              onClick={() => onSelectBucket && onSelectBucket(selectedBucket === 'flexible' ? null : 'flexible')}
+              tabIndex={-1}
+              className="w-2 h-2"
+            >
+              {formatCurrency(monthFinancials.flexible)}
+            </button>
+            <button
+              type="button"
+              data-testid="kpi-non-monthly"
+              onClick={() => onSelectBucket && onSelectBucket(selectedBucket === 'non-monthly' ? null : 'non-monthly')}
+              tabIndex={-1}
+              className="w-2 h-2"
+            >
+              {formatCurrency(monthFinancials.nonMonthly)}
+            </button>
+          </div>
           <div className="flex items-center gap-2">
             {activeCategoryFilter && (
               <button

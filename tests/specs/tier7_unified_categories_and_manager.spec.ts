@@ -44,6 +44,7 @@ test.describe('Tier 7: Unified Categories & Category Manager Modal', () => {
       activeProjectId: 'p1'
     });
     await appPage.goto();
+    await dashboardPage.ensureBudgetsView();
 
     const expectedParents = [
       'Groceries', 'Shopping', 'Merchandise', 'Utilities', 'Food & Dining',

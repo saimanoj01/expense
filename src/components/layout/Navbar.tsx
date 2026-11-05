@@ -47,17 +47,17 @@ export function Navbar({
       animate={{ y: 0, opacity: 1 }}
       className="sticky top-0 z-40 border-b border-border/40 backdrop-blur-md bg-background/70"
     >
-      <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between gap-2 sm:gap-4">
+      <div className="max-w-7xl mx-auto px-3 sm:px-4 h-16 flex items-center justify-between gap-1.5 sm:gap-4">
         {/* Left: Brand & Mock Mode */}
-        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-          <div className="p-2 rounded-xl bg-primary/10 text-primary ring-1 ring-primary/30 shrink-0">
-            <Shield className="w-5 h-5" />
+        <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
+          <div className="p-1.5 sm:p-2 rounded-xl bg-primary/10 text-primary ring-1 ring-primary/30 shrink-0">
+            <Shield className="w-4 h-4 sm:w-5 sm:h-5" />
           </div>
           <h1 className="font-bold text-lg tracking-tight hidden lg:block">Nebula</h1>
           {isMockMode && (
             <span 
               data-testid="mock-banner" 
-              className="mock-mode-banner px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-primary/10 text-primary uppercase tracking-wider border border-primary/20 shadow-sm"
+              className="mock-mode-banner px-2 sm:px-2.5 py-0.5 rounded-full text-[9px] sm:text-[10px] font-semibold bg-primary/10 text-primary uppercase tracking-wider border border-primary/20 shadow-sm"
             >
               Mock Mode
             </span>
@@ -66,20 +66,20 @@ export function Navbar({
 
         {/* Center: Command Palette Trigger Button */}
         {onOpenCommandPalette && (
-          <div className="flex-1 max-w-md mx-2 sm:mx-4">
+          <div className="sm:flex-1 sm:min-w-0 sm:max-w-md sm:mx-4 shrink-0">
             <button
               type="button"
               data-testid="command-palette-trigger"
               onClick={onOpenCommandPalette}
-              className="w-full flex items-center justify-between px-3 py-1.5 rounded-xl bg-card/60 hover:bg-card border border-border/60 hover:border-primary/40 text-xs text-muted-foreground transition-all shadow-sm group"
+              className="flex items-center justify-center sm:justify-between p-1.5 sm:px-3 sm:py-1.5 sm:w-full rounded-lg sm:rounded-xl bg-card/60 hover:bg-card border border-border/60 hover:border-primary/40 text-xs text-muted-foreground transition-all shadow-sm group"
               title="Search views, buckets, categories, or actions (⌘K)"
             >
-              <div className="flex items-center gap-2 truncate">
-                <Search className="w-3.5 h-3.5 text-muted-foreground group-hover:text-primary transition-colors shrink-0" />
-                <span className="truncate">Search or jump to...</span>
+              <div className="flex items-center gap-2 min-w-0 truncate">
+                <Search className="w-4 h-4 sm:w-3.5 sm:h-3.5 text-muted-foreground group-hover:text-primary transition-colors shrink-0" />
+                <span className="hidden sm:inline truncate">Search or jump to...</span>
               </div>
-              <div className="flex items-center gap-1 shrink-0">
-                <kbd className="hidden sm:inline-flex items-center px-1.5 py-0.5 text-[10px] font-mono rounded bg-secondary text-muted-foreground border border-border/40">
+              <div className="hidden sm:flex items-center gap-1 shrink-0">
+                <kbd className="inline-flex items-center px-1.5 py-0.5 text-[10px] font-mono rounded bg-secondary text-muted-foreground border border-border/40">
                   ⌘K
                 </kbd>
               </div>
@@ -88,13 +88,13 @@ export function Navbar({
         )}
 
         {/* Right: Project selector, Theme, Gemini, Auth */}
-        <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
+        <div className="flex items-center gap-1 sm:gap-3 shrink-0">
           {projects.length > 0 && (
             <div className="flex items-center gap-1">
               <select
                 disabled={isLoading}
                 data-testid="project-selector"
-                className="bg-card/50 border border-border rounded-lg px-2 sm:px-3 py-1.5 text-xs sm:text-sm max-w-[110px] sm:max-w-[180px] truncate focus:ring-2 focus:ring-primary outline-none transition-all cursor-pointer"
+                className="bg-card/50 border border-border rounded-lg px-1.5 sm:px-3 py-1.5 text-xs sm:text-sm max-w-[88px] sm:max-w-[180px] truncate focus:ring-2 focus:ring-primary outline-none transition-all cursor-pointer"
                 value={activeProject?.id || ''}
                 onChange={(e) => {
                   const val = e.target.value;

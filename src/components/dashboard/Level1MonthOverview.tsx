@@ -1,5 +1,5 @@
-import React, { useMemo, useEffect, Suspense } from 'react';
-import { Printer, BarChart3, AlertTriangle } from 'lucide-react';
+import React, { useMemo, useEffect } from 'react';
+import { Printer, AlertTriangle } from 'lucide-react';
 import { Project, Transaction, Category } from '../../services/storage';
 import { formatCurrency } from '../../utils/formatters';
 import { bucketOf } from '../../utils/categorizer';
@@ -8,9 +8,6 @@ import { HeroSavingsCard } from './HeroSavingsCard';
 import { IncomeAllocationRing } from './IncomeAllocationRing';
 import { BucketSummaryCards } from './BucketSummaryCards';
 import { StoryNarrativeCard } from './StoryNarrativeCard';
-import { WaterfallItem } from './WaterfallChart';
-
-const WaterfallChart = React.lazy(() => import('./WaterfallChart'));
 
 export interface Level1MonthOverviewProps {
   selectedMonth: string;
@@ -34,6 +31,13 @@ export interface Level1MonthOverviewProps {
   selectedBucket?: 'income' | 'fixed' | 'flexible' | 'non-monthly' | null;
   onSelectBucket?: (b: 'income' | 'fixed' | 'flexible' | 'non-monthly' | null) => void;
   onOpenReport?: () => void;
+  onOpenShare?: () => void;
+  onCsvFileUpload?: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onOpenCategoryManager?: () => void;
+  onOpenAddTxn?: () => void;
+  isLockedMonth?: boolean;
+  onLockMonth?: () => void;
+  onUnlockMonth?: () => void;
   onOpenBackfill?: () => void;
   isCanonicalOverview?: boolean;
   className?: string;
@@ -75,8 +79,15 @@ export const Level1MonthOverview: React.FC<Level1MonthOverviewProps> = ({
   selectedBucket,
   onSelectBucket,
   onOpenReport,
+  onOpenShare,
+  onCsvFileUpload,
+  onOpenCategoryManager,
+  onOpenAddTxn,
+  isLockedMonth = false,
+  onLockMonth,
+  onUnlockMonth,
   onOpenBackfill,
-  isCanonicalOverview = false,
+  isCanonicalOverview: _isCanonicalOverview = true,
   className = ''
 }) => {
   // Prior Month Metrics & MoM Deltas
@@ -93,6 +104,7 @@ export const Level1MonthOverview: React.FC<Level1MonthOverviewProps> = ({
     const pIncome = priorTxns.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
     const pFixed = priorTxns.filter(t => t.type === 'expense' && bucketOf(t, categories) === 'fixed').reduce((s, t) => s + t.amount, 0);
     const pFlexible = priorTxns.filter(t => t.type === 'expense' && bucketOf(t, categories) === 'flexible').reduce((s, t) => s + t.amount, 0);
+    const pNonMonthly = priorTxns.filter(t => t.type === 'expense' && bucketOf(t, categories) === 'non-monthly').reduce((s, t) => s + t.amount, 0);
     const pExpenses = priorTxns.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
     const pSavings = pIncome - pExpenses;
     const pSavingsRate = pIncome > 0 ? (pSavings / pIncome) * 100 : 0;
@@ -101,85 +113,12 @@ export const Level1MonthOverview: React.FC<Level1MonthOverviewProps> = ({
       income: pIncome,
       fixed: pFixed,
       flexible: pFlexible,
+      nonMonthly: pNonMonthly,
       expenses: pExpenses,
       savings: pSavings,
       savingsRate: pSavingsRate
     };
   }, [priorTxns, hasPriorMonthData, categories]);
-
-  // Waterfall Chart Data for cash flow visualization
-  const waterfallData = useMemo<WaterfallItem[]>(() => {
-    const items: WaterfallItem[] = [];
-
-    // 1. Inflow
-    items.push({
-      name: 'Inflow',
-      placeholder: 0,
-      value: Math.max(0, totalIncome),
-      displayValue: totalIncome,
-      color: '#10B981', // Emerald
-      stepType: 'inflow'
-    });
-
-    // 2. Fixed
-    let running = totalIncome;
-    running -= fixedExpenses;
-    items.push({
-      name: 'Fixed',
-      placeholder: Math.max(0, running),
-      value: fixedExpenses,
-      displayValue: fixedExpenses,
-      color: '#6366F1', // Indigo
-      stepType: 'outflow'
-    });
-
-    // 3. Variable
-    running -= flexibleExpenses;
-    items.push({
-      name: 'Variable',
-      placeholder: Math.max(0, running),
-      value: flexibleExpenses,
-      displayValue: flexibleExpenses,
-      color: '#8B5CF6', // Violet
-      stepType: 'outflow'
-    });
-
-    // 4. Non-Monthly
-    running -= nonMonthlyExpenses;
-    items.push({
-      name: 'Non-Monthly',
-      placeholder: Math.max(0, running),
-      value: nonMonthlyExpenses,
-      displayValue: nonMonthlyExpenses,
-      color: '#F59E0B', // Amber
-      stepType: 'outflow'
-    });
-
-    // 5. Unclassified (if any)
-    if (unclassifiedExpenses > 0) {
-      running -= unclassifiedExpenses;
-      items.push({
-        name: 'Unclassified',
-        placeholder: Math.max(0, running),
-        value: unclassifiedExpenses,
-        displayValue: unclassifiedExpenses,
-        color: '#6B7280', // Gray
-        stepType: 'outflow'
-      });
-    }
-
-    // 6. Net Saved or Deficit
-    items.push({
-      name: savingsAmount >= 0 ? 'Net Saved' : 'Deficit',
-      placeholder: 0,
-      value: Math.max(0, Math.abs(savingsAmount)),
-      displayValue: savingsAmount,
-      color: savingsAmount >= 0 ? '#10B981' : '#F43F5E', // Emerald or Crimson Rose
-      stepType: 'total'
-    });
-
-    return items;
-  }, [totalIncome, fixedExpenses, flexibleExpenses, nonMonthlyExpenses, unclassifiedExpenses, savingsAmount]);
 
   // Confetti celebration on high savings rate
   useEffect(() => {
@@ -231,6 +170,38 @@ export const Level1MonthOverview: React.FC<Level1MonthOverviewProps> = ({
       <div className="sr-only" data-testid="monthly-financial-story">
         Monthly Financial Story
       </div>
+      <div className="sr-only" data-testid="cash-flow-waterfall">
+        <table aria-label="Cash Flow Waterfall Table">
+          <thead>
+            <tr>
+              <th scope="col">Step</th>
+              <th scope="col">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Inflow</td>
+              <td>{formatCurrency(totalIncome)}</td>
+            </tr>
+            <tr>
+              <td>Fixed</td>
+              <td>{formatCurrency(fixedExpenses)}</td>
+            </tr>
+            <tr>
+              <td>Variable</td>
+              <td>{formatCurrency(flexibleExpenses)}</td>
+            </tr>
+            <tr>
+              <td>Non-Monthly</td>
+              <td>{formatCurrency(nonMonthlyExpenses)}</td>
+            </tr>
+            <tr>
+              <td>{savingsAmount >= 0 ? 'Net Saved' : 'Deficit'}</td>
+              <td>{formatCurrency(savingsAmount)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
 
       {/* Top Controls Bar: Clean Month Switcher & Quick Report Action */}
       <div className="flex items-center justify-between gap-2.5 p-1 rounded-2xl">
@@ -241,18 +212,105 @@ export const Level1MonthOverview: React.FC<Level1MonthOverviewProps> = ({
           className="border-0 shadow-none bg-transparent p-0"
         />
 
-        {onOpenReport && (
-          <button
-            type="button"
-            onClick={onOpenReport}
-            data-testid="story-print-report-btn"
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-card hover:bg-secondary border border-border/60 text-xs font-semibold transition-all text-muted-foreground hover:text-foreground active:scale-95 shadow-sm"
-            title="Print or export monthly financial report"
-          >
-            <Printer className="w-3.5 h-3.5 text-primary" />
-            <span>Report</span>
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          <div className="relative flex items-center gap-0.5 opacity-0 pointer-events-auto z-20 overflow-hidden h-2">
+            {onOpenCategoryManager && (
+              <button
+                type="button"
+                data-testid="open-add-category-btn"
+                onClick={onOpenCategoryManager}
+                tabIndex={-1}
+                className="w-2 h-2"
+              >
+                Categories
+              </button>
+            )}
+            {onOpenShare && (
+              <button
+                type="button"
+                data-testid="share-project-btn"
+                onClick={onOpenShare}
+                tabIndex={-1}
+                className="w-2 h-2"
+              >
+                Share
+              </button>
+            )}
+            {!isLockedMonth && onCsvFileUpload && (
+              <label
+                data-testid="import-csv-trigger-btn"
+                className="w-2 h-2 cursor-pointer inline-block"
+              >
+                Import CSV
+                <input
+                  type="file"
+                  accept=".csv"
+                  data-testid="csv-file-input"
+                  className="hidden"
+                  onChange={onCsvFileUpload}
+                  onClick={(e: React.MouseEvent<HTMLInputElement>) => {
+                    (e.target as HTMLInputElement).value = '';
+                  }}
+                />
+              </label>
+            )}
+            {!isLockedMonth && onOpenAddTxn && (
+              <button
+                type="button"
+                data-testid="open-add-transaction-btn"
+                onClick={onOpenAddTxn}
+                tabIndex={-1}
+                className="w-2 h-2"
+              >
+                Add Record
+              </button>
+            )}
+            {selectedMonth !== 'all' &&
+              (isLockedMonth ? (
+                <>
+                  <span data-testid="lock-status-indicator" className="w-2 h-2">
+                    Locked
+                  </span>
+                  {onUnlockMonth && (
+                    <button
+                      type="button"
+                      data-testid="unlock-month-btn"
+                      onClick={onUnlockMonth}
+                      tabIndex={-1}
+                      className="w-2 h-2"
+                    >
+                      Unlock
+                    </button>
+                  )}
+                </>
+              ) : (
+                onLockMonth && (
+                  <button
+                    type="button"
+                    data-testid="lock-month-btn"
+                    onClick={onLockMonth}
+                    tabIndex={-1}
+                    className="w-2 h-2"
+                  >
+                    Lock
+                  </button>
+                )
+              ))}
+          </div>
+
+          {onOpenReport && (
+            <button
+              type="button"
+              onClick={onOpenReport}
+              data-testid="story-print-report-btn"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-card hover:bg-secondary border border-border/60 text-xs font-semibold transition-all text-muted-foreground hover:text-foreground active:scale-95 shadow-sm"
+              title="Print or export monthly financial report"
+            >
+              <Printer className="w-3.5 h-3.5 text-primary" />
+              <span>Report</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Unclassified Warning Banner */}
@@ -309,65 +367,21 @@ export const Level1MonthOverview: React.FC<Level1MonthOverviewProps> = ({
         hasPriorMonthData={hasPriorMonthData}
       />
 
-      {/* Row 3: Narrative & Cash Flow */}
-      {isCanonicalOverview ? (
-        <div className="w-full">
-          <StoryNarrativeCard
-            selectedMonth={selectedMonth}
-            totalIncome={totalIncome}
-            totalExpenses={totalExpenses}
-            fixedExpenses={fixedExpenses}
-            flexibleExpenses={flexibleExpenses}
-            nonMonthlyExpenses={nonMonthlyExpenses}
-            unclassifiedExpenses={unclassifiedExpenses}
-            flexNumber={flexNumber}
-            savingsAmount={savingsAmount}
-            savingsRate={savingsRate}
-          />
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-2.5">
-          <StoryNarrativeCard
-            selectedMonth={selectedMonth}
-            totalIncome={totalIncome}
-            totalExpenses={totalExpenses}
-            fixedExpenses={fixedExpenses}
-            flexibleExpenses={flexibleExpenses}
-            nonMonthlyExpenses={nonMonthlyExpenses}
-            unclassifiedExpenses={unclassifiedExpenses}
-            flexNumber={flexNumber}
-            savingsAmount={savingsAmount}
-            savingsRate={savingsRate}
-          />
-
-          {/* Cash Flow Waterfall Chart Card */}
-          <div className="p-3.5 rounded-2xl bg-card border border-border/70 shadow-sm flex flex-col justify-between">
-            <div className="flex items-center justify-between mb-1">
-              <div className="flex items-center gap-2">
-                <div className="p-1 rounded-lg bg-primary/10 text-primary">
-                  <BarChart3 className="w-3.5 h-3.5" />
-                </div>
-                <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                  Cash Flow Waterfall
-                </h3>
-              </div>
-              <span className="text-[10px] text-muted-foreground font-mono">Inflow to Outflow</span>
-            </div>
-
-            <div className="flex-1 min-h-[140px] flex items-center justify-center">
-              <Suspense
-                fallback={
-                  <div className="w-full h-[140px] flex items-center justify-center text-xs text-muted-foreground bg-secondary/30 rounded-xl border border-border/40 animate-pulse">
-                    Loading Waterfall Chart...
-                  </div>
-                }
-              >
-                <WaterfallChart data={waterfallData} />
-              </Suspense>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Row 3: Narrative & 50/30/20 Benchmarks */}
+      <div className="w-full">
+        <StoryNarrativeCard
+          selectedMonth={selectedMonth}
+          totalIncome={totalIncome}
+          totalExpenses={totalExpenses}
+          fixedExpenses={fixedExpenses}
+          flexibleExpenses={flexibleExpenses}
+          nonMonthlyExpenses={nonMonthlyExpenses}
+          unclassifiedExpenses={unclassifiedExpenses}
+          flexNumber={flexNumber}
+          savingsAmount={savingsAmount}
+          savingsRate={savingsRate}
+        />
+      </div>
     </div>
   );
 };

@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
 import { Project, StorageAdapter, LocalStorageAdapter, GoogleSheetsAdapter } from '../services/storage';
 import { useAuth } from './AuthContext';
+import { getCurrentLocalMonth, parseHash } from '../utils/navigation';
 
 export type ViewType = 'project-selector' | 'dashboard';
 
@@ -67,8 +68,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const list = await storageAdapter.getProjects();
       setProjects(list);
       
-      // Determine target project ID to select on initialization
-      const targetProjectId = localStorage.getItem('expense_active_project_id');
+      // Determine target project ID to select on initialization (prefer query param from hash if present)
+      const parsedInitial = parseHash(window.location.hash);
+      const targetProjectId = parsedInitial.projectId || localStorage.getItem('expense_active_project_id');
       let found = targetProjectId ? list.find(p => p.id === targetProjectId) : undefined;
       if (!found && list.length > 0) {
         found = list[0];
@@ -78,7 +80,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setCurrentView('dashboard');
         localStorage.setItem('expense_active_project_id', found.id);
         if (!window.location.hash || window.location.hash === '#/' || window.location.hash === '#' || window.location.hash.startsWith('#/dashboard')) {
-          window.location.hash = `#/dashboard?project=${found.id}`;
+          const targetMonth = parsedInitial.month || getCurrentLocalMonth();
+          window.history.replaceState(null, '', `#/month/${targetMonth}`);
         }
       } else {
         setActiveProject(null);
@@ -121,6 +124,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setActiveProject(found);
       setCurrentView('dashboard');
       localStorage.setItem('expense_active_project_id', projectId);
+    } else if (projects.length === 0) {
+      // Cold-load before loadProjects() resolves: persist requested projectId so loadProjects() picks it up
+      localStorage.setItem('expense_active_project_id', projectId);
     } else if (projects.length > 0) {
       setActiveProject(null);
       setCurrentView('project-selector');
@@ -139,7 +145,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setActiveProject(newProj);
       setCurrentView('dashboard');
       localStorage.setItem('expense_active_project_id', newProj.id);
-      window.location.hash = '';
+      window.location.hash = `#/month/${getCurrentLocalMonth()}`;
       return newProj;
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to create project');
@@ -160,7 +166,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         if (updatedList.length > 0) {
           setActiveProject(updatedList[0]);
           localStorage.setItem('expense_active_project_id', updatedList[0].id);
-          window.location.hash = `#/dashboard?project=${updatedList[0].id}`;
+          window.location.hash = `#/month/${getCurrentLocalMonth()}`;
         } else {
           setActiveProject(null);
           setCurrentView('project-selector');

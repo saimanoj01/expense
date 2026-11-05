@@ -43,6 +43,24 @@ export class DashboardPage {
     this.budgetChart = page.getByTestId('chart-svg-budget');
   }
 
+  async ensureTransactionsView() {
+    if (!(await this.page.getByTestId('level4-transactions-workspace').isVisible())) {
+      await this.page.evaluate(() => {
+        window.location.hash = '#/transactions';
+      });
+      await this.page.getByTestId('level4-transactions-workspace').waitFor({ state: 'visible' });
+    }
+  }
+
+  async ensureBudgetsView() {
+    if (!(await this.page.getByTestId('budgets-workspace').isVisible())) {
+      await this.page.evaluate(() => {
+        window.location.hash = '#/budgets';
+      });
+      await this.page.getByTestId('budgets-workspace').waitFor({ state: 'visible' });
+    }
+  }
+
   async addTransaction(data: {
     type: 'income' | 'expense';
     amount: string;
@@ -53,6 +71,7 @@ export class DashboardPage {
     labels?: string[];
   }) {
     await this.page.getByTestId('dashboard-header').waitFor({ state: 'visible' });
+    await this.ensureTransactionsView();
     if (!(await this.typeToggle.isVisible())) {
       await this.openAddTxnModalBtn.click();
     }
@@ -74,6 +93,7 @@ export class DashboardPage {
     amount?: string;
     description?: string;
   }) {
+    await this.ensureTransactionsView();
     await this.page.getByTestId(`edit-transaction-btn-${id}`).click();
     if (updatedData.amount) {
       await this.amountInput.fill(updatedData.amount);
@@ -86,23 +106,28 @@ export class DashboardPage {
   }
 
   async deleteTransaction(id: string) {
+    await this.ensureTransactionsView();
     await this.page.getByTestId(`delete-transaction-btn-${id}`).click();
   }
 
   async setBudget(category: string, amount: string) {
+    await this.ensureBudgetsView();
     const input = this.page.getByTestId(`budget-input-${category}`);
     await input.fill(amount);
   }
 
   async saveBudgets() {
+    await this.ensureBudgetsView();
     await this.saveBudgetsBtn.click();
   }
 
   async lockCurrentMonth() {
+    await this.ensureTransactionsView();
     await this.lockMonthBtn.click();
   }
 
   async unlockCurrentMonth() {
+    await this.ensureTransactionsView();
     await this.unlockMonthBtn.click();
   }
 }

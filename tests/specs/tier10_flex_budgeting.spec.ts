@@ -84,6 +84,9 @@ test.describe('Tier 10: Flex Budgeting & Spending Bucket Separation', () => {
   });
 
   test('Renders colored dot indicators on transaction items', async ({ page }) => {
+    await page.evaluate(() => {
+      window.location.hash = '#/transactions';
+    });
     const fixedDot = page.getByTestId('bucket-dot-t2-fixed');
     await expect(fixedDot).toBeVisible();
 
@@ -92,6 +95,9 @@ test.describe('Tier 10: Flex Budgeting & Spending Bucket Separation', () => {
   });
 
   test('Toolbar bucket filter chips filter transaction list', async ({ page }) => {
+    await page.evaluate(() => {
+      window.location.hash = '#/transactions';
+    });
     // Filter to Fixed only
     await page.getByTestId('filter-bucket-fixed').click();
     await expect(page.locator('h4:has-text("Mortgage Payment")')).toBeVisible();
@@ -103,6 +109,9 @@ test.describe('Tier 10: Flex Budgeting & Spending Bucket Separation', () => {
   });
 
   test('Pipeline banner step cards trigger bucket filtering on click', async ({ page }) => {
+    await page.evaluate(() => {
+      window.location.hash = '#/transactions';
+    });
     // Click Income step card in Hero Banner
     await page.getByTestId('kpi-total-income').click();
     await expect(page.locator('h4:has-text("Monthly Salary")')).toBeVisible();
@@ -121,6 +130,9 @@ test.describe('Tier 10: Flex Budgeting & Spending Bucket Separation', () => {
   });
 
   test('Budget Utilization tabs toggle bucket views', async ({ page }) => {
+    await page.evaluate(() => {
+      window.location.hash = '#/budgets';
+    });
     const tabs = page.getByTestId('budget-bucket-tabs');
     await expect(tabs).toBeVisible();
     await tabs.getByRole('button', { name: 'Fixed' }).click();

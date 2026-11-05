@@ -8,6 +8,7 @@ interface NavigationProviderProps {
   children: React.ReactNode;
   activeMonth: string;
   onMonthChange?: (month: string) => void;
+  onSelectProject?: (projectId: string | null) => void;
   categories?: Category[];
   categoryTxnCount?: number;
   monthTxnCount?: number;
@@ -17,6 +18,7 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({
   children,
   activeMonth,
   onMonthChange,
+  onSelectProject,
   categories = [],
   categoryTxnCount,
   monthTxnCount
@@ -31,36 +33,59 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({
   const onMonthChangeRef = useRef(onMonthChange);
   onMonthChangeRef.current = onMonthChange;
 
+  const onSelectProjectRef = useRef(onSelectProject);
+  onSelectProjectRef.current = onSelectProject;
+
   const activeMonthRef = useRef(activeMonth);
   activeMonthRef.current = activeMonth;
 
+  const syncHashState = useCallback((hash: string) => {
+    if (hash.includes('access_token=') || hash.includes('error=')) {
+      return; // Handled by AuthContext
+    }
+
+    const parsed = parseHash(hash, activeMonthRef.current);
+    setCurrentRoute(parsed);
+
+    // Sync project if present in query or if navigating to projects
+    if (parsed.projectId && onSelectProjectRef.current) {
+      onSelectProjectRef.current(parsed.projectId);
+    } else if (parsed.view === 'projects' && onSelectProjectRef.current) {
+      onSelectProjectRef.current(null);
+    }
+
+    // Sync month if changed
+    if (parsed.month && parsed.month !== activeMonthRef.current && onMonthChangeRef.current) {
+      onMonthChangeRef.current(parsed.month);
+    }
+
+    // Canonical redirect for empty or #/dashboard hashes
+    const clean = hash.replace(/^#\/?/, '').split('?')[0];
+    if (clean === '' || clean === 'dashboard') {
+      const targetMonth = parsed.month || activeMonthRef.current;
+      window.history.replaceState(null, '', `#/month/${targetMonth}`);
+    }
+  }, []);
+
   // Listen for hashchange events
   useEffect(() => {
+    syncHashState(window.location.hash);
     const handleHashChange = () => {
-      const hash = window.location.hash;
-      if (hash.includes('access_token=') || hash.includes('error=')) {
-        return; // Handled by AuthContext
-      }
-
-      const parsed = parseHash(hash, activeMonthRef.current);
-      setCurrentRoute(parsed);
-
-      if (parsed.month && parsed.month !== activeMonthRef.current && onMonthChangeRef.current) {
-        onMonthChangeRef.current(parsed.month);
-      }
+      syncHashState(window.location.hash);
     };
 
     window.addEventListener('hashchange', handleHashChange);
     return () => window.removeEventListener('hashchange', handleHashChange);
-  }, []);
+  }, [syncHashState]);
 
   // Synchronize when activeMonth changes from an external control (e.g. MonthSwitcher or selector)
   useEffect(() => {
     if (activeMonth && currentRoute.month !== activeMonth && currentRoute.view !== 'projects') {
-      setCurrentRoute(prev => {
-        const next: AppRoute = { ...prev, month: activeMonth };
+      setCurrentRoute(() => {
+        const parsedCurrent = parseHash(window.location.hash, activeMonth);
+        const next: AppRoute = { ...parsedCurrent, month: activeMonth };
         const newHash = routeToHash(next, activeMonth);
-        if (window.location.hash !== newHash && !window.location.hash.startsWith('#/dashboard')) {
+        if (window.location.hash !== newHash) {
           window.location.hash = newHash;
         }
         return next;
@@ -74,14 +99,18 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({
       const formatted = target.startsWith('#') ? target : `#${target.startsWith('/') ? target : '/' + target}`;
       if (window.location.hash !== formatted) {
         window.location.hash = formatted;
+      } else {
+        syncHashState(formatted);
       }
     } else {
       const newHash = routeToHash(target, activeMonth);
       if (window.location.hash !== newHash) {
         window.location.hash = newHash;
+      } else {
+        syncHashState(newHash);
       }
     }
-  }, [activeMonth]);
+  }, [activeMonth, syncHashState]);
 
   // Go back helper
   const canGoBack = currentRoute.level > 1 || ['budgets', 'trends', 'reports', 'settings', 'transactions'].includes(currentRoute.view);

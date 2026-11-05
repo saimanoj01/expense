@@ -2,6 +2,11 @@ import { AppRoute, BreadcrumbItem } from '../types/navigation';
 import { Category, SpendingBucket, DEFAULT_CATEGORIES } from '../services/storage';
 import { suggestSpendingBucket } from './categorizer';
 
+export function getCurrentLocalMonth(): string {
+  const now = new Date();
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+}
+
 export function formatMonthLabel(monthKey?: string): string {
   if (!monthKey || monthKey === 'all') return 'All Time';
   const parts = monthKey.split('-');
@@ -31,7 +36,7 @@ export function getBucketLabel(bucketId?: string): string {
   }
 }
 
-export function parseHash(hashString: string, fallbackMonth: string = new Date().toISOString().substring(0, 7)): AppRoute {
+export function parseHash(hashString: string, fallbackMonth: string = getCurrentLocalMonth()): AppRoute {
   let hash = hashString;
   if (hash.startsWith('#')) hash = hash.slice(1);
   if (hash.startsWith('/')) hash = hash.slice(1);
@@ -61,29 +66,28 @@ export function parseHash(hashString: string, fallbackMonth: string = new Date()
     return { view: 'projects', level: 1 };
   }
   if (path === 'budgets') {
-    return { view: 'budgets', level: 1, month: queryMonth || fallbackMonth };
+    return { view: 'budgets', level: 1, month: queryMonth || fallbackMonth, projectId: queryProject || undefined };
   }
   if (path === 'trends') {
-    return { view: 'trends', level: 1, month: queryMonth || fallbackMonth };
+    return { view: 'trends', level: 1, month: queryMonth || fallbackMonth, projectId: queryProject || undefined };
   }
   if (path === 'reports') {
-    return { view: 'reports', level: 1, month: queryMonth || fallbackMonth };
+    return { view: 'reports', level: 1, month: queryMonth || fallbackMonth, projectId: queryProject || undefined };
   }
   if (path === 'settings') {
-    return { view: 'settings', level: 1, month: queryMonth || fallbackMonth };
+    return { view: 'settings', level: 1, month: queryMonth || fallbackMonth, projectId: queryProject || undefined };
   }
   if (path === 'transactions') {
-    return { view: 'transactions', level: 4, month: queryMonth || fallbackMonth };
+    return { view: 'transactions', level: 4, month: queryMonth || fallbackMonth, projectId: queryProject || undefined };
   }
 
-  // Dashboard route compatibility (Legacy unrouted dashboard)
+  // Dashboard route compatibility: redirect to canonical overview
   if (path === 'dashboard' || path === '') {
     return {
       view: 'overview',
       level: 1,
       month: (queryMonth && /^\d{4}-\d{2}$/.test(queryMonth)) ? queryMonth : fallbackMonth,
-      projectId: queryProject || undefined,
-      isLegacyDashboard: true
+      projectId: queryProject || undefined
     };
   }
 
@@ -104,7 +108,7 @@ export function parseHash(hashString: string, fallbackMonth: string = new Date()
 
   // If no more segments: Canonical Level 1 Overview
   if (rest.length === 0) {
-    return { view: 'overview', level: 1, month, isLegacyDashboard: false };
+    return { view: 'overview', level: 1, month, projectId: queryProject || undefined };
   }
 
   // Level 4 month transactions: #/month/:month/transactions
@@ -131,28 +135,25 @@ export function parseHash(hashString: string, fallbackMonth: string = new Date()
   return { view: 'overview', level: 1, month };
 }
 
-export function routeToHash(route: AppRoute, defaultMonth: string = new Date().toISOString().substring(0, 7)): string {
+export function routeToHash(route: AppRoute, defaultMonth: string = getCurrentLocalMonth()): string {
   const month = route.month || defaultMonth;
 
   switch (route.view) {
     case 'projects':
       return '#/projects';
     case 'budgets':
-      return '#/budgets';
+      return `#/budgets?month=${month}`;
     case 'trends':
-      return '#/trends';
+      return `#/trends?month=${month}`;
     case 'reports':
-      return '#/reports';
+      return `#/reports?month=${month}`;
     case 'settings':
-      return '#/settings';
+      return `#/settings?month=${month}`;
     case 'transactions':
       if (route.categoryId && route.isCategoryTransactions) {
         return `#/month/${month}/category/${route.categoryId}/transactions`;
       }
-      if (route.month) {
-        return `#/month/${month}/transactions`;
-      }
-      return '#/transactions';
+      return `#/transactions?month=${month}`;
     case 'category':
       return `#/month/${month}/category/${route.categoryId || 'misc'}`;
     case 'bucket':
@@ -164,7 +165,7 @@ export function routeToHash(route: AppRoute, defaultMonth: string = new Date().t
 }
 
 export function computeParentRoute(route: AppRoute, categories: Category[] = []): AppRoute {
-  const month = route.month || new Date().toISOString().substring(0, 7);
+  const month = route.month || getCurrentLocalMonth();
 
   // Secondary views go back to Level 1
   if (['budgets', 'trends', 'reports', 'settings'].includes(route.view)) {

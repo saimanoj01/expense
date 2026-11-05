@@ -157,7 +157,7 @@ export const IncomeAllocationRing: React.FC<IncomeAllocationRingProps> = ({
                 <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate max-w-[120px]">
                   {activeHover.name}
                 </span>
-                <span className="text-lg font-extrabold font-mono tabular-nums text-foreground">
+                <span className="text-lg font-extrabold font-sans tabular-nums text-foreground">
                   {formatCurrency(activeHover.amount)}
                 </span>
                 <span className="text-[10px] font-semibold text-primary">
@@ -176,7 +176,7 @@ export const IncomeAllocationRing: React.FC<IncomeAllocationRingProps> = ({
                 <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
                   Total Inflow
                 </span>
-                <span className="text-xl font-extrabold font-mono tabular-nums text-foreground">
+                <span className="text-xl font-extrabold font-sans tabular-nums text-foreground">
                   {formatCurrency(totalIncome)}
                 </span>
                 <span className="text-[10px] text-muted-foreground/80 mt-0.5">
@@ -214,7 +214,7 @@ export const IncomeAllocationRing: React.FC<IncomeAllocationRingProps> = ({
                   {seg.name}
                 </span>
               </div>
-              <span className="text-[11px] font-mono font-bold text-muted-foreground tabular-nums shrink-0 ml-1">
+              <span className="text-[11px] font-sans font-bold text-muted-foreground tabular-nums shrink-0 ml-1">
                 {pct}%
               </span>
             </button>

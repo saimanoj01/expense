@@ -43,6 +43,9 @@ test.describe('Tier 8: Transaction Sort By Functionality', () => {
       }
     });
     await appPage.goto();
+    await page.evaluate(() => {
+      window.location.hash = '#/transactions';
+    });
   });
 
   test('Sort dropdown exists and defaults to date-desc', async ({ page }) => {

@@ -23,6 +23,7 @@ export interface Level2BucketViewProps {
   month: string;
   totalIncome: number;
   transactions: Transaction[];
+  allTransactions?: Transaction[];
   categories: Category[];
   budgets: Budget[];
   onOpenAddTxn: () => void;
@@ -44,6 +45,7 @@ export const Level2BucketView: React.FC<Level2BucketViewProps> = ({
   month,
   totalIncome,
   transactions,
+  allTransactions,
   categories,
   budgets,
   onOpenAddTxn,
@@ -94,10 +96,10 @@ export const Level2BucketView: React.FC<Level2BucketViewProps> = ({
           title: 'Total Inflow',
           subtitle: 'Monthly earned income streams, salary, dividends, and cash inflows',
           icon: TrendingUp,
-          color: 'text-teal-400',
-          borderColor: 'border-teal-500/30',
-          bgGradient: 'from-teal-500/15 via-card to-card',
-          badgeBg: 'bg-teal-500/20 text-teal-400 border-teal-500/30',
+          color: 'text-emerald-400',
+          borderColor: 'border-emerald-500/30',
+          bgGradient: 'from-emerald-500/15 via-card to-card',
+          badgeBg: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
           accentColor: '#10B981'
         };
     }
@@ -129,7 +131,8 @@ export const Level2BucketView: React.FC<Level2BucketViewProps> = ({
 
   const priorSpent = useMemo(() => {
     if (!priorMonthKey) return null;
-    const pTxns = transactions.filter(t => {
+    const sourceTxns = allTransactions || transactions;
+    const pTxns = sourceTxns.filter(t => {
       const matchMonth = t.date && t.date.startsWith(priorMonthKey);
       if (!matchMonth) return false;
       if (bucketId === 'income') return t.type === 'income';
@@ -137,10 +140,10 @@ export const Level2BucketView: React.FC<Level2BucketViewProps> = ({
     });
     if (pTxns.length === 0) return null;
     return pTxns.reduce((sum, t) => sum + t.amount, 0);
-  }, [transactions, priorMonthKey, bucketId, categories]);
+  }, [allTransactions, transactions, priorMonthKey, bucketId, categories]);
 
-  const momDelta = priorSpent !== null
-    ? priorSpent > 0 ? ((totalSpent - priorSpent) / priorSpent) * 100 : 0
+  const momDelta = priorSpent !== null && priorSpent > 0
+    ? ((totalSpent - priorSpent) / priorSpent) * 100
     : null;
 
   // Aggregate category breakdowns in this bucket
@@ -288,9 +291,13 @@ export const Level2BucketView: React.FC<Level2BucketViewProps> = ({
               <span className="text-muted-foreground">
                 {pctOfIncome.toFixed(1)}% of income
               </span>
-              {momDelta !== null && (
-                <span className={`font-mono font-bold tabular-nums ${momDelta <= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                  {momDelta >= 0 ? '+' : ''}{momDelta.toFixed(1)}% MoM
+              {momDelta !== null && Math.abs(momDelta) >= 0.05 && (
+                <span className={`font-sans font-bold tabular-nums px-1.5 py-0.5 rounded ${
+                  bucketId === 'income'
+                    ? (momDelta >= 0 ? 'text-emerald-400 bg-emerald-500/10' : 'text-rose-400 bg-rose-500/10')
+                    : (momDelta < 0 ? 'text-emerald-400 bg-emerald-500/10' : 'text-rose-400 bg-rose-500/10')
+                }`}>
+                  {momDelta > 0 ? '+' : ''}{momDelta.toFixed(1)}% MoM
                 </span>
               )}
             </div>

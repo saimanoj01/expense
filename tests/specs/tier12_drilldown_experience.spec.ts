@@ -413,5 +413,60 @@ test.describe('Tier 12: v3 Progressive Disclosure Drill-Down Experience', () => 
     await expect(page.getByTestId('import-csv-trigger-btn')).toBeVisible();
     await expect(page.getByTestId('gemini-api-key-input')).toBeVisible();
   });
+
+  test('17. v3 Canonical Route, #/dashboard Redirect, MoM Delta Polarity, and Sticky Bucket Filter Reset', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+
+    // 1. Default route '/' redirects to canonical '#/month/YYYY-MM' with true zero-scroll
+    await page.goto('/');
+    await expect(page.getByTestId('hero-savings-card')).toBeVisible();
+    await expect(page.getByTestId('income-allocation-ring')).toBeVisible();
+    const initialHash = await page.evaluate(() => window.location.hash);
+    expect(initialHash).toMatch(/^#\/month\/\d{4}-\d{2}$/);
+    const isZeroScrollRoot = await page.evaluate(() => window.innerHeight >= document.body.scrollHeight);
+    expect(isZeroScrollRoot).toBe(true);
+
+    // 2. Legacy '#/dashboard?project=proj-v3&month=2026-10' redirects cleanly via replaceState preserving month
+    await page.goto('/#/dashboard?project=proj-v3&month=2026-10');
+    await expect(page.getByTestId('hero-savings-card')).toBeVisible();
+    const redirectedHash = await page.evaluate(() => window.location.hash);
+    expect(redirectedHash).toBe('#/month/2026-10');
+
+    // 3. Seed prior month (Oct 2026) and verify MoM expense delta polarity in Nov 2026
+    await page.addInitScript(() => {
+      const raw = window.localStorage.getItem('expense_txs_proj-v3');
+      const txs = raw ? JSON.parse(raw) : [];
+      txs.push({
+        id: 'tx-oct-rent',
+        date: '2026-10-01',
+        category: 'housing',
+        amount: 2000,
+        type: 'expense',
+        spendingBucket: 'fixed',
+        description: 'October Rent',
+        notes: '',
+        labels: ['fixed'],
+        hash: 'h-oct-rent',
+      });
+      window.localStorage.setItem('expense_txs_proj-v3', JSON.stringify(txs));
+    });
+    await page.goto('/#/month/2026-11');
+    await page.reload();
+
+    // Fixed spent $2,400 in Nov vs $2,000 in Oct (+20.0% MoM) -> rising expense must be colored rose/red (text-rose-400)
+    const fixedDelta = page.getByTestId('mom-delta-fixed');
+    await expect(fixedDelta).toBeVisible();
+    await expect(fixedDelta).toContainText('+20.0% MoM');
+    await expect(fixedDelta.locator('span')).toHaveClass(/text-rose-400/);
+
+    // 4. Clicking Fixed bucket card drills into Level 2 without leaving a sticky filter on #/transactions
+    await page.getByTestId('kpi-fixed-expenses').click();
+    await expect(page.getByTestId('level2-bucket-view')).toBeVisible();
+    await page.evaluate(() => { window.location.hash = '#/transactions?month=2026-11'; });
+    await expect(page.getByTestId('level4-transactions-workspace')).toBeVisible();
+    // Both Fixed ('Apartment Lease') and Flexible ('Trader Joes') transactions must be visible (unfiltered)
+    await expect(page.locator('h4:has-text("Apartment Lease")')).toBeVisible();
+    await expect(page.locator('h4:has-text("Trader Joes")')).toBeVisible();
+  });
 });
 

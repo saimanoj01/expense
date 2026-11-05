@@ -176,6 +176,10 @@ test.describe('Tier 11: The Monthly Financial Story & Cash Flow Analytics', () =
   test('3. Clicking KPI cards toggles bucket filtering on transaction list', async ({ page }) => {
     const monthSelect = page.getByTestId('month-selector');
     await monthSelect.selectOption('2026-07');
+    await page.evaluate(() => {
+      window.location.hash = '#/transactions?month=2026-07';
+    });
+    await expect(page.getByTestId('level4-transactions-workspace')).toBeVisible();
 
     // Click Fixed KPI card
     await page.getByTestId('kpi-fixed-expenses').click();
@@ -251,6 +255,10 @@ test.describe('Tier 11: The Monthly Financial Story & Cash Flow Analytics', () =
   test('7. Inline bucket switcher pills allow toggling spending bucket', async ({ page }) => {
     const monthSelect = page.getByTestId('month-selector');
     await monthSelect.selectOption('2026-07');
+    await page.evaluate(() => {
+      window.location.hash = '#/transactions?month=2026-07';
+    });
+    await expect(page.getByTestId('level4-transactions-workspace')).toBeVisible();
 
     // t3 (Groceries & Dining) is currently flexible
     const switcher = page.getByTestId('bucket-switcher-t3');
@@ -269,6 +277,10 @@ test.describe('Tier 11: The Monthly Financial Story & Cash Flow Analytics', () =
   test('8. Multi-transaction bulk bucket assignment in TransactionList', async ({ page }) => {
     const monthSelect = page.getByTestId('month-selector');
     await monthSelect.selectOption('2026-07');
+    await page.evaluate(() => {
+      window.location.hash = '#/transactions?month=2026-07';
+    });
+    await expect(page.getByTestId('level4-transactions-workspace')).toBeVisible();
 
     // Select row t3 and t4 via checkboxes
     const rows = page.getByTestId('transaction-row');

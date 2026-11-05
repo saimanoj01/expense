@@ -151,6 +151,7 @@ test.describe('Tier 1: Feature Coverage (Happy Paths)', () => {
         }
       });
       await appPage.goto();
+      await dashboardPage.ensureTransactionsView();
       await expect(page.locator('text=t1 description')).toBeVisible();
       await projectPage.selectProject('p2');
       await expect(page.locator('text=t2 description')).toBeVisible();
@@ -264,6 +265,7 @@ test.describe('Tier 1: Feature Coverage (Happy Paths)', () => {
         }
       });
       await appPage.goto();
+      await dashboardPage.ensureTransactionsView();
       // Click filter or tag
       await page.getByTestId('filter-tag-groceries').click();
       await expect(page.locator('text=Grocery')).toBeVisible();
@@ -324,6 +326,7 @@ test.describe('Tier 1: Feature Coverage (Happy Paths)', () => {
         }
       });
       await appPage.goto();
+      await dashboardPage.ensureBudgetsView();
       const progressText = page.getByTestId('budget-utilization-Food');
       await expect(progressText).toContainText('50%'); // 100/200
     });
@@ -356,6 +359,7 @@ test.describe('Tier 1: Feature Coverage (Happy Paths)', () => {
       await page.getByTestId('save-edited-category-btn').click();
       
       await page.keyboard.press('Escape');
+      await dashboardPage.ensureBudgetsView();
 
       const badge = page.getByTestId('category-badge-Food');
       await expect(badge).toContainText('🍔');
@@ -596,13 +600,17 @@ test.describe('Tier 1: Feature Coverage (Happy Paths)', () => {
     });
 
     test('31. Pie Chart Portions: Expense pie chart displays SVG path elements representing portions', async () => {
+      await dashboardPage.ensureBudgetsView();
       await expect(dashboardPage.pieChart).toBeVisible();
       // Ensure SVG paths exist
       const paths = dashboardPage.pieChart.locator('path');
       await expect(paths).toHaveCount(2); // Two categories: Rent and Food
     });
 
-    test('32. Trend Chart Path: Monthly trend area chart plots coordinate segments', async () => {
+    test('32. Trend Chart Path: Monthly trend area chart plots coordinate segments', async ({ page }) => {
+      await page.evaluate(() => {
+        window.location.hash = '#/trends';
+      });
       await expect(dashboardPage.trendChart).toBeVisible();
       const path = dashboardPage.trendChart.locator('path');
       await expect(path).toBeVisible();
@@ -612,6 +620,7 @@ test.describe('Tier 1: Feature Coverage (Happy Paths)', () => {
     });
 
     test('33. Budget vs Actual Chart: Budget vs Actual chart draws dual budget/actual bars', async () => {
+      await dashboardPage.ensureBudgetsView();
       await expect(dashboardPage.budgetChart).toBeVisible();
       const budgetBars = dashboardPage.budgetChart.locator('.budget-bar');
       const actualBars = dashboardPage.budgetChart.locator('.actual-bar');
@@ -629,6 +638,7 @@ test.describe('Tier 1: Feature Coverage (Happy Paths)', () => {
     });
 
     test('35. Chart Responsive Scaling: App renders responsively at 320px width', async ({ page }) => {
+      await dashboardPage.ensureBudgetsView();
       await page.setViewportSize({ width: 320, height: 568 });
       await expect(dashboardPage.pieChart).toBeVisible();
       // Width of charts should be constrained and not cause layout breakage

@@ -16,6 +16,7 @@ export interface BucketSummaryCardsProps {
     income: number;
     fixed: number;
     flexible: number;
+    nonMonthly?: number;
     expenses: number;
   } | null;
   hasPriorMonthData?: boolean;
@@ -38,6 +39,35 @@ interface BucketCardItem {
   sublabel: string;
   drillBucket: string;
   momDelta: React.ReactNode;
+}
+
+function renderMomDeltaBadge(
+  current: number,
+  prior: number | undefined,
+  isExpense: boolean,
+  hasPriorMonthData: boolean,
+  fallbackText: string = 'No prior month data'
+): React.ReactNode {
+  if (!hasPriorMonthData || prior === undefined) {
+    return <span className="text-muted-foreground text-[10px]">{fallbackText}</span>;
+  }
+  if (prior <= 0) {
+    return <span className="text-muted-foreground text-[10px]">{fallbackText}</span>;
+  }
+  const deltaPct = ((current - prior) / prior) * 100;
+  if (Math.abs(deltaPct) < 0.05) {
+    return <span className="text-muted-foreground text-[10px]">{fallbackText}</span>;
+  }
+  const isPositiveTone = isExpense ? deltaPct < 0 : deltaPct > 0;
+  const toneClasses = isPositiveTone
+    ? 'text-emerald-400 bg-emerald-500/10'
+    : 'text-rose-400 bg-rose-500/10';
+  const sign = deltaPct > 0 ? '+' : '';
+  return (
+    <span className={`${toneClasses} px-1.5 py-0.5 rounded font-semibold tabular-nums font-sans`}>
+      {sign}{deltaPct.toFixed(1)}% MoM
+    </span>
+  );
 }
 
 export const BucketSummaryCards: React.FC<BucketSummaryCardsProps> = ({
@@ -68,25 +98,13 @@ export const BucketSummaryCards: React.FC<BucketSummaryCardsProps> = ({
       testId: 'kpi-total-income',
       momTestId: 'mom-delta-income',
       icon: TrendingUp,
-      color: 'text-teal-400',
-      borderColor: 'border-teal-500/30',
-      activeBorder: 'border-teal-500',
-      bgGlow: 'from-teal-500/10',
+      color: 'text-emerald-400',
+      borderColor: 'border-emerald-500/30',
+      activeBorder: 'border-emerald-500',
+      bgGlow: 'from-emerald-500/10',
       sublabel: 'Starting cash',
       drillBucket: 'income',
-      momDelta: priorMetrics ? (
-        totalIncome >= priorMetrics.income ? (
-          <span className="text-emerald-400 font-semibold tabular-nums font-sans">
-            +{priorMetrics.income > 0 ? (((totalIncome - priorMetrics.income) / priorMetrics.income) * 100).toFixed(1) : '0.0'}% MoM
-          </span>
-        ) : (
-          <span className="text-rose-400 font-semibold tabular-nums font-sans">
-            {priorMetrics.income > 0 ? (((totalIncome - priorMetrics.income) / priorMetrics.income) * 100).toFixed(1) : '-100.0'}% MoM
-          </span>
-        )
-      ) : !hasPriorMonthData ? (
-        <span className="text-muted-foreground text-[10px]">No prior month data</span>
-      ) : null
+      momDelta: renderMomDeltaBadge(totalIncome, priorMetrics?.income, false, hasPriorMonthData)
     },
     {
       id: 'fixed',
@@ -101,19 +119,7 @@ export const BucketSummaryCards: React.FC<BucketSummaryCardsProps> = ({
       bgGlow: 'from-indigo-500/10',
       sublabel: `Bills (${fixedPct.toFixed(0)}%)`,
       drillBucket: 'fixed',
-      momDelta: priorMetrics ? (
-        fixedExpenses >= priorMetrics.fixed ? (
-          <span className="text-emerald-400 font-semibold tabular-nums font-sans">
-            +{priorMetrics.fixed > 0 ? (((fixedExpenses - priorMetrics.fixed) / priorMetrics.fixed) * 100).toFixed(1) : '0.0'}% MoM
-          </span>
-        ) : (
-          <span className="text-rose-400 font-semibold tabular-nums font-sans">
-            {priorMetrics.fixed > 0 ? (((fixedExpenses - priorMetrics.fixed) / priorMetrics.fixed) * 100).toFixed(1) : '-100.0'}% MoM
-          </span>
-        )
-      ) : !hasPriorMonthData ? (
-        <span className="text-muted-foreground text-[10px]">No prior month data</span>
-      ) : null
+      momDelta: renderMomDeltaBadge(fixedExpenses, priorMetrics?.fixed, true, hasPriorMonthData)
     },
     {
       id: 'flexible',
@@ -128,19 +134,7 @@ export const BucketSummaryCards: React.FC<BucketSummaryCardsProps> = ({
       bgGlow: 'from-violet-500/10',
       sublabel: `Daily (${flexSpentPct.toFixed(0)}%)`,
       drillBucket: 'variable',
-      momDelta: priorMetrics ? (
-        flexibleExpenses >= priorMetrics.flexible ? (
-          <span className="text-emerald-400 font-semibold tabular-nums font-sans">
-            +{priorMetrics.flexible > 0 ? (((flexibleExpenses - priorMetrics.flexible) / priorMetrics.flexible) * 100).toFixed(1) : '0.0'}% MoM
-          </span>
-        ) : (
-          <span className="text-rose-400 font-semibold tabular-nums font-sans">
-            {priorMetrics.flexible > 0 ? (((flexibleExpenses - priorMetrics.flexible) / priorMetrics.flexible) * 100).toFixed(1) : '-100.0'}% MoM
-          </span>
-        )
-      ) : !hasPriorMonthData ? (
-        <span className="text-muted-foreground text-[10px]">No prior month data</span>
-      ) : null
+      momDelta: renderMomDeltaBadge(flexibleExpenses, priorMetrics?.flexible, true, hasPriorMonthData)
     },
     {
       id: 'non-monthly',
@@ -155,11 +149,22 @@ export const BucketSummaryCards: React.FC<BucketSummaryCardsProps> = ({
       bgGlow: 'from-amber-500/10',
       sublabel: `Irregular (${nonMonthlyPct.toFixed(0)}%)`,
       drillBucket: 'non-monthly',
-      momDelta: (
-        <span className="text-muted-foreground text-[10px]">Periodic buffer</span>
+      momDelta: renderMomDeltaBadge(
+        nonMonthlyExpenses,
+        priorMetrics?.nonMonthly,
+        true,
+        hasPriorMonthData,
+        'Periodic buffer'
       )
     }
   ];
+
+  const handleDrillToBucket = (drillBucket: string) => {
+    if (onSelectBucket) {
+      onSelectBucket(null);
+    }
+    navigate(`#/month/${activeMonth}/bucket/${drillBucket}`);
+  };
 
   return (
     <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 ${className}`}>
@@ -187,13 +192,13 @@ export const BucketSummaryCards: React.FC<BucketSummaryCardsProps> = ({
               </div>
             </div>
 
-            {/* Middle: Amount (Clickable for filter toggle) */}
+            {/* Middle: Amount (Clickable to drill into bucket) */}
             <button
               type="button"
               data-testid={c.testId}
-              onClick={() => onSelectBucket && onSelectBucket(isSelected ? null : c.id)}
+              onClick={() => handleDrillToBucket(c.drillBucket)}
               className="text-left py-0.5 group/btn focus:outline-none"
-              title="Click to toggle filter on transactions list"
+              title={`Drill into ${c.title}`}
             >
               <div className="text-xl sm:text-2xl font-extrabold font-sans tracking-tight tabular-nums text-foreground group-hover/btn:text-primary transition-colors">
                 {c.id === 'income' ? formatCurrency(c.amount) : formatExpenseCurrency(c.amount)}
@@ -211,7 +216,7 @@ export const BucketSummaryCards: React.FC<BucketSummaryCardsProps> = ({
               <button
                 type="button"
                 data-testid={`drill-down-${c.drillBucket}`}
-                onClick={() => navigate(`#/month/${activeMonth}/bucket/${c.drillBucket}`)}
+                onClick={() => handleDrillToBucket(c.drillBucket)}
                 className="inline-flex items-center gap-1 text-[11px] font-bold text-primary hover:text-primary/80 transition-colors focus:outline-none"
                 title={`Drill into ${c.title}`}
               >

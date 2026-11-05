@@ -1,4 +1,5 @@
 import { BreadcrumbTrail } from '../layout/BreadcrumbTrail';
+import { MonthSwitcher } from '../dashboard/MonthSwitcher';
 import { BudgetUtilization, CategorySummary, PieSegment } from '../dashboard/BudgetUtilization';
 import { BudgetNote } from '../../services/storage';
 import { Target } from 'lucide-react';
@@ -38,18 +39,28 @@ export function BudgetsView({
   isLockedMonth = false,
   totalBudget = 0,
   totalSpent = 0,
-  availableMonths: _availableMonths = [],
-  onSelectMonth: _onSelectMonth
+  availableMonths = [],
+  onSelectMonth
 }: BudgetsViewProps) {
   const percentUsed = totalBudget > 0 ? (totalSpent / totalBudget) * 100 : 0;
   const remaining = totalBudget - totalSpent;
 
   return (
     <div className="space-y-4" data-testid="budgets-workspace">
-      <BreadcrumbTrail className="mb-2" />
+      <div className="flex items-center justify-between gap-3 mb-2">
+        <BreadcrumbTrail />
+        {onSelectMonth && (
+          <MonthSwitcher
+            selectedMonth={month}
+            availableMonths={availableMonths}
+            onSelectMonth={onSelectMonth}
+            className="border-0 shadow-none bg-transparent p-0"
+          />
+        )}
+      </div>
 
       {/* Hero Header */}
-      <div className="p-6 rounded-2xl bg-gradient-to-br from-card/80 to-card/40 border border-border backdrop-blur-md shadow-sm">
+      <div data-testid="dashboard-header" className="p-6 rounded-2xl bg-gradient-to-br from-card/80 to-card/40 border border-border backdrop-blur-md shadow-sm">
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2">
@@ -69,14 +80,14 @@ export function BudgetsView({
           <div className="flex items-center gap-4">
             <div className="text-right">
               <span className="text-[10px] text-muted-foreground uppercase font-semibold">Total Target</span>
-              <p className="text-base font-extrabold font-mono tabular-nums text-foreground">
+              <p data-testid="kpi-total-budget" className="text-base font-extrabold font-mono tabular-nums text-foreground">
                 {formatCurrency(totalBudget)}
               </p>
             </div>
             <div className="h-8 w-px bg-border" />
             <div className="text-right">
               <span className="text-[10px] text-muted-foreground uppercase font-semibold">Actual Spent</span>
-              <p className="text-base font-extrabold font-mono tabular-nums text-foreground">
+              <p data-testid="kpi-total-expenses" className="text-base font-extrabold font-mono tabular-nums text-foreground overflow-hidden">
                 {formatCurrency(totalSpent)}
               </p>
             </div>

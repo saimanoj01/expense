@@ -100,6 +100,7 @@ test.describe('Tier 4: Real-world Application Scenarios', () => {
 
     // 8. Assertion: Verify KPIs and charts.
     await expect(page.getByTestId('kpi-total-expenses')).toContainText('$1,350.00');
+    await dashboardPage.ensureBudgetsView();
     await expect(page.getByTestId('budget-remaining-Food')).toContainText('$350.00'); // 500 - 150
     await expect(page.getByTestId('budget-remaining-Rent')).toContainText('$0.00'); // 1200 - 1200
 
@@ -361,6 +362,7 @@ test.describe('Tier 4: Real-world Application Scenarios', () => {
 
     // 4. Switch back to Project 1 (Vacation)
     await projectPage.selectProject('p_vacation');
+    await dashboardPage.ensureTransactionsView();
 
     // Assert Vacation transaction visible, Business transaction hidden, Vacation KPIs matching
     await expect(page.getByRole('heading', { name: 'Flight', exact: true })).toBeVisible();
