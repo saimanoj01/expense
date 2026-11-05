@@ -351,7 +351,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                   <X className="w-4 h-4" />
                 </button>
               )}
-              <kbd className="hidden sm:inline-block px-1.5 py-0.5 text-[10px] font-mono rounded bg-secondary text-muted-foreground border border-border/40">
+              <kbd className="hidden sm:inline-block px-1.5 py-0.5 text-label font-mono rounded bg-secondary text-muted-foreground border border-border/40">
                 ESC
               </kbd>
             </div>
@@ -393,12 +393,12 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                         <div className="min-w-0 truncate">
                           <p className="font-semibold truncate">{item.title}</p>
                           {item.subtitle && (
-                            <p className="text-[11px] text-muted-foreground truncate">{item.subtitle}</p>
+                            <p className="text-label text-muted-foreground truncate">{item.subtitle}</p>
                           )}
                         </div>
                       </div>
 
-                      <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-secondary/80 text-muted-foreground shrink-0 border border-border/30">
+                      <span className="text-label font-mono px-1.5 py-0.5 rounded bg-secondary/80 text-muted-foreground shrink-0 border border-border/30">
                         {item.category}
                       </span>
                     </button>
@@ -408,19 +408,19 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
             </div>
 
             {/* Footer Navigation Hints */}
-            <div className="px-4 py-2 border-t border-border/40 bg-secondary/30 flex items-center justify-between text-[11px] text-muted-foreground">
+            <div className="px-4 py-2 border-t border-border/40 bg-secondary/30 flex items-center justify-between text-label text-muted-foreground">
               <div className="flex items-center gap-3">
                 <span className="flex items-center gap-1">
-                  <kbd className="px-1 py-0.5 rounded bg-secondary text-[10px] font-mono border border-border/50">↑</kbd>
-                  <kbd className="px-1 py-0.5 rounded bg-secondary text-[10px] font-mono border border-border/50">↓</kbd>
+                  <kbd className="px-1 py-0.5 rounded bg-secondary text-label font-mono border border-border/50">↑</kbd>
+                  <kbd className="px-1 py-0.5 rounded bg-secondary text-label font-mono border border-border/50">↓</kbd>
                   <span>Navigate</span>
                 </span>
                 <span className="flex items-center gap-1">
-                  <kbd className="px-1.5 py-0.5 rounded bg-secondary text-[10px] font-mono border border-border/50">↵</kbd>
+                  <kbd className="px-1.5 py-0.5 rounded bg-secondary text-label font-mono border border-border/50">↵</kbd>
                   <span>Select</span>
                 </span>
               </div>
-              <span className="text-[10px]">Nebula Command Palette</span>
+              <span className="text-label">Command Palette</span>
             </div>
           </motion.div>
         </div>

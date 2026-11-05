@@ -1,5 +1,5 @@
 import React from 'react';
-import { motion } from 'framer-motion';
+import { motion, useReducedMotion } from 'framer-motion';
 import { BUCKETS, bucketColor } from '../../theme/buckets';
 import { spring } from '../../theme/motion';
 import { formatMoney } from '../../utils/formatters';
@@ -25,6 +25,7 @@ export const IncomeRibbon: React.FC<IncomeRibbonProps> = ({
   className = '',
 }) => {
   const { navigate } = useNavigation();
+  const reduced = useReducedMotion();
   const totalExpenses = fixedExpenses + flexibleExpenses + nonMonthlyExpenses;
   const isDeficit = totalIncome > 0 && savingsAmount < 0;
   const savedPositive = Math.max(0, savingsAmount);
@@ -65,7 +66,7 @@ export const IncomeRibbon: React.FC<IncomeRibbonProps> = ({
       className={`relative w-full ${className}`}
     >
       <div className="flex items-center w-full h-3 rounded-[6px] overflow-hidden gap-[2px] bg-surface2">
-        {segments.map(seg => {
+        {segments.map((seg, idx) => {
           if (seg.amount <= 0 && totalIncome === 0 && totalExpenses === 0) return null;
           const pct = Math.round((seg.amount / total) * 100);
           return (
@@ -73,15 +74,18 @@ export const IncomeRibbon: React.FC<IncomeRibbonProps> = ({
               key={seg.key}
               type="button"
               layoutId={`bucket-bar-${seg.route}`}
-              transition={spring}
+              initial={reduced ? false : { scaleX: 0 }}
+              animate={{ scaleX: 1 }}
+              transition={reduced ? { duration: 0 } : { ...spring, delay: idx * 0.06 }}
               onClick={() => navigate(`#/month/${selectedMonth}/bucket/${seg.route}`)}
               aria-label={`${seg.label}, ${formatMoney(seg.amount)}, ${pct}% of income. Open ${seg.label}`}
               style={{
                 flexGrow: Math.max(seg.amount, 0),
                 minWidth: seg.amount > 0 ? 4 : 0,
                 backgroundColor: seg.color,
+                transformOrigin: 'left',
               }}
-              className="h-full transition-opacity hover:opacity-85 focus-visible:ring-2 ring-ring/40"
+              className="h-full transition-opacity hover:opacity-85 focus-visible:ring-2 ring-ring/40 ring-offset-2 ring-offset-background"
             />
           );
         })}
@@ -91,6 +95,9 @@ export const IncomeRibbon: React.FC<IncomeRibbonProps> = ({
             key="overspent"
             type="button"
             data-testid="ribbon-overspent-segment"
+            initial={reduced ? false : { scaleX: 0 }}
+            animate={{ scaleX: 1 }}
+            transition={reduced ? { duration: 0 } : { ...spring, delay: 0.18 }}
             onClick={() => navigate(`#/month/${selectedMonth}/bucket/income`)}
             aria-label={`Overspent, ${formatMoney(Math.abs(savingsAmount))}. Open Income & saved`}
             style={{
@@ -98,23 +105,27 @@ export const IncomeRibbon: React.FC<IncomeRibbonProps> = ({
               minWidth: 8,
               backgroundImage:
                 'repeating-linear-gradient(45deg, hsl(var(--c-negative)), hsl(var(--c-negative)) 4px, hsl(var(--c-negative) / 0.25) 4px, hsl(var(--c-negative) / 0.25) 8px)',
+              transformOrigin: 'left',
             }}
-            className="h-full transition-opacity hover:opacity-85 focus-visible:ring-2 ring-ring/40"
+            className="h-full transition-opacity hover:opacity-85 focus-visible:ring-2 ring-ring/40 ring-offset-2 ring-offset-background"
           />
         ) : (
           <motion.button
             key="saved"
             type="button"
             layoutId="bucket-bar-income"
-            transition={spring}
+            initial={reduced ? false : { scaleX: 0 }}
+            animate={{ scaleX: 1 }}
+            transition={reduced ? { duration: 0 } : { ...spring, delay: 0.18 }}
             onClick={() => navigate(`#/month/${selectedMonth}/bucket/income`)}
             aria-label={`Saved, ${formatMoney(savedPositive)}, ${Math.round((savedPositive / total) * 100)}% of income. Open Income & saved`}
             style={{
               flexGrow: Math.max(savedPositive, totalIncome === 0 && totalExpenses === 0 ? 1 : 0),
               minWidth: savedPositive > 0 ? 4 : 0,
               backgroundColor: bucketColor('saved'),
+              transformOrigin: 'left',
             }}
-            className="h-full transition-opacity hover:opacity-85 focus-visible:ring-2 ring-ring/40"
+            className="h-full transition-opacity hover:opacity-85 focus-visible:ring-2 ring-ring/40 ring-offset-2 ring-offset-background"
           />
         )}
       </div>

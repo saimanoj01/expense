@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import { motion, useReducedMotion } from 'framer-motion';
 import { formatMoney, formatCurrency, splitMoneyParts } from '../../utils/formatters';
 import { delta, deltaToneClass } from '../../utils/delta';
 import { useNavigation } from '../../hooks/useNavigation';
@@ -46,9 +47,30 @@ export const OverviewHero: React.FC<OverviewHeroProps> = ({
   className = '',
 }) => {
   const { navigate } = useNavigation();
+  const reduced = useReducedMotion();
   const isEmpty = totalIncome === 0 && totalExpenses === 0;
   const isZeroIncome = totalIncome === 0 && totalExpenses > 0;
   const isDeficit = totalIncome > 0 && savingsAmount < 0;
+
+  const [shouldGlow, setShouldGlow] = useState(false);
+
+  useEffect(() => {
+    if (reduced || isEmpty || isZeroIncome || isDeficit || savingsRate < 20) {
+      setShouldGlow(false);
+      return;
+    }
+    const key = `calm_ledger_glow_${selectedMonth}`;
+    try {
+      if (!sessionStorage.getItem(key)) {
+        sessionStorage.setItem(key, '1');
+        setShouldGlow(true);
+      } else {
+        setShouldGlow(false);
+      }
+    } catch {
+      setShouldGlow(false);
+    }
+  }, [selectedMonth, savingsRate, reduced, isEmpty, isZeroIncome, isDeficit]);
 
   const keptParts = splitMoneyParts(Math.abs(savingsAmount));
   const incomeParts = splitMoneyParts(totalIncome);
@@ -199,13 +221,20 @@ export const OverviewHero: React.FC<OverviewHeroProps> = ({
       ) : (
         <div className="space-y-1">
           <p className="text-heading text-muted-foreground">You kept</p>
-          <div
+          <motion.div
             data-testid="kpi-savings-amount"
             title="Income minus spending. Transfers between your accounts aren't counted."
+            initial={
+              shouldGlow
+                ? { textShadow: '0 0 24px hsl(var(--c-saved) / 0.45)' }
+                : false
+            }
+            animate={{ textShadow: '0 0 0px hsl(var(--c-saved) / 0)' }}
+            transition={{ duration: 1.2, ease: 'easeOut' }}
             className="text-[44px] leading-[48px] sm:text-display-xl font-semibold tracking-tight tabular-nums num text-bucket-saved"
           >
             <RollingNumber value={keptParts.whole} srSuffix={keptParts.cents} />
-          </div>
+          </motion.div>
           <p className="text-body text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-1">
             <span>
               <span

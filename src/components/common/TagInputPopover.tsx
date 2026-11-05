@@ -95,6 +95,7 @@ export function TagInputPopover({
   return (
     <motion.div
       ref={containerRef}
+      data-popover="tag-input"
       initial={{ opacity: 0, scale: 0.95, y: -5 }}
       animate={{ opacity: 1, scale: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.95, y: -5 }}
@@ -102,18 +103,18 @@ export function TagInputPopover({
       onClick={e => e.stopPropagation()}
       className={`absolute z-50 top-full mt-1.5 ${
         align === 'right' ? 'right-0' : 'left-0'
-      } w-64 p-3 bg-card/95 backdrop-blur-xl border border-border/80 rounded-xl shadow-2xl space-y-2`}
+      } w-64 p-3 bg-card border border-border rounded-[14px] shadow-xl space-y-2`}
     >
       <div className="flex items-center justify-between gap-1 border-b border-border/50 pb-2">
-        <div className="flex items-center gap-1.5 text-xs font-bold text-muted-foreground uppercase tracking-wider">
-          <Tag className="w-3.5 h-3.5 text-primary" />
+        <div className="flex items-center gap-1.5 text-label font-medium text-muted-foreground uppercase tracking-[0.06em]">
+          <Tag className="w-3.5 h-3.5 text-foreground" />
           <span>Add Tag</span>
         </div>
         <button
           type="button"
           onClick={onClose}
           aria-label="Close tag popover"
-          className="p-1 hover:bg-card rounded-lg text-muted-foreground hover:text-foreground transition-colors"
+          className="p-1 hover:bg-surface2 rounded-lg text-muted-foreground hover:text-foreground transition-colors focus-visible:ring-2 ring-ring/40"
         >
           <X className="w-3.5 h-3.5" />
         </button>
@@ -128,14 +129,14 @@ export function TagInputPopover({
           onKeyDown={handleKeyDown}
           placeholder={placeholder}
           data-testid="tag-popover-input"
-          className="w-full bg-background border border-border rounded-lg px-2.5 py-1.5 text-xs font-medium focus:ring-2 focus:ring-primary outline-none transition-all"
+          className="w-full bg-surface2 border border-border rounded-[10px] px-2.5 py-1.5 text-label font-medium focus-visible:ring-2 ring-ring/40 transition-all"
         />
         <button
           type="button"
           onClick={() => handleSubmit()}
           disabled={!inputValue.trim()}
           data-testid="tag-popover-submit-btn"
-          className="p-1.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg disabled:opacity-40 transition-all"
+          className="p-1.5 bg-primary hover:bg-primary/90 text-primary-foreground rounded-[10px] disabled:opacity-40 transition-all focus-visible:ring-2 ring-ring/40"
         >
           <Plus className="w-4 h-4" />
         </button>
@@ -143,7 +144,7 @@ export function TagInputPopover({
 
       {suggestions.length > 0 && (
         <div className="pt-1 space-y-1">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground px-1">
+          <p className="text-label font-medium uppercase tracking-[0.06em] text-muted-foreground px-1">
             Suggestions
           </p>
           <div className="flex flex-wrap gap-1 max-h-28 overflow-y-auto custom-scrollbar">
@@ -152,10 +153,10 @@ export function TagInputPopover({
                 key={t}
                 type="button"
                 onClick={() => handleSubmit(t)}
-                className={`px-2 py-0.5 rounded text-xs font-semibold transition-all ${
+                className={`px-2 py-0.5 rounded-[6px] text-label font-medium transition-all focus-visible:ring-2 ring-ring/40 ${
                   idx === selectedIndex
-                    ? 'bg-primary text-primary-foreground ring-1 ring-primary'
-                    : 'bg-secondary/10 text-secondary hover:bg-secondary/20 border border-secondary/20'
+                    ? 'bg-primary text-primary-foreground'
+                    : 'bg-surface2 text-muted-foreground hover:text-foreground border border-border'
                 }`}
               >
                 #{t}
