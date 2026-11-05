@@ -142,3 +142,54 @@ export function suggestSpendingBucket(
   return 'flexible';
 }
 
+/**
+ * Pure function to resolve the spending bucket of a transaction without read-time heuristics (C4).
+ * 1. Checks explicit transaction.spendingBucket
+ * 2. Checks labels array for 'fixed' | 'flexible' | 'non-monthly'
+ * 3. Checks sub-category default then parent category default in categoryDefaults
+ * 4. Defaults to 'flexible'
+ */
+export function bucketOf(
+  transaction: { spendingBucket?: any; labels?: string[]; category?: string; subCategory?: string | null },
+  categoryDefaults?: Category[] | Record<string, string>
+): 'fixed' | 'flexible' | 'non-monthly' {
+  if (transaction.spendingBucket === 'fixed' || transaction.spendingBucket === 'flexible' || transaction.spendingBucket === 'non-monthly') {
+    return transaction.spendingBucket;
+  }
+  // Check transaction labels for bucket tag
+  if (Array.isArray(transaction.labels)) {
+    if (transaction.labels.includes('fixed')) return 'fixed';
+    if (transaction.labels.includes('non-monthly')) return 'non-monthly';
+    if (transaction.labels.includes('flexible')) return 'flexible';
+  }
+
+  // Check categoryDefaults
+  if (categoryDefaults) {
+    if (Array.isArray(categoryDefaults)) {
+      if (transaction.subCategory) {
+        const subCat = categoryDefaults.find(c => c.id.toLowerCase() === transaction.subCategory?.toLowerCase());
+        if (subCat?.defaultBucket) return subCat.defaultBucket as any;
+      }
+      if (transaction.category) {
+        const parentCat = categoryDefaults.find(c => c.id.toLowerCase() === transaction.category?.toLowerCase() || c.name.toLowerCase() === transaction.category?.toLowerCase());
+        if (parentCat?.defaultBucket) return parentCat.defaultBucket as any;
+      }
+    } else {
+      if (transaction.subCategory && categoryDefaults[transaction.subCategory]) {
+        return categoryDefaults[transaction.subCategory] as any;
+      }
+      if (transaction.category && categoryDefaults[transaction.category]) {
+        return categoryDefaults[transaction.category] as any;
+      }
+    }
+  }
+
+  const catLower = (transaction.category || '').toLowerCase();
+  if (catLower === 'housing' || catLower === 'rent' || catLower === 'utilities') {
+    return 'fixed';
+  }
+
+  return 'flexible';
+}
+
+

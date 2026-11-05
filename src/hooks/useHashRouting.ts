@@ -1,24 +1,39 @@
 import { useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 
-export const useHashRouting = () => {
+export const useHashRouting = (
+  selectedMonth?: string,
+  setSelectedMonth?: (m: string) => void,
+  isUserSelectedMonth?: boolean
+) => {
   const { currentView, activeProject, selectProject, setCurrentView, isLoading } = useApp();
 
   // Sync state to Hash URL
   useEffect(() => {
     if (isLoading) return;
+    const currentHash = window.location.hash;
+    if (currentHash.includes('access_token=')) return;
+
     if (currentView === 'project-selector') {
-      window.location.hash = '#/projects';
+      if (window.location.hash !== '#/projects') {
+        window.location.hash = '#/projects';
+      }
     } else if (currentView === 'dashboard' && activeProject) {
-      window.location.hash = `#/dashboard?project=${activeProject.id}`;
+      const monthPart = (isUserSelectedMonth && selectedMonth && selectedMonth !== 'all') ? `&month=${selectedMonth}` : '';
+      const targetHash = `#/dashboard?project=${activeProject.id}${monthPart}`;
+      if (window.location.hash !== targetHash) {
+        window.location.hash = targetHash;
+      }
     }
-  }, [currentView, activeProject, isLoading]);
+  }, [currentView, activeProject, selectedMonth, isUserSelectedMonth, isLoading]);
 
   // Sync Hash URL back to state on load or popstate action
   useEffect(() => {
     if (isLoading) return;
     const handleHashChange = () => {
       const hash = window.location.hash;
+      if (hash.includes('access_token=')) return;
+
       if (hash.startsWith('#/projects')) {
         setCurrentView('project-selector');
         selectProject(null);
@@ -28,6 +43,10 @@ export const useHashRouting = () => {
         if (projectId && activeProject?.id !== projectId) {
           selectProject(projectId);
         }
+        const month = urlParams.get('month');
+        if (month && setSelectedMonth && /^\d{4}-\d{2}$/.test(month) && month !== selectedMonth) {
+          setSelectedMonth(month);
+        }
       }
     };
 
@@ -36,5 +55,5 @@ export const useHashRouting = () => {
     handleHashChange();
 
     return () => window.removeEventListener('hashchange', handleHashChange);
-  }, [selectProject, activeProject, setCurrentView, isLoading]);
+  }, [selectProject, activeProject, setCurrentView, setSelectedMonth, selectedMonth, isLoading]);
 };

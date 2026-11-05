@@ -4,7 +4,7 @@ import { Budget, Category, Transaction, BudgetNote } from '../services/storage';
 export function useBudgets(
   storageAdapter: any,
   activeProject: any,
-  filteredTransactions: Transaction[],
+  monthTransactions: Transaction[],
   allTransactions: Transaction[] = [],
   selectedMonth: string = '',
   showToast: (msg: string) => void,
@@ -49,7 +49,7 @@ export function useBudgets(
       }
     });
 
-    filteredTransactions.forEach(t => {
+    monthTransactions.forEach(t => {
       if (t.category && !existingKeys.has(t.category.toLowerCase())) {
         parentCats.push({
           id: t.category,
@@ -87,7 +87,7 @@ export function useBudgets(
       const subCategorySummaries = subCats.map(sCat => {
         const bObj = budgets.find(b => b.category === sCat.id || b.category === sCat.name);
         const subBudget = bObj?.amount || 0;
-        const subSpent = filteredTransactions
+        const subSpent = monthTransactions
           .filter(t => t.type === 'expense' && (t.subCategory === sCat.id || (t.category === sCat.id && !t.subCategory)))
           .reduce((sum, t) => sum + t.amount, 0);
         const subPercent = subBudget > 0 ? Math.round((subSpent / subBudget) * 100) : 0;
@@ -103,7 +103,7 @@ export function useBudgets(
       });
 
       // Calculate direct parent spent (transactions assigned to parent without subCategory)
-      const directParentSpent = filteredTransactions
+      const directParentSpent = monthTransactions
         .filter(t => t.type === 'expense' && (
           t.category === pCat.id || 
           t.category.toLowerCase() === pCat.id.toLowerCase() || 
@@ -141,10 +141,10 @@ export function useBudgets(
     });
 
     return items;
-  }, [categories, budgets, filteredTransactions]);
+  }, [categories, budgets, monthTransactions]);
 
   const piePaths = useMemo(() => {
-    const expenseTxns = filteredTransactions.filter(t => t.type === 'expense');
+    const expenseTxns = monthTransactions.filter(t => t.type === 'expense');
     const catMap = new Map<string, { total: number; name: string; color: string; id: string }>();
     const PALETTE = ['#FF6B6B', '#4DABF7', '#51CF66', '#FCC419', '#845EF7', '#FF8787', '#20C997', '#38BDF8', '#ADB5BD', '#E64980'];
     let pIdx = 0;
@@ -196,7 +196,7 @@ export function useBudgets(
       });
     }
     return { segments: result, totalPieExpense };
-  }, [filteredTransactions, categories]);
+  }, [monthTransactions, categories]);
 
   const spendingHistory = useMemo(() => {
     if (!selectedMonth || selectedMonth === 'all') return {};

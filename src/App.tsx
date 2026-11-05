@@ -4,10 +4,11 @@ import { Sparkles, Loader2 } from 'lucide-react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { AppProvider, useApp } from './context/AppContext';
 import { useHashRouting } from './hooks/useHashRouting';
-import { Transaction, SpendingBucket } from './services/storage';
+import { Transaction, SpendingBucket, Category } from './services/storage';
 import { classifyTransactionsWithLLM } from './services/llmCategorizer';
 import { hasGeminiApiKey } from './services/ai/geminiClient';
 import { suggestSpendingBucket } from './utils/categorizer';
+import { generateSampleData } from './utils/sampleDataGenerator';
 
 // Layout & UI
 import { AppLayout } from './components/layout/AppLayout';
@@ -52,8 +53,6 @@ function AppInner() {
     authErrorToast
   } = useAuth();
   const { projects, activeProject, isLoading, isProjectsLoaded, storageAdapter, selectProject, createNewProject, deleteProject } = useApp();
-
-  useHashRouting();
 
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
     const saved = localStorage.getItem('expense_theme');
@@ -114,17 +113,27 @@ function AppInner() {
     setSelectedTxnIds(new Set());
   }, [activeProject?.id]);
 
+  const [categories, setCategories] = useState<Category[]>([]);
+
   // Hooks
-  const txnHooks = useTransactions(storageAdapter, activeProject, locks, showToast);
+  const txnHooks = useTransactions(storageAdapter, activeProject, locks, showToast, categories);
   const budgetHooks = useBudgets(
     storageAdapter,
     activeProject,
-    txnHooks.filteredTransactions,
+    txnHooks.monthTransactions,
     txnHooks.transactions,
     txnHooks.selectedMonth,
     showToast,
     setAuthErrorToast
   );
+
+  useEffect(() => {
+    if (budgetHooks.categories && budgetHooks.categories.length > 0) {
+      setCategories(budgetHooks.categories);
+    }
+  }, [budgetHooks.categories]);
+
+  useHashRouting(txnHooks.selectedMonth, txnHooks.setSelectedMonth, txnHooks.userExplicitlySelectedMonth.current);
 
   const refreshProjectData = async () => {
     if (!isAuthenticated || !activeProject || !storageAdapter) return;
@@ -209,6 +218,19 @@ function AppInner() {
     }
   };
 
+  const handleLoadSampleData = async () => {
+    if (!activeProject || !storageAdapter) return;
+    try {
+      const sample = await generateSampleData();
+      await storageAdapter.saveTransactions(activeProject.id, sample.transactions);
+      await storageAdapter.saveBudgets(activeProject.id, sample.budgets);
+      await refreshProjectData();
+      showToast('Sample data loaded for the past 4 months!');
+    } catch (e: any) {
+      showToast(`Failed to load sample data: ${e.message}`);
+    }
+  };
+
   return (
     <AppLayout toastMessage={toastMessage || authErrorToast}>
       <Navbar
@@ -223,6 +245,7 @@ function AppInner() {
         setShowCreateModal={setShowCreateModal}
         onManageProjects={() => setShowManageProjectsModal(true)}
         onOpenGeminiKeyModal={() => setShowGeminiKeyModal(true)}
+        onLoadSampleData={isMockMode ? handleLoadSampleData : undefined}
         logout={logout}
       />
 
@@ -504,16 +527,14 @@ function AppInner() {
         )}
       </AnimatePresence>
 
-      <AnimatePresence>
-        {csvHooks.showCsvWizard && (
-          <CsvImportWizard
-            {...csvHooks}
-            categories={budgetHooks.categories}
-            setShowCategoryManagerModal={setShowCategoryManagerModal}
-            onRequestGeminiKey={() => setShowGeminiKeyModal(true)}
-          />
-        )}
-      </AnimatePresence>
+      {csvHooks.showCsvWizard && (
+        <CsvImportWizard
+          {...csvHooks}
+          categories={budgetHooks.categories}
+          setShowCategoryManagerModal={setShowCategoryManagerModal}
+          onRequestGeminiKey={() => setShowGeminiKeyModal(true)}
+        />
+      )}
 
       <AnimatePresence>
         {showGeminiKeyModal && (

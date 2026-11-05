@@ -22,7 +22,7 @@ export interface AppContextType {
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { isAuthenticated, isMockMode, isLoading: authIsLoading } = useAuth();
+  const { isAuthenticated, isMockMode, isLoading: authIsLoading, setShowSessionExpiredModal } = useAuth();
   
   const [projects, setProjects] = useState<Project[]>([]);
   const [activeProject, setActiveProject] = useState<Project | null>(null);
@@ -36,9 +36,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (isMockMode) {
       return new LocalStorageAdapter();
     } else {
-      return new GoogleSheetsAdapter(() => localStorage.getItem('expense_google_token'));
+      return new GoogleSheetsAdapter(
+        () => localStorage.getItem('expense_google_token'),
+        (status) => {
+          if (status === 401) {
+            setShowSessionExpiredModal(true);
+          }
+        }
+      );
     }
-  }, [isMockMode]);
+  }, [isMockMode, setShowSessionExpiredModal]);
 
   useEffect(() => {
     if (import.meta.env.DEV || (typeof window !== 'undefined' && (window as any).__PLAYWRIGHT__)) {

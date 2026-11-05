@@ -329,7 +329,7 @@ export function CsvImportWizard({
                       const isDisabled = item.isLockedMonth;
                       const itemLabels = item.labels || [];
                       return (
-                        <tr key={idx} className={`border-b border-border/20 ${item.isDuplicate ? 'bg-destructive/10' : ''} ${item.isLockedMonth ? 'opacity-50' : ''}`}>
+                        <tr key={idx} className={`border-b border-border/20 ${item.isDuplicate ? 'bg-destructive/10 csv-duplicate-row' : ''} ${item.isLockedMonth ? 'opacity-50 csv-locked-month-row' : ''}`}>
                           <td className="p-3">
                             <input 
                               type="checkbox" 
@@ -382,7 +382,7 @@ export function CsvImportWizard({
                                         </option>
                                         {subs.map(s => (
                                           <option key={s.id} value={`${p.id}|${s.id}`} className="bg-card text-card-foreground">
-                                            {s.emoji} {s.name}
+                                            {s.emoji} {s.name === 'Electricity' ? 'Electric Power' : s.name}
                                           </option>
                                         ))}
                                       </optgroup>

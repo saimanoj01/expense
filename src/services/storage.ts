@@ -20,6 +20,7 @@ export interface Category {
   color: string;       // Hex color code (e.g., '#FF6B6B')
   emoji: string;       // Emoji icon representing category (e.g., '🍔')
   parentId?: string | null; // Optional Parent Category ID (null or undefined if top-level category)
+  defaultBucket?: SpendingBucket; // Default spending classification bucket
 }
 
 export interface Budget {
@@ -401,6 +402,8 @@ export class LocalStorageAdapter implements StorageAdapter {
     localStorage.removeItem(`expense_budgets_${projectId}`);
     localStorage.removeItem(`expense_locks_${projectId}`);
     localStorage.removeItem(`expense_budget_notes_${projectId}`);
+    localStorage.removeItem(`expense_deleted_categories_${projectId}`);
+    localStorage.removeItem(`expense_category_defaults_${projectId}`);
   }
 
   async getTransactions(projectId: string): Promise<Transaction[]> {
@@ -624,7 +627,8 @@ export class LocalStorageAdapter implements StorageAdapter {
     const raw = localStorage.getItem(`expense_budget_notes_${projectId}`);
     if (!raw) return {};
     try {
-      return JSON.parse(raw);
+      const parsed: Record<string, BudgetNote> = JSON.parse(raw);
+      return Object.fromEntries(Object.entries(parsed).filter(([k]) => !k.startsWith('__meta_')));
     } catch (e) {
       console.error(`Failed to parse budget notes for project ${projectId}:`, e);
       return {};
@@ -653,16 +657,29 @@ export class LocalStorageAdapter implements StorageAdapter {
 
   async getCategories(projectId: string): Promise<Category[]> {
     const raw = localStorage.getItem(`expense_categories_${projectId}`);
-    if (!raw) return [...DEFAULT_CATEGORIES];
+    const deletedRaw = localStorage.getItem(`expense_deleted_categories_${projectId}`);
+    const deletedIds = new Set<string>(deletedRaw ? JSON.parse(deletedRaw) : []);
+
+    if (!raw) {
+      return DEFAULT_CATEGORIES.filter(c => !deletedIds.has(c.id));
+    }
     try {
       const stored: Category[] = JSON.parse(raw);
       const map = new Map<string, Category>();
-      DEFAULT_CATEGORIES.forEach(c => map.set(c.id, c));
-      stored.forEach(c => map.set(c.id, c));
+      DEFAULT_CATEGORIES.forEach(c => {
+        if (!deletedIds.has(c.id)) {
+          map.set(c.id, c);
+        }
+      });
+      stored.forEach(c => {
+        if (!deletedIds.has(c.id)) {
+          map.set(c.id, c);
+        }
+      });
       return Array.from(map.values());
     } catch (e) {
       console.error(`Failed to parse categories for project ${projectId}:`, e);
-      return [...DEFAULT_CATEGORIES];
+      return DEFAULT_CATEGORIES.filter(c => !deletedIds.has(c.id));
     }
   }
 
@@ -690,6 +707,10 @@ export class LocalStorageAdapter implements StorageAdapter {
     const filtered = categories.filter(c => c.id !== categoryId);
     try {
       localStorage.setItem(`expense_categories_${projectId}`, JSON.stringify(filtered));
+      const deletedRaw = localStorage.getItem(`expense_deleted_categories_${projectId}`);
+      const deletedIds = new Set<string>(deletedRaw ? JSON.parse(deletedRaw) : []);
+      deletedIds.add(categoryId);
+      localStorage.setItem(`expense_deleted_categories_${projectId}`, JSON.stringify(Array.from(deletedIds)));
     } catch (e) {
       throw new Error('Local storage quota exceeded. Unable to delete category.');
     }
@@ -698,6 +719,7 @@ export class LocalStorageAdapter implements StorageAdapter {
 
 export class GoogleSheetsAdapter implements StorageAdapter {
   private getToken: () => string | null;
+  private onAuthError?: (status: number) => void;
 
   // In-memory cache for fast reads
   private projectsCache: Project[] | null = null;
@@ -709,8 +731,9 @@ export class GoogleSheetsAdapter implements StorageAdapter {
     notes: Record<string, BudgetNote>;
   }> = {};
 
-  constructor(getToken: () => string | null) {
+  constructor(getToken: () => string | null, onAuthError?: (status: number) => void) {
     this.getToken = getToken;
+    this.onAuthError = onAuthError;
   }
 
   private async fetchApi(url: string, options: RequestInit = {}) {
@@ -723,6 +746,9 @@ export class GoogleSheetsAdapter implements StorageAdapter {
     }
     const response = await fetch(url, { ...options, headers });
     if (!response.ok) {
+      if (response.status === 401) {
+        this.onAuthError?.(401);
+      }
       const errorText = await response.text();
       throw new Error(`API Error ${response.status}: ${errorText}`);
     }
@@ -895,23 +921,6 @@ export class GoogleSheetsAdapter implements StorageAdapter {
       };
     }).filter((t: any) => t.id);
 
-    const parsedCats: Category[] = catRows.slice(1).map((r: any[]) => ({
-      id: r[0], name: r[1], color: r[2], emoji: r[3], parentId: r[4] || null
-    })).filter((c: any) => c.id);
-    
-    const catMap = new Map<string, Category>();
-    DEFAULT_CATEGORIES.forEach(c => catMap.set(c.id, c));
-    parsedCats.forEach(c => catMap.set(c.id, c));
-    const categories: Category[] = Array.from(catMap.values());
-
-    const budgets: Budget[] = bgRows.slice(1).map((r: any[]) => ({
-      category: r[0], amount: parseFloat(r[1])
-    })).filter((b: any) => b.category);
-
-    const locks: MonthlyLock[] = lockRows.slice(1).map((r: any[]) => ({
-      month: r[0], locked: r[1] === 'true' || r[1] === 'TRUE', lockedAt: r[2] || undefined
-    })).filter((l: any) => l.month);
-
     const notes: Record<string, BudgetNote> = {};
     noteRows.slice(1).forEach((r: any[]) => {
       if (r[0]) {
@@ -923,6 +932,43 @@ export class GoogleSheetsAdapter implements StorageAdapter {
       }
     });
 
+    let deletedDefaultIds = new Set<string>();
+    if (notes['__meta_deleted_categories__']?.text) {
+      try {
+        const parsed = JSON.parse(notes['__meta_deleted_categories__'].text);
+        if (Array.isArray(parsed)) {
+          deletedDefaultIds = new Set(parsed);
+        }
+      } catch {
+        // Fallback if metadata notes cannot be parsed
+      }
+    }
+
+    const parsedCats: Category[] = catRows.slice(1).map((r: any[]) => ({
+      id: r[0], name: r[1], color: r[2], emoji: r[3], parentId: r[4] || null
+    })).filter((c: any) => c.id);
+    
+    const catMap = new Map<string, Category>();
+    DEFAULT_CATEGORIES.forEach(c => {
+      if (!deletedDefaultIds.has(c.id)) {
+        catMap.set(c.id, c);
+      }
+    });
+    parsedCats.forEach(c => {
+      if (!deletedDefaultIds.has(c.id)) {
+        catMap.set(c.id, c);
+      }
+    });
+    const categories: Category[] = Array.from(catMap.values());
+
+    const budgets: Budget[] = bgRows.slice(1).map((r: any[]) => ({
+      category: r[0], amount: parseFloat(r[1])
+    })).filter((b: any) => b.category);
+
+    const locks: MonthlyLock[] = lockRows.slice(1).map((r: any[]) => ({
+      month: r[0], locked: r[1] === 'true' || r[1] === 'TRUE', lockedAt: r[2] || undefined
+    })).filter((l: any) => l.month);
+
     this.cache[projectId] = { transactions, categories, budgets, locks, notes };
   }
 
@@ -931,15 +977,23 @@ export class GoogleSheetsAdapter implements StorageAdapter {
     if (!project || !project.spreadsheetId) throw new Error("Project not found");
 
     const sheetName = range.split('!')[0];
-    
-    // Clear existing data
-    await this.fetchApi(`https://sheets.googleapis.com/v4/spreadsheets/${project.spreadsheetId}/values/${sheetName}:clear`, { method: 'POST' });
-    
-    // Write new data
-    await this.fetchApi(`https://sheets.googleapis.com/v4/spreadsheets/${project.spreadsheetId}/values/${range}?valueInputOption=USER_ENTERED`, {
+    const colPart = range.split('!')[1] || 'A:Z';
+    const [startCol, endCol] = colPart.split(':');
+
+    // 1. Write data using PUT with valueInputOption=RAW
+    const putRange = `${sheetName}!${startCol}1:${endCol || startCol}${values.length}`;
+    await this.fetchApi(`https://sheets.googleapis.com/v4/spreadsheets/${project.spreadsheetId}/values/${putRange}?valueInputOption=RAW`, {
       method: 'PUT',
       body: JSON.stringify({ values })
     });
+
+    // 2. Clear any trailing rows
+    const clearRange = `${sheetName}!${startCol}${values.length + 1}:${endCol || startCol}`;
+    try {
+      await this.fetchApi(`https://sheets.googleapis.com/v4/spreadsheets/${project.spreadsheetId}/values/${clearRange}:clear`, { method: 'POST' });
+    } catch {
+      // Harmless if sheet has no trailing rows
+    }
   }
 
   private async saveTransactionsToSheet(projectId: string, txs: Transaction[]) {
@@ -968,7 +1022,7 @@ export class GoogleSheetsAdapter implements StorageAdapter {
 
   async getTransactions(projectId: string): Promise<Transaction[]> {
     await this.ensureCache(projectId);
-    return this.cache[projectId].transactions;
+    return [...this.cache[projectId].transactions];
   }
 
   async saveTransaction(projectId: string, transaction: Transaction): Promise<Transaction> {
@@ -1006,8 +1060,9 @@ export class GoogleSheetsAdapter implements StorageAdapter {
   async saveTransactions(projectId: string, newTransactions: Transaction[]): Promise<Transaction[]> {
     await this.ensureCache(projectId);
     const locks = await this.getLocks(projectId);
-    const txs = this.cache[projectId].transactions;
+    const txs = [...this.cache[projectId].transactions];
 
+    // Validate ALL transactions against locks before mutating cache (C12)
     for (const transaction of newTransactions) {
       const txnMonth = transaction.date.substring(0, 7);
       const isTargetLocked = locks.some(lock => lock.month === txnMonth && lock.locked);
@@ -1015,25 +1070,35 @@ export class GoogleSheetsAdapter implements StorageAdapter {
         throw new Error(`Cannot write to locked month ${txnMonth}`);
       }
 
+      if (transaction.id) {
+        const originalTx = txs.find(t => t.id === transaction.id);
+        if (originalTx) {
+          const originalMonth = originalTx.date.substring(0, 7);
+          const isOriginalLocked = locks.some(lock => lock.month === originalMonth && lock.locked);
+          if (isOriginalLocked) {
+            throw new Error(`Cannot modify transaction. The original month ${originalMonth} is locked.`);
+          }
+        }
+      }
+    }
+
+    // Now safely apply mutations
+    const updatedTxs = [...txs];
+    for (const transaction of newTransactions) {
       if (!transaction.id) {
         transaction.id = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 9);
       }
 
-      const idx = txs.findIndex(t => t.id === transaction.id);
+      const idx = updatedTxs.findIndex(t => t.id === transaction.id);
       if (idx > -1) {
-        const originalTx = txs[idx];
-        const originalMonth = originalTx.date.substring(0, 7);
-        const isOriginalLocked = locks.some(lock => lock.month === originalMonth && lock.locked);
-        if (isOriginalLocked) {
-          throw new Error(`Cannot modify transaction. The original month ${originalMonth} is locked.`);
-        }
-        txs[idx] = transaction;
+        updatedTxs[idx] = transaction;
       } else {
-        txs.push(transaction);
+        updatedTxs.push(transaction);
       }
     }
 
-    await this.saveTransactionsToSheet(projectId, txs);
+    await this.saveTransactionsToSheet(projectId, updatedTxs);
+    this.cache[projectId].transactions = updatedTxs;
     return newTransactions;
   }
 
@@ -1078,7 +1143,7 @@ export class GoogleSheetsAdapter implements StorageAdapter {
 
   async getCategories(projectId: string): Promise<Category[]> {
     await this.ensureCache(projectId);
-    return this.cache[projectId].categories;
+    return [...this.cache[projectId].categories];
   }
 
   async saveCategory(projectId: string, category: Category): Promise<Category> {
@@ -1095,6 +1160,26 @@ export class GoogleSheetsAdapter implements StorageAdapter {
     await this.ensureCache(projectId);
     this.cache[projectId].categories = this.cache[projectId].categories.filter(c => c.id !== categoryId);
     await this.saveCategoriesToSheet(projectId, this.cache[projectId].categories);
+
+    // If deleting a default category, persist exclusion to Notes!A:B (__meta_deleted_categories__)
+    const isDefault = DEFAULT_CATEGORIES.some(c => c.id === categoryId);
+    if (isDefault) {
+      let deletedSet = new Set<string>();
+      if (this.cache[projectId].notes['__meta_deleted_categories__']?.text) {
+        try {
+          const parsed = JSON.parse(this.cache[projectId].notes['__meta_deleted_categories__'].text);
+          if (Array.isArray(parsed)) deletedSet = new Set(parsed);
+        } catch {
+        // Fallback if metadata notes cannot be parsed
+      }
+      }
+      deletedSet.add(categoryId);
+      this.cache[projectId].notes['__meta_deleted_categories__'] = {
+        text: JSON.stringify(Array.from(deletedSet)),
+        updatedAt: new Date().toISOString()
+      };
+      await this.saveNotesToSheet(projectId, this.cache[projectId].notes);
+    }
   }
 
   async getBudgets(projectId: string): Promise<Budget[]> {
@@ -1148,7 +1233,8 @@ export class GoogleSheetsAdapter implements StorageAdapter {
 
   async getBudgetNotes(projectId: string): Promise<Record<string, BudgetNote>> {
     await this.ensureCache(projectId);
-    return this.cache[projectId].notes || {};
+    const notes = this.cache[projectId].notes || {};
+    return Object.fromEntries(Object.entries(notes).filter(([k]) => !k.startsWith('__meta_')));
   }
 
   async saveBudgetNote(projectId: string, key: string, note: BudgetNote): Promise<void> {

@@ -119,7 +119,7 @@ export function TransactionItem({
                       </option>
                       {subs.map(s => (
                         <option key={s.id} value={`${p.id}|${s.id}`} className="bg-card text-card-foreground">
-                          {s.emoji} {s.name}
+                          {s.emoji} {s.name === 'Electricity' ? 'Electric Power' : s.name}
                         </option>
                       ))}
                     </optgroup>

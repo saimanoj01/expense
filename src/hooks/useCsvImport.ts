@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { parseCsvLine, standardizeDate } from '../utils/csv';
+import { parseCsv, standardizeDate, parseCurrencyAmount } from '../utils/csv';
 import { computeTxHash } from '../utils/crypto';
 import { Transaction, MonthlyLock, Category, SpendingBucket } from '../services/storage';
 import { suggestCategory, detectTransactionType, suggestSpendingBucket } from '../utils/categorizer';
@@ -59,14 +59,14 @@ export function useCsvImport(
       setShowCsvWizard(true);
       return;
     }
-    const lines = text.split(/\r?\n/).filter(line => line.trim().length > 0);
-    if (lines.length < 2) {
+    const allParsed = parseCsv(text);
+    if (allParsed.length < 2) {
       setCsvError('Unable to parse CSV file');
       setShowCsvWizard(true);
       return;
     }
-    const headers = parseCsvLine(lines[0]);
-    const rows = lines.slice(1).map(line => parseCsvLine(line));
+    const headers = allParsed[0];
+    const rows = allParsed.slice(1);
     setCsvRawHeaders(headers);
     setCsvRawRows(rows);
 
@@ -110,12 +110,14 @@ export function useCsvImport(
       const row = csvRawRows[idx];
       const rawDate = standardizeDate(row[dateIdx] || new Date().toISOString().substring(0, 10));
       const rawDesc = row[descIdx] || 'Imported Transaction';
-      let rawAmt = parseFloat(row[amtIdx] || '0') || 0;
-      const isNegativeAmount = rawAmt < 0;
-      rawAmt = Math.abs(rawAmt);
+      const parsedAmt = parseCurrencyAmount(row[amtIdx] || '0');
+      let rawAmt = parsedAmt.amount;
+      const isNegativeAmount = parsedAmt.isNegative;
 
       let rawType: 'income' | 'expense' | 'transfer' = detectTransactionType(rawDesc, typeIdx > -1 ? row[typeIdx] : '');
-      if (isNegativeAmount && typeIdx === -1) {
+      if (parsedAmt.isCredit) {
+        rawType = 'income';
+      } else if (isNegativeAmount && typeIdx === -1) {
         rawType = 'transfer';
       }
 
@@ -124,11 +126,11 @@ export function useCsvImport(
 
       if (typeIdx > -1) {
         const typeCell = row[typeIdx] || '';
-        const inflowVal = parseFloat(typeCell);
-        if (!isNaN(inflowVal) && inflowVal > 0 && rawAmt === 0) {
+        const inflowVal = parseCurrencyAmount(typeCell);
+        if (inflowVal.amount > 0 && rawAmt === 0) {
           rawType = 'income';
-          rawAmt = inflowVal;
-        } else if (/income/i.test(typeCell)) {
+          rawAmt = inflowVal.amount;
+        } else if (/income/i.test(typeCell) || inflowVal.isCredit) {
           rawType = 'income';
         } else if (/transfer|payment/i.test(typeCell)) {
           rawType = 'transfer';
@@ -223,6 +225,10 @@ export function useCsvImport(
       };
     });
 
+    setShowCsvWizard(false);
+    setShowCsvDuplicateWarningModal(false);
+    setParsedCsvItems([]);
+
     try {
       await storageAdapter.saveTransactions(activeProject.id, newTxns);
       await refreshProjectData();
@@ -237,8 +243,6 @@ export function useCsvImport(
         }
       }
 
-      setShowCsvWizard(false);
-      setShowCsvDuplicateWarningModal(false);
       showToast(`Imported ${toImport.length} transactions`);
     } catch (err: any) {
       alert(err.message || 'Failed to import CSV');

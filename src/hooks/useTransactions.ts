@@ -1,5 +1,6 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { Transaction, MonthlyLock, Category, DEFAULT_CATEGORIES, SpendingBucket } from '../services/storage';
+import { bucketOf } from '../utils/categorizer';
 
 export interface TrendPoint {
   date: string;
@@ -112,7 +113,88 @@ export function useTransactions(
   categories: Category[] = []
 ) {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [selectedMonth, setSelectedMonth] = useState<string>('2026-07');
+
+  const userExplicitlySelectedMonth = useRef<boolean>(false);
+
+  const getInitialMonth = () => {
+    try {
+      const hash = window.location.hash;
+      if (hash.startsWith('#/dashboard')) {
+        const params = new URLSearchParams(hash.split('?')[1] || '');
+        const m = params.get('month');
+        if (m && /^\d{4}-\d{2}$/.test(m)) {
+          userExplicitlySelectedMonth.current = true;
+          return m;
+        }
+      }
+    } catch {
+      // Fallback if hash parsing fails
+    }
+
+    try {
+      const projId = activeProject?.id || localStorage.getItem('expense_active_project_id');
+      if (projId) {
+        const rawTxs = localStorage.getItem(`expense_txs_${projId}`);
+        if (rawTxs) {
+          const parsed = JSON.parse(rawTxs);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            let latest = '';
+            for (const t of parsed) {
+              if (t.date && t.date.length >= 7) {
+                const m = t.date.substring(0, 7);
+                if (/^\d{4}-\d{2}$/.test(m)) {
+                  if (!latest || m > latest) latest = m;
+                }
+              }
+            }
+            if (latest) return latest;
+          }
+        }
+      }
+    } catch {
+      // Fallback if localStorage parsing fails
+    }
+
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  };
+
+  const [selectedMonth, setSelectedMonthState] = useState<string>(getInitialMonth);
+  const prevProjectId = useRef<string | null>(null);
+
+  const setSelectedMonth = useCallback((m: string) => {
+    userExplicitlySelectedMonth.current = true;
+    setSelectedMonthState(m);
+  }, []);
+
+  // Reset user-selected month flag on project switch
+  useEffect(() => {
+    if (activeProject?.id !== prevProjectId.current) {
+      prevProjectId.current = activeProject?.id || null;
+      userExplicitlySelectedMonth.current = false;
+    }
+  }, [activeProject?.id]);
+
+  // When transactions load, if user has not explicitly chosen a month, jump to latest month with data
+  useEffect(() => {
+    if (userExplicitlySelectedMonth.current) return;
+    if (transactions.length === 0) return;
+
+    let latest = '';
+    transactions.forEach(t => {
+      if (t.date && t.date.length >= 7) {
+        const m = t.date.substring(0, 7);
+        if (/^\d{4}-\d{2}$/.test(m)) {
+          if (!latest || m > latest) latest = m;
+        }
+      }
+    });
+
+    if (latest && latest !== selectedMonth) {
+      setSelectedMonthState(latest);
+    }
+  }, [transactions, selectedMonth]);
+
   const [selectedTagFilter, setSelectedTagFilter] = useState<string | null>(null);
   const [selectedBucket, setSelectedBucket] = useState<'income' | SpendingBucket | null>(null);
 
@@ -136,8 +218,16 @@ export function useTransactions(
 
   const categoryNameMap = useMemo(() => {
     const map = new Map<string, string>();
-    DEFAULT_CATEGORIES.forEach(c => map.set(c.id, c.name));
-    categories.forEach(c => map.set(c.id, c.name));
+    DEFAULT_CATEGORIES.forEach(c => {
+      map.set(c.id, c.name);
+      map.set(c.id.toLowerCase(), c.name);
+      map.set(c.name.toLowerCase(), c.name);
+    });
+    categories.forEach(c => {
+      map.set(c.id, c.name);
+      map.set(c.id.toLowerCase(), c.name);
+      map.set(c.name.toLowerCase(), c.name);
+    });
     return map;
   }, [categories]);
 
@@ -156,9 +246,9 @@ export function useTransactions(
     const result = monthTransactions.filter(t => {
       if (selectedBucket) {
         if (selectedBucket === 'income') {
-          return t.type === 'income' || t.category === 'income';
+          return t.type === 'income';
         }
-        return t.spendingBucket === selectedBucket;
+        return bucketOf(t, categories) === selectedBucket;
       }
       return true;
     });
@@ -255,54 +345,64 @@ export function useTransactions(
   // KPIs
   const totalExpenses = useMemo(() => monthTransactions
     .filter(t => t.type === 'expense')
-    .reduce((sum, t) => sum + t.amount, 0), [monthTransactions]);
+    .reduce((sum, t) => sum + (typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount || 0)) || 0), 0), [monthTransactions]);
     
   const totalIncome = useMemo(() => monthTransactions
     .filter(t => t.type === 'income')
-    .reduce((sum, t) => sum + t.amount, 0), [monthTransactions]);
+    .reduce((sum, t) => sum + (typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount || 0)) || 0), 0), [monthTransactions]);
 
   const totalTransfers = useMemo(() => monthTransactions
     .filter(t => t.type === 'transfer')
-    .reduce((sum, t) => sum + t.amount, 0), [monthTransactions]);
+    .reduce((sum, t) => sum + (typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount || 0)) || 0), 0), [monthTransactions]);
 
   const fixedExpenses = useMemo(() => monthTransactions
-    .filter(t => t.type === 'expense' && t.spendingBucket === 'fixed')
-    .reduce((sum, t) => sum + t.amount, 0), [monthTransactions]);
+    .filter(t => t.type === 'expense' && bucketOf(t, categories) === 'fixed')
+    .reduce((sum, t) => sum + (typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount || 0)) || 0), 0), [monthTransactions, categories]);
 
   const nonMonthlyExpenses = useMemo(() => monthTransactions
-    .filter(t => t.type === 'expense' && t.spendingBucket === 'non-monthly')
-    .reduce((sum, t) => sum + t.amount, 0), [monthTransactions]);
+    .filter(t => t.type === 'expense' && bucketOf(t, categories) === 'non-monthly')
+    .reduce((sum, t) => sum + (typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount || 0)) || 0), 0), [monthTransactions, categories]);
 
-  const flexibleExpenses = useMemo(() => {
-    return Math.max(0, totalExpenses - fixedExpenses - nonMonthlyExpenses);
-  }, [totalExpenses, fixedExpenses, nonMonthlyExpenses]);
+  const flexibleExpenses = useMemo(() => monthTransactions
+    .filter(t => t.type === 'expense' && bucketOf(t, categories) === 'flexible')
+    .reduce((sum, t) => sum + (typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount || 0)) || 0), 0), [monthTransactions, categories]);
 
   const flexNumber = useMemo(() => totalIncome - fixedExpenses - nonMonthlyExpenses, [totalIncome, fixedExpenses, nonMonthlyExpenses]);
   const savingsAmount = useMemo(() => totalIncome - totalExpenses, [totalIncome, totalExpenses]);
   const savingsRate = useMemo(() => totalIncome > 0 ? (savingsAmount / totalIncome) * 100 : 0, [totalIncome, savingsAmount]);
 
-  const unclassifiedCount = useMemo(() => transactions
-    .filter(t => t.type === 'expense' && !t.spendingBucket).length, [transactions]);
+  const unclassifiedCount = useMemo(() => monthTransactions
+    .filter(t => t.type === 'expense' && (bucketOf(t, categories) as string) === 'unclassified').length, [monthTransactions, categories]);
 
   const availableMonths = useMemo(() => {
-    const monthsSet = new Set<string>(['2026-05', '2026-06', '2026-07']);
+    const monthsSet = new Set<string>();
+    if (selectedMonth && selectedMonth !== 'all') {
+      monthsSet.add(selectedMonth);
+    }
     transactions.forEach(t => {
-      if (t.date && t.date.length >= 7) monthsSet.add(t.date.substring(0, 7));
+      if (t.date && t.date.length >= 7) {
+        const m = t.date.substring(0, 7);
+        if (/^\d{4}-\d{2}$/.test(m)) monthsSet.add(m);
+      }
     });
     locks.forEach(l => {
-      if (l.month) monthsSet.add(l.month);
+      if (l.month && /^\d{4}-\d{2}$/.test(l.month)) monthsSet.add(l.month);
     });
+    if (monthsSet.size === 0) {
+      const now = new Date();
+      monthsSet.add(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`);
+    }
     return Array.from(monthsSet).sort();
-  }, [transactions, locks]);
+  }, [transactions, locks, selectedMonth]);
 
   const availableTags = useMemo(() => {
-    const tagSet = new Set<string>(['groceries', 'utilities', 'salary', 'dining-out']);
+    const tagSet = new Set<string>();
     transactions.forEach(t => {
       ensureLabelsArray(t.labels).forEach(l => {
         if (l && l.trim()) tagSet.add(l.trim().toLowerCase());
       });
     });
-    return Array.from(tagSet);
+    return Array.from(tagSet).sort();
   }, [transactions]);
 
   // Enhanced Trend Chart Details
@@ -330,8 +430,8 @@ export function useTransactions(
     const chartWidth = width - paddingLeft - paddingRight;
     const chartHeight = height - paddingTop - paddingBottom;
 
-    // 1. Monthly Expenses for Current Selected Month
-    const expenses = filteredTransactions.filter(t => t.type === 'expense');
+    // 1. Monthly Expenses for Current Selected Month (unfiltered by selectedBucket for pacing & highestSpendDay)
+    const expenses = monthTransactions.filter(t => t.type === 'expense');
     
     // Group current month by date
     const dateMap: { [date: string]: number } = {};
@@ -867,12 +967,14 @@ export function useTransactions(
     setTransactions,
     selectedMonth,
     setSelectedMonth,
+    userExplicitlySelectedMonth,
     selectedTagFilter,
     setSelectedTagFilter,
     selectedBucket,
     setSelectedBucket,
     sortBy,
     setSortBy,
+    monthTransactions,
     filteredTransactions,
     duplicateTxnIds,
     totalExpenses,
