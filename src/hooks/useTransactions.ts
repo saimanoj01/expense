@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
-import { Transaction, MonthlyLock, Category, DEFAULT_CATEGORIES, SpendingBucket } from '../services/storage';
+import { Transaction, MonthlyLock, Category, DEFAULT_CATEGORIES, SpendingBucket, Project, StorageAdapter } from '../services/storage';
 import { bucketOf } from '../utils/categorizer';
 
 export interface TrendPoint {
@@ -92,7 +92,7 @@ function formatMonthLabel(monthStr: string): string {
   return monthStr;
 }
 
-const ensureLabelsArray = (labels: any): string[] => {
+const ensureLabelsArray = (labels: unknown): string[] => {
   if (Array.isArray(labels)) return labels;
   if (typeof labels === 'string' && labels.trim()) {
     try {
@@ -106,8 +106,8 @@ const ensureLabelsArray = (labels: any): string[] => {
 };
 
 export function useTransactions(
-  storageAdapter: any,
-  activeProject: any,
+  storageAdapter: StorageAdapter | null,
+  activeProject: Project | null,
   locks: MonthlyLock[],
   showToast: (msg: string, type?: 'success' | 'error' | 'info') => void,
   categories: Category[] = []
@@ -333,7 +333,7 @@ export function useTransactions(
         }
       }
     });
-  }, [monthTransactions, selectedBucket, sortBy, categoryNameMap]);
+  }, [monthTransactions, selectedBucket, sortBy, categoryNameMap, categories]);
 
   // Duplicate transaction detector (Optimized to O(N))
   const duplicateTxnIds = useMemo(() => {
@@ -742,7 +742,7 @@ export function useTransactions(
       worstCashFlowMonth,
       maxCashFlowValue
     };
-  }, [filteredTransactions, transactions, selectedMonth, selectedTagFilter, availableMonths, fixedExpenses, nonMonthlyExpenses, flexibleExpenses, totalExpenses]);
+  }, [transactions, selectedMonth, selectedTagFilter, availableMonths, fixedExpenses, nonMonthlyExpenses, flexibleExpenses, totalExpenses, categories, monthTransactions]);
 
   const trendPathData = trendDetails.pathData;
 
@@ -763,24 +763,24 @@ export function useTransactions(
       await refreshTransactions();
       showToast(isEdit ? 'Transaction updated successfully' : 'Transaction saved successfully');
       return true;
-    } catch (err: any) {
-      showToast(err.message || 'Failed to save transaction', 'error');
+    } catch (err: unknown) {
+      showToast(err instanceof Error ? err.message : 'Failed to save transaction', 'error');
       return false;
     }
   };
 
-  const executeSaveTransactions = async (txnsToSave: Transaction[]) => {
+  const executeSaveTransactions = useCallback(async (txnsToSave: Transaction[]) => {
     if (!activeProject || !storageAdapter || txnsToSave.length === 0) return false;
     try {
       await storageAdapter.saveTransactions(activeProject.id, txnsToSave);
       await refreshTransactions();
       showToast(`Saved ${txnsToSave.length} transactions successfully`);
       return true;
-    } catch (err: any) {
-      showToast(err.message || 'Failed to save transactions', 'error');
+    } catch (err: unknown) {
+      showToast(err instanceof Error ? err.message : 'Failed to save transactions', 'error');
       return false;
     }
-  };
+  }, [activeProject, storageAdapter, refreshTransactions, showToast]);
 
   const handleDeleteTxn = async (id: string, onDeleted?: (id: string) => void) => {
     if (!activeProject || !storageAdapter) return;
@@ -789,8 +789,8 @@ export function useTransactions(
       await refreshTransactions();
       if (onDeleted) onDeleted(id);
       showToast('Transaction deleted');
-    } catch (err: any) {
-      showToast(err.message || 'Failed to delete transaction', 'error');
+    } catch (err: unknown) {
+      showToast(err instanceof Error ? err.message : 'Failed to delete transaction', 'error');
     }
   };
 
@@ -808,8 +808,8 @@ export function useTransactions(
       await refreshTransactions();
       if (onComplete) onComplete();
       showToast(`Successfully deleted ${idsToDelete.length} transaction${idsToDelete.length > 1 ? 's' : ''}`);
-    } catch (err: any) {
-      showToast(err.message || 'Failed to delete selected transactions', 'error');
+    } catch (err: unknown) {
+      showToast(err instanceof Error ? err.message : 'Failed to delete selected transactions', 'error');
     }
   };
 
@@ -827,8 +827,8 @@ export function useTransactions(
       await refreshTransactions();
       if (onComplete) onComplete();
       showToast(`Updated category for ${updatedTxns.length} transaction${updatedTxns.length > 1 ? 's' : ''}`);
-    } catch (err: any) {
-      showToast(err.message || 'Failed to update categories', 'error');
+    } catch (err: unknown) {
+      showToast(err instanceof Error ? err.message : 'Failed to update categories', 'error');
     }
   };
 
@@ -846,8 +846,8 @@ export function useTransactions(
       await refreshTransactions();
       if (onComplete) onComplete();
       showToast(`Updated spending bucket for ${updatedTxns.length} transaction${updatedTxns.length > 1 ? 's' : ''}`);
-    } catch (err: any) {
-      showToast(err.message || 'Failed to update spending buckets', 'error');
+    } catch (err: unknown) {
+      showToast(err instanceof Error ? err.message : 'Failed to update spending buckets', 'error');
     }
   };
 
@@ -876,8 +876,8 @@ export function useTransactions(
       await storageAdapter.saveTransaction(activeProject.id, updatedTxn);
       await refreshTransactions();
       showToast(`Added tag${newTags.length > 1 ? 's' : ''} ${newTags.map(t => `#${t}`).join(', ')}`);
-    } catch (err: any) {
-      showToast(err.message || 'Failed to add tags', 'error');
+    } catch (err: unknown) {
+      showToast(err instanceof Error ? err.message : 'Failed to add tags', 'error');
     }
   };
 
@@ -904,8 +904,8 @@ export function useTransactions(
       await storageAdapter.saveTransaction(activeProject.id, updatedTxn);
       await refreshTransactions();
       showToast(`Removed tag #${tagToRemove}`);
-    } catch (err: any) {
-      showToast(err.message || 'Failed to remove tag', 'error');
+    } catch (err: unknown) {
+      showToast(err instanceof Error ? err.message : 'Failed to remove tag', 'error');
     }
   };
 
@@ -953,8 +953,8 @@ export function useTransactions(
         msg += ` (${skippedCount} skipped due to month lock)`;
       }
       showToast(msg);
-    } catch (err: any) {
-      showToast(err.message || 'Failed to add bulk tags', 'error');
+    } catch (err: unknown) {
+      showToast(err instanceof Error ? err.message : 'Failed to add bulk tags', 'error');
     }
   };
 
@@ -1000,8 +1000,8 @@ export function useTransactions(
         msg += ` (${skippedCount} skipped due to month lock)`;
       }
       showToast(msg);
-    } catch (err: any) {
-      showToast(err.message || 'Failed to remove bulk tags', 'error');
+    } catch (err: unknown) {
+      showToast(err instanceof Error ? err.message : 'Failed to remove bulk tags', 'error');
     }
   };
 

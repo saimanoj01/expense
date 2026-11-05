@@ -160,7 +160,7 @@ export function TransactionToolbar({
             <>
               <label data-testid="import-csv-trigger-btn" className="flex items-center gap-2 px-3.5 py-2 bg-card/50 hover:bg-card border border-border rounded-xl text-sm font-medium transition-colors cursor-pointer">
                 <Upload className="w-4 h-4" /> Import CSV
-                <input type="file" accept=".csv" data-testid="csv-file-input" className="hidden" onChange={handleCsvFileUpload} onClick={(e: any) => e.target.value = null} />
+                <input type="file" accept=".csv" data-testid="csv-file-input" className="hidden" onChange={handleCsvFileUpload} onClick={(e: React.MouseEvent<HTMLInputElement>) => { (e.target as HTMLInputElement).value = ''; }} />
               </label>
               <button
                 onClick={handleOpenAddTxn}

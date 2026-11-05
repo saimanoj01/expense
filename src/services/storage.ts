@@ -853,9 +853,9 @@ export class GoogleSheetsAdapter implements StorageAdapter {
           emailAddress: email
         })
       });
-    } catch (e: any) {
+    } catch (e: unknown) {
       console.error("Failed to grant Google Drive file permission:", e);
-      throw new Error(`Google Drive permission error: ${e.message || 'Unable to share Google Sheet with ' + email}`);
+      throw new Error(`Google Drive permission error: ${e instanceof Error ? e.message : 'Unable to share Google Sheet with ' + email}`);
     }
 
     const updatedCollaborators = Array.from(new Set([...(targetProject.collaborators || []), email]));
@@ -877,7 +877,7 @@ export class GoogleSheetsAdapter implements StorageAdapter {
         await this.fetchApi(`https://www.googleapis.com/drive/v3/files/${targetProject.spreadsheetId}`, {
           method: 'DELETE'
         });
-      } catch (e: any) {
+      } catch (e: unknown) {
         console.warn("Failed to delete Google Drive file:", e);
       }
     }
@@ -890,7 +890,7 @@ export class GoogleSheetsAdapter implements StorageAdapter {
 
     const parseJSON = (str: string) => { try { return JSON.parse(str); } catch { return str; } };
 
-    let valueRanges: any[] = [];
+    let valueRanges: Array<{ values?: (string | number | boolean)[][] }> = [];
     try {
       const res = await this.fetchApi(`https://sheets.googleapis.com/v4/spreadsheets/${project.spreadsheetId}/values:batchGet?ranges=Transactions!A:K&ranges=Categories!A:E&ranges=Budgets!A:B&ranges=Locks!A:C&ranges=Notes!A:B`);
       valueRanges = res.valueRanges || [];
@@ -906,28 +906,28 @@ export class GoogleSheetsAdapter implements StorageAdapter {
     const lockRows = valueRanges[3]?.values || [];
     const noteRows = valueRanges[4]?.values || [];
 
-    const transactions: Transaction[] = txRows.slice(1).map((r: any[]) => {
-      const rawL = parseJSON(r[8] || '[]');
+    const transactions: Transaction[] = txRows.slice(1).map((r: (string | number | boolean)[]) => {
+      const rawL = parseJSON(String(r[8] || '[]'));
       let labels: string[] = [];
       if (Array.isArray(rawL)) {
         labels = rawL.map(s => String(s).trim()).filter(Boolean);
       } else if (typeof rawL === 'string' && rawL.trim()) {
         labels = [rawL.trim()];
       }
-      const rawBucket = r[10];
+      const rawBucket = String(r[10] || '');
       const validBucket: SpendingBucket | undefined = (rawBucket === 'fixed' || rawBucket === 'flexible' || rawBucket === 'non-monthly') ? rawBucket : undefined;
       return {
-        id: r[0], date: r[1], category: r[2], subCategory: r[3] || null, amount: parseFloat(r[4]), type: r[5], description: r[6], notes: r[7] || '', labels, hash: r[9] || '', spendingBucket: validBucket
+        id: String(r[0]), date: String(r[1]), category: String(r[2]), subCategory: r[3] ? String(r[3]) : null, amount: parseFloat(String(r[4])), type: String(r[5]) as 'income' | 'expense' | 'transfer', description: String(r[6]), notes: String(r[7] || ''), labels, hash: String(r[9] || ''), spendingBucket: validBucket
       };
-    }).filter((t: any) => t.id);
+    }).filter((t: Transaction) => t.id);
 
     const notes: Record<string, BudgetNote> = {};
-    noteRows.slice(1).forEach((r: any[]) => {
+    noteRows.slice(1).forEach((r: (string | number | boolean)[]) => {
       if (r[0]) {
         try {
-          notes[r[0]] = JSON.parse(r[1]);
+          notes[String(r[0])] = JSON.parse(String(r[1]));
         } catch {
-          notes[r[0]] = { text: r[1] || '', updatedAt: new Date().toISOString() };
+          notes[String(r[0])] = { text: String(r[1] || ''), updatedAt: new Date().toISOString() };
         }
       }
     });
@@ -944,9 +944,9 @@ export class GoogleSheetsAdapter implements StorageAdapter {
       }
     }
 
-    const parsedCats: Category[] = catRows.slice(1).map((r: any[]) => ({
-      id: r[0], name: r[1], color: r[2], emoji: r[3], parentId: r[4] || null
-    })).filter((c: any) => c.id);
+    const parsedCats: Category[] = catRows.slice(1).map((r: (string | number | boolean)[]) => ({
+      id: String(r[0]), name: String(r[1]), color: String(r[2]), emoji: String(r[3]), parentId: r[4] ? String(r[4]) : null
+    })).filter((c: Category) => c.id);
     
     const catMap = new Map<string, Category>();
     DEFAULT_CATEGORIES.forEach(c => {
@@ -961,18 +961,18 @@ export class GoogleSheetsAdapter implements StorageAdapter {
     });
     const categories: Category[] = Array.from(catMap.values());
 
-    const budgets: Budget[] = bgRows.slice(1).map((r: any[]) => ({
-      category: r[0], amount: parseFloat(r[1])
-    })).filter((b: any) => b.category);
+    const budgets: Budget[] = bgRows.slice(1).map((r: (string | number | boolean)[]) => ({
+      category: String(r[0]), amount: parseFloat(String(r[1]))
+    })).filter((b: Budget) => b.category);
 
-    const locks: MonthlyLock[] = lockRows.slice(1).map((r: any[]) => ({
-      month: r[0], locked: r[1] === 'true' || r[1] === 'TRUE', lockedAt: r[2] || undefined
-    })).filter((l: any) => l.month);
+    const locks: MonthlyLock[] = lockRows.slice(1).map((r: (string | number | boolean)[]) => ({
+      month: String(r[0]), locked: r[1] === 'true' || r[1] === 'TRUE', lockedAt: r[2] ? String(r[2]) : undefined
+    })).filter((l: MonthlyLock) => l.month);
 
     this.cache[projectId] = { transactions, categories, budgets, locks, notes };
   }
 
-  private async writeSheet(projectId: string, range: string, values: any[][]) {
+  private async writeSheet(projectId: string, range: string, values: (string | number | boolean)[][]) {
     const project = (await this.getProjects()).find(p => p.id === projectId);
     if (!project || !project.spreadsheetId) throw new Error("Project not found");
 
@@ -1212,7 +1212,7 @@ export class GoogleSheetsAdapter implements StorageAdapter {
     const rows = Object.entries(notes).map(([k, v]) => [k, JSON.stringify(v)]);
     try {
       await this.writeSheet(projectId, 'Notes!A:B', [header, ...rows]);
-    } catch (e: any) {
+    } catch (_e: unknown) {
       // If Notes sheet doesn't exist, create it via batchUpdate
       const project = (await this.getProjects()).find(p => p.id === projectId);
       if (project?.spreadsheetId) {

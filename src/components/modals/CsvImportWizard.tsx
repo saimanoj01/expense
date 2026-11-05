@@ -83,6 +83,7 @@ export function CsvImportWizard({
         handleRunAiClassification();
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showCsvWizard, csvStep, hasAutoClassified, isAiClassifying, parsedCsvItems.length]);
 
   if (!showCsvWizard) return null;

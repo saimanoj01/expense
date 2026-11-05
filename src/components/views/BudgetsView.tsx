@@ -1,5 +1,5 @@
 import { BreadcrumbTrail } from '../layout/BreadcrumbTrail';
-import { BudgetUtilization, CategorySummary } from '../dashboard/BudgetUtilization';
+import { BudgetUtilization, CategorySummary, PieSegment } from '../dashboard/BudgetUtilization';
 import { BudgetNote } from '../../services/storage';
 import { Target } from 'lucide-react';
 import { formatCurrency } from '../../utils/formatters';
@@ -7,7 +7,7 @@ import { formatCurrency } from '../../utils/formatters';
 export interface BudgetsViewProps {
   month: string;
   categorySummary: CategorySummary[];
-  piePaths?: { segments: Array<{ label?: string; value?: number; color?: string; percent?: number; pathData?: string }>; totalPieExpense: number };
+  piePaths?: { segments: PieSegment[]; totalPieExpense: number };
   budgetErrors?: Record<string, string>;
   onBudgetInputChange?: (catName: string, val: string) => void;
   onSaveBudgets?: () => void;

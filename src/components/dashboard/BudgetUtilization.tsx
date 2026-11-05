@@ -27,9 +27,17 @@ export interface CategorySummary {
   subCategories?: SubCategorySummary[];
 }
 
+export interface PieSegment {
+  pathData: string;
+  color: string;
+  category: string;
+  name: string;
+  expense: number;
+}
+
 interface BudgetUtilizationProps {
   categorySummary: CategorySummary[];
-  piePaths?: { segments: any[]; totalPieExpense: number };
+  piePaths?: { segments: PieSegment[]; totalPieExpense: number };
   budgetErrors?: Record<string, string>;
   handleBudgetInputChange?: (catName: string, val: string) => void;
   handleSaveBudgets?: () => void;

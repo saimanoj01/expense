@@ -48,8 +48,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [isMockMode, setShowSessionExpiredModal]);
 
   useEffect(() => {
-    if (import.meta.env.DEV || (typeof window !== 'undefined' && (window as any).__PLAYWRIGHT__)) {
-      (window as any).expenseStorage = storageAdapter;
+    interface WindowWithPlaywright extends Window {
+      __PLAYWRIGHT__?: boolean;
+      expenseStorage?: StorageAdapter;
+    }
+    const win = typeof window !== 'undefined' ? (window as unknown as WindowWithPlaywright) : undefined;
+    if (win && (import.meta.env.DEV || win.__PLAYWRIGHT__)) {
+      win.expenseStorage = storageAdapter;
     }
   }, [storageAdapter]);
 
@@ -81,8 +86,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         localStorage.removeItem('expense_active_project_id');
         window.location.hash = '#/projects';
       }
-    } catch (err: any) {
-      setError(err.message || 'Failed to load projects');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to load projects');
     } finally {
       setIsLoading(false);
       setIsProjectsLoaded(true);
@@ -136,8 +141,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       localStorage.setItem('expense_active_project_id', newProj.id);
       window.location.hash = '';
       return newProj;
-    } catch (err: any) {
-      setError(err.message || 'Failed to create project');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to create project');
       throw err;
     } finally {
       setIsLoading(false);
@@ -163,8 +168,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           window.location.hash = '#/projects';
         }
       }
-    } catch (err: any) {
-      setError(err.message || 'Failed to delete project');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to delete project');
       throw err;
     } finally {
       setIsLoading(false);
@@ -191,6 +196,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   );
 };
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const useApp = () => {
   const context = useContext(AppContext);
   if (!context) throw new Error('useApp must be used within an AppProvider');

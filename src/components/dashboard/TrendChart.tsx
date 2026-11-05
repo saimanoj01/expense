@@ -66,9 +66,9 @@ export function TrendChart({
         totalBudget
       });
       setAiResult(res);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Failed to generate AI insights:', err);
-      setAiError(err.message || 'Failed to generate AI insights. Please check your API key.');
+      setAiError(err instanceof Error ? err.message : 'Failed to generate AI insights. Please check your API key.');
     } finally {
       setIsGeneratingAi(false);
     }

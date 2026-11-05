@@ -346,8 +346,8 @@ function MainRouter({
 
                   await txnHooks.backfillSpendingBuckets(classificationMap);
                   showToast(`Successfully classified ${Object.keys(classificationMap).length} expenses!`);
-                } catch (err: any) {
-                  showToast(err.message || 'Backfill classification failed');
+                } catch (err: unknown) {
+                  showToast(err instanceof Error ? err.message : 'Backfill classification failed');
                 } finally {
                   setIsBackfilling(false);
                 }
@@ -517,7 +517,7 @@ function AppInner() {
   const [showManageProjectsModal, setShowManageProjectsModal] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
   const [showGeminiKeyModal, setShowGeminiKeyModal] = useState(false);
-  const [locks, setLocks] = useState<any[]>([]);
+  const [locks, setLocks] = useState<MonthlyLock[]>([]);
   const [isBackfilling, setIsBackfilling] = useState(false);
 
   // Modals
@@ -606,6 +606,7 @@ function AppInner() {
 
   useEffect(() => {
     refreshProjectData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated, activeProject, storageAdapter]);
 
   const isCurrentMonthLocked = locks.some(lk => lk.month === txnHooks.selectedMonth && lk.locked);
@@ -659,8 +660,8 @@ function AppInner() {
         if (gmailRes && (gmailRes.status === 408 || gmailRes.status === 504)) {
           throw new Error('Lock failed: email report could not send');
         }
-      } catch (e: any) {
-        if (e.message?.includes('Lock failed')) {
+      } catch (e: unknown) {
+        if (e instanceof Error && e.message.includes('Lock failed')) {
           showToast('Lock failed: email report could not send', 'error');
           return;
         }
@@ -669,8 +670,8 @@ function AppInner() {
       await storageAdapter.saveLock(activeProject.id, { month: txnHooks.selectedMonth, locked: true, lockedAt: new Date().toISOString() });
       showToast(`Month ${txnHooks.selectedMonth} locked. Report generated.`);
       refreshProjectData();
-    } catch (err: any) {
-      showToast(err.message || 'Failed to lock month', 'error');
+    } catch (err: unknown) {
+      showToast(err instanceof Error ? err.message : 'Failed to lock month', 'error');
     }
   };
 
@@ -680,8 +681,8 @@ function AppInner() {
       await storageAdapter.saveLock(activeProject.id, { month: txnHooks.selectedMonth, locked: false });
       showToast(`Month ${txnHooks.selectedMonth} unlocked.`);
       refreshProjectData();
-    } catch (err: any) {
-      showToast(err.message || 'Failed to unlock month', 'error');
+    } catch (err: unknown) {
+      showToast(err instanceof Error ? err.message : 'Failed to unlock month', 'error');
     }
   };
 
@@ -693,8 +694,8 @@ function AppInner() {
       await storageAdapter.saveBudgets(activeProject.id, sample.budgets);
       await refreshProjectData();
       showToast('Sample data loaded for the past 4 months!');
-    } catch (e: any) {
-      showToast(`Failed to load sample data: ${e.message}`, 'error');
+    } catch (e: unknown) {
+      showToast(`Failed to load sample data: ${e instanceof Error ? e.message : String(e)}`, 'error');
     }
   };
 
@@ -902,8 +903,8 @@ function AppInner() {
                 showToast('Collaborator added');
                 await loadProjects();
                 refreshProjectData();
-              } catch (err: any) {
-                showToast(err.message || 'Failed to share project', 'error');
+              } catch (err: unknown) {
+                showToast(err instanceof Error ? err.message : 'Failed to share project', 'error');
               }
             }}
           />

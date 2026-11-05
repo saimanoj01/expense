@@ -30,7 +30,7 @@ export function CashFlowBarChart({
     savingsRate: cf.savingsRate
   }));
 
-  const CustomTooltip = ({ active, payload }: any) => {
+  const CustomTooltip = ({ active, payload }: { active?: boolean; payload?: Array<{ payload: (typeof chartData)[0] }> }) => {
     if (!active || !payload || !payload.length) return null;
     const data = payload[0]?.payload;
     if (!data) return null;
