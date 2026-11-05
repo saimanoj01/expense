@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { Transaction, MonthlyLock, Category, DEFAULT_CATEGORIES, SpendingBucket, Project, StorageAdapter } from '../services/storage';
 import { bucketOf } from '../utils/categorizer';
+import { computeMonthMetrics } from '../utils/metrics';
 
 export interface TrendPoint {
   date: string;
@@ -363,34 +364,21 @@ export function useTransactions(
     return dups;
   }, [transactions]);
 
-  // KPIs
-  const totalExpenses = useMemo(() => monthTransactions
-    .filter(t => t.type === 'expense')
-    .reduce((sum, t) => sum + (typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount || 0)) || 0), 0), [monthTransactions]);
-    
-  const totalIncome = useMemo(() => monthTransactions
-    .filter(t => t.type === 'income')
-    .reduce((sum, t) => sum + (typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount || 0)) || 0), 0), [monthTransactions]);
+  // KPIs via pure computeMonthMetrics (§3.2, §3.11)
+  const monthMetrics = useMemo(
+    () => computeMonthMetrics(monthTransactions, 'all', categories),
+    [monthTransactions, categories]
+  );
 
-  const totalTransfers = useMemo(() => monthTransactions
-    .filter(t => t.type === 'transfer')
-    .reduce((sum, t) => sum + (typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount || 0)) || 0), 0), [monthTransactions]);
-
-  const fixedExpenses = useMemo(() => monthTransactions
-    .filter(t => t.type === 'expense' && bucketOf(t, categories) === 'fixed')
-    .reduce((sum, t) => sum + (typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount || 0)) || 0), 0), [monthTransactions, categories]);
-
-  const nonMonthlyExpenses = useMemo(() => monthTransactions
-    .filter(t => t.type === 'expense' && bucketOf(t, categories) === 'non-monthly')
-    .reduce((sum, t) => sum + (typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount || 0)) || 0), 0), [monthTransactions, categories]);
-
-  const flexibleExpenses = useMemo(() => monthTransactions
-    .filter(t => t.type === 'expense' && bucketOf(t, categories) === 'flexible')
-    .reduce((sum, t) => sum + (typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount || 0)) || 0), 0), [monthTransactions, categories]);
-
-  const flexNumber = useMemo(() => totalIncome - fixedExpenses - nonMonthlyExpenses, [totalIncome, fixedExpenses, nonMonthlyExpenses]);
-  const savingsAmount = useMemo(() => totalIncome - totalExpenses, [totalIncome, totalExpenses]);
-  const savingsRate = useMemo(() => totalIncome > 0 ? (savingsAmount / totalIncome) * 100 : 0, [totalIncome, savingsAmount]);
+  const totalExpenses = monthMetrics.expenses;
+  const totalIncome = monthMetrics.income;
+  const totalTransfers = monthMetrics.transfers;
+  const fixedExpenses = monthMetrics.fixed;
+  const nonMonthlyExpenses = monthMetrics.nonMonthly;
+  const flexibleExpenses = monthMetrics.flexible;
+  const flexNumber = monthMetrics.flexNumber;
+  const savingsAmount = monthMetrics.savings;
+  const savingsRate = monthMetrics.savingsRate;
 
   const unclassifiedCount = useMemo(() => monthTransactions
     .filter(t => t.type === 'expense' && (bucketOf(t, categories) as string) === 'unclassified').length, [monthTransactions, categories]);

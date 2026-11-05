@@ -5,6 +5,7 @@ import { generateSpendingInsights, AiInsightsResult } from '../../services/ai/ai
 import { hasGeminiApiKey } from '../../services/ai/geminiClient';
 import { Category, Budget, Transaction } from '../../services/storage';
 import { bucketOf } from '../../utils/categorizer';
+import { computeMonthMetrics } from '../../utils/metrics';
 import { bucketColor } from '../../theme/buckets';
 import { formatMoney } from '../../utils/formatters';
 import { useNavigation } from '../../hooks/useNavigation';
@@ -107,29 +108,11 @@ export function TrendChart({
 
   const monthlyData = useMemo<MonthBucketSummary[]>(() => {
     return monthKeys.map(mKey => {
-      const mTxns = nonTransferTxns.filter(t => (t.date || '').startsWith(mKey));
-      let income = 0;
-      let fixed = 0;
-      let flexible = 0;
-      let nonMonthly = 0;
-
-      for (const t of mTxns) {
-        if (t.type === 'income') {
-          income += t.amount;
-        } else if (t.type === 'expense') {
-          const b = bucketOf(t, categories);
-          if (b === 'fixed') fixed += t.amount;
-          else if (b === 'non-monthly') nonMonthly += t.amount;
-          else flexible += t.amount;
-        }
-      }
-
-      const totalExpense = fixed + flexible + nonMonthly;
-      const saved = income - totalExpense;
+      const m = computeMonthMetrics(transactions, mKey, categories);
       const savingsRate =
-        income > 0
-          ? Math.max(-100, Math.min(100, (saved / income) * 100))
-          : totalExpense > 0
+        m.income > 0
+          ? Math.max(-100, Math.min(100, m.savingsRate))
+          : m.expenses > 0
           ? -25
           : 0;
 
@@ -137,16 +120,16 @@ export function TrendChart({
         month: mKey,
         shortLabel: formatShortMonth(mKey),
         longLabel: formatLongMonth(mKey),
-        income,
-        fixed,
-        flexible,
-        nonMonthly,
-        totalExpense,
-        saved,
+        income: m.income,
+        fixed: m.fixed,
+        flexible: m.flexible,
+        nonMonthly: m.nonMonthly,
+        totalExpense: m.expenses,
+        saved: m.savings,
         savingsRate,
       };
     });
-  }, [monthKeys, nonTransferTxns, categories]);
+  }, [monthKeys, transactions, categories]);
 
   // Last 6 months for category trends table
   const last6MonthKeys = useMemo(() => monthKeys.slice(6), [monthKeys]);

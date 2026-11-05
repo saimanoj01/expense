@@ -5,6 +5,7 @@ import { formatCurrency, formatMoney } from '../../utils/formatters';
 import { formatMonthLabel } from '../../utils/navigation';
 import { useNavigation } from '../../hooks/useNavigation';
 import { bucketOf } from '../../utils/categorizer';
+import { computeMonthMetrics } from '../../utils/metrics';
 import { dur, ease } from '../../theme/motion';
 import { OverviewHero } from '../overview/OverviewHero';
 import { IncomeRibbon } from '../overview/IncomeRibbon';
@@ -192,31 +193,9 @@ export const Level1MonthOverview: React.FC<Level1MonthOverviewProps> = ({
   const hasPriorMonthData = priorTxns.length > 0;
 
   const priorMetrics = useMemo(() => {
-    if (!hasPriorMonthData) return null;
-    const pIncome = priorTxns.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
-    const pFixed = priorTxns
-      .filter(t => t.type === 'expense' && bucketOf(t, categories) === 'fixed')
-      .reduce((s, t) => s + t.amount, 0);
-    const pFlexible = priorTxns
-      .filter(t => t.type === 'expense' && bucketOf(t, categories) === 'flexible')
-      .reduce((s, t) => s + t.amount, 0);
-    const pNonMonthly = priorTxns
-      .filter(t => t.type === 'expense' && bucketOf(t, categories) === 'non-monthly')
-      .reduce((s, t) => s + t.amount, 0);
-    const pExpenses = priorTxns.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
-    const pSavings = pIncome - pExpenses;
-    const pSavingsRate = pIncome > 0 ? (pSavings / pIncome) * 100 : 0;
-
-    return {
-      income: pIncome,
-      fixed: pFixed,
-      flexible: pFlexible,
-      nonMonthly: pNonMonthly,
-      expenses: pExpenses,
-      savings: pSavings,
-      savingsRate: pSavingsRate,
-    };
-  }, [priorTxns, hasPriorMonthData, categories]);
+    if (!hasPriorMonthData || !priorMonthKey) return null;
+    return computeMonthMetrics(allTransactions, priorMonthKey, categories);
+  }, [allTransactions, priorMonthKey, hasPriorMonthData, categories]);
 
   // Screen-reader accessible metrics for 50/30/20 & Waterfall table
   const needsPct = totalIncome > 0 ? ((fixedExpenses + nonMonthlyExpenses) / totalIncome) * 100 : 0;

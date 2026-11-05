@@ -224,7 +224,7 @@ export const OverviewHero: React.FC<OverviewHeroProps> = ({
           <p className="text-heading text-muted-foreground">You kept</p>
           <motion.div
             data-testid={isOverview ? 'kpi-savings-amount' : undefined}
-            title="Income minus spending. Transfers between your accounts aren't counted."
+            title="Income minus spending. Refunds reduce spending; transfers between your accounts aren't counted."
             initial={
               shouldGlow
                 ? { textShadow: '0 0 24px hsl(var(--c-saved) / 0.45)' }

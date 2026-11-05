@@ -6,6 +6,7 @@ import { useNavigation } from '../../hooks/useNavigation';
 import { formatMoney, splitMoneyParts } from '../../utils/formatters';
 import { delta, deltaToneClass } from '../../utils/delta';
 import { bucketOf } from '../../utils/categorizer';
+import { isRefundTransaction } from '../../utils/metrics';
 import { deriveCategoryBucket } from '../../hooks/useBudgets';
 import { BUCKETS, bucketColor, negativeColor } from '../../theme/buckets';
 import { spring } from '../../theme/motion';
@@ -70,14 +71,33 @@ export const Level2BucketView: React.FC<Level2BucketViewProps> = ({
       const matchMonth = month === 'all' || (t.date && t.date.startsWith(month));
       if (!matchMonth) return false;
       if (bucketId === 'income') {
-        return t.type === 'income';
+        return t.type === 'income' && !isRefundTransaction(t);
       }
-      return t.type === 'expense' && bucketOf(t, categories) === bucketId;
+      return (
+        (t.type === 'expense' || isRefundTransaction(t)) &&
+        bucketOf(t, categories) === bucketId
+      );
     });
   }, [transactions, month, bucketId, categories]);
 
+  const monthTransfersTotal = useMemo(() => {
+    return transactions
+      .filter(
+        t =>
+          t.type === 'transfer' &&
+          (month === 'all' || (t.date && t.date.startsWith(month)))
+      )
+      .reduce((s, t) => s + t.amount, 0);
+  }, [transactions, month]);
+
   const totalSpent = useMemo(() => {
-    return bucketTransactions.reduce((sum, t) => sum + t.amount, 0);
+    return Math.max(
+      0,
+      bucketTransactions.reduce(
+        (sum, t) => sum + (isRefundTransaction(t) ? -t.amount : t.amount),
+        0
+      )
+    );
   }, [bucketTransactions]);
 
   const monthExpensesTotal = useMemo(() => {
@@ -177,7 +197,7 @@ export const Level2BucketView: React.FC<Level2BucketViewProps> = ({
             budget: bObj?.amount || 0,
           };
         }
-        map[key].spent += t.amount;
+        map[key].spent += isRefundTransaction(t) ? -t.amount : t.amount;
         map[key].txnCount += 1;
       });
 
@@ -444,6 +464,19 @@ export const Level2BucketView: React.FC<Level2BucketViewProps> = ({
               </motion.div>
             );
           })}
+        </div>
+      )}
+
+      {/* Transfers Footer in Income & Saved Bucket (§3.12) */}
+      {bucketId === 'income' && (
+        <div
+          data-testid="bucket-transfers-footer"
+          className="h-12 flex items-center justify-between border-t border-border/60 text-body text-muted-foreground"
+        >
+          <span>⇄ Transfers between accounts</span>
+          <span className="tabular-nums num font-medium text-foreground">
+            {formatMoney(monthTransfersTotal)}
+          </span>
         </div>
       )}
 
