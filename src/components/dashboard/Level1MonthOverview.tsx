@@ -1,4 +1,4 @@
-import React, { useMemo, useEffect, Suspense } from 'react';
+import React, { useMemo, Suspense } from 'react';
 import { Printer, BarChart3, AlertTriangle } from 'lucide-react';
 import { Project, Transaction, Category } from '../../services/storage';
 import { formatCurrency } from '../../utils/formatters';
@@ -50,14 +50,11 @@ function getPriorMonthKey(monthStr: string): string | null {
   return `${prevYear}-${prevMonth}`;
 }
 
-// Module-level set to prevent duplicate confetti bursts within the same app session
-const firedConfettiKeys = new Set<string>();
-
 export const Level1MonthOverview: React.FC<Level1MonthOverviewProps> = ({
   selectedMonth,
   availableMonths,
   onSelectMonth,
-  activeProject,
+  activeProject: _activeProject,
   totalBudget = 0,
   totalExpenses,
   totalIncome,
@@ -180,47 +177,6 @@ export const Level1MonthOverview: React.FC<Level1MonthOverviewProps> = ({
 
     return items;
   }, [totalIncome, fixedExpenses, flexibleExpenses, nonMonthlyExpenses, unclassifiedExpenses, savingsAmount]);
-
-  // Confetti celebration on high savings rate
-  useEffect(() => {
-    if (selectedMonth === 'all') return;
-    if (savingsRate <= 20 || savingsAmount <= 0) return;
-
-    const prefersReducedMotion =
-      typeof window !== 'undefined' &&
-      window.matchMedia &&
-      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if (prefersReducedMotion) return;
-
-    // NEVER trigger during drill-down navigation
-    if (typeof window !== 'undefined' && window.location.hash) {
-      const hash = window.location.hash.toLowerCase();
-      if (hash.includes('/bucket/') || hash.includes('/category/') || hash.includes('/transactions')) {
-        return;
-      }
-    }
-
-    const projectId = activeProject?.id || 'default';
-    const storageKey = `expense_confetti_${projectId}_${selectedMonth}`;
-    if (typeof window !== 'undefined' && window.localStorage.getItem(storageKey)) return;
-    if (firedConfettiKeys.has(storageKey)) return;
-
-    firedConfettiKeys.add(storageKey);
-    if (typeof window !== 'undefined') {
-      window.localStorage.setItem(storageKey, 'fired');
-    }
-
-    import('canvas-confetti')
-      .then(confettiModule => {
-        const confetti = confettiModule.default || confettiModule;
-        confetti({
-          particleCount: 70,
-          spread: 60,
-          origin: { y: 0.6 }
-        });
-      })
-      .catch(() => {});
-  }, [selectedMonth, savingsRate, savingsAmount, activeProject?.id]);
 
   return (
     <div
