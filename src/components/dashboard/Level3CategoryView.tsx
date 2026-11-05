@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowRight, Search, Plus, Edit2, Trash2 } from 'lucide-react';
-import { Transaction, Category, Budget, SpendingBucket } from '../../services/storage';
+import { Transaction, Category, Budget, SpendingBucket, DEFAULT_CATEGORIES } from '../../services/storage';
 import { useNavigation } from '../../hooks/useNavigation';
 import { formatMoney, splitMoneyParts } from '../../utils/formatters';
 import { suggestSpendingBucket } from '../../utils/categorizer';
@@ -50,12 +50,26 @@ export const Level3CategoryView: React.FC<Level3CategoryViewProps> = ({
   const { navigate } = useNavigation();
   const [searchTerm, setSearchTerm] = useState('');
 
-  const category = useMemo(() => {
-    const match = categories.find(
-      c =>
-        c.id.toLowerCase() === categoryId.toLowerCase() ||
-        c.name.toLowerCase() === categoryId.toLowerCase()
+  const isKnownCategory = useMemo(() => {
+    const lower = categoryId.toLowerCase();
+    return (
+      categories.some(c => c.id.toLowerCase() === lower || c.name.toLowerCase() === lower) ||
+      DEFAULT_CATEGORIES.some(c => c.id.toLowerCase() === lower || c.name.toLowerCase() === lower)
     );
+  }, [categories, categoryId]);
+
+  const category = useMemo(() => {
+    const match =
+      categories.find(
+        c =>
+          c.id.toLowerCase() === categoryId.toLowerCase() ||
+          c.name.toLowerCase() === categoryId.toLowerCase()
+      ) ||
+      DEFAULT_CATEGORIES.find(
+        c =>
+          c.id.toLowerCase() === categoryId.toLowerCase() ||
+          c.name.toLowerCase() === categoryId.toLowerCase()
+      );
     if (match) return match;
 
     return {
@@ -81,7 +95,7 @@ export const Level3CategoryView: React.FC<Level3CategoryViewProps> = ({
         b.category.toLowerCase() === category.id.toLowerCase() ||
         b.category.toLowerCase() === category.name.toLowerCase()
     );
-    return bObj?.amount || 0;
+    return Number(bObj?.amount) || 0;
   }, [budgets, category]);
 
   const categoryTransactions = useMemo(() => {
@@ -97,7 +111,7 @@ export const Level3CategoryView: React.FC<Level3CategoryViewProps> = ({
   }, [transactions, month, category]);
 
   const totalSpent = useMemo(() => {
-    return categoryTransactions.reduce((sum, t) => sum + t.amount, 0);
+    return categoryTransactions.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
   }, [categoryTransactions]);
 
   const remainingBudget = Math.max(0, budget - totalSpent);
@@ -130,7 +144,7 @@ export const Level3CategoryView: React.FC<Level3CategoryViewProps> = ({
       if (!map[payee]) {
         map[payee] = { name: payee, amount: 0, count: 0 };
       }
-      map[payee].amount += t.amount;
+      map[payee].amount += Number(t.amount) || 0;
       map[payee].count += 1;
     });
 
@@ -158,18 +172,41 @@ export const Level3CategoryView: React.FC<Level3CategoryViewProps> = ({
     const groups: { date: string; txns: Transaction[]; dayTotal: number }[] = [];
     filteredTxns.forEach(t => {
       const d = t.date || '';
+      const amt = Number(t.amount) || 0;
       const last = groups[groups.length - 1];
       if (!last || last.date !== d) {
-        groups.push({ date: d, txns: [t], dayTotal: t.amount });
+        groups.push({ date: d, txns: [t], dayTotal: amt });
       } else {
         last.txns.push(t);
-        last.dayTotal += t.amount;
+        last.dayTotal += amt;
       }
     });
     return groups;
   }, [filteredTxns]);
 
   const heroParts = splitMoneyParts(totalSpent);
+
+  if (categories.length > 0 && !isKnownCategory && categoryTransactions.length === 0 && budget === 0) {
+    return (
+      <div
+        data-testid="level3-category-view"
+        className={`max-w-[1120px] mx-auto py-8 space-y-4 ${className}`}
+      >
+        <p className="text-heading text-foreground">Category not found</p>
+        <p className="text-body text-muted-foreground">
+          No category or recorded activity matches "{categoryId}".
+        </p>
+        <button
+          type="button"
+          data-testid="back-to-bucket-btn"
+          onClick={() => navigate(`#/month/${month}`)}
+          className="px-3.5 py-1.5 rounded-[10px] bg-surface2 hover:bg-secondary border border-border text-body font-medium text-foreground transition-colors"
+        >
+          ← Back to Overview
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -347,9 +384,17 @@ export const Level3CategoryView: React.FC<Level3CategoryViewProps> = ({
                   {group.txns.map(t => (
                     <div
                       key={t.id}
+                      role="button"
+                      tabIndex={0}
                       data-testid={`category-txn-${t.id}`}
                       onClick={() => onEditTxn?.(t)}
-                      className="min-h-[56px] px-2 -mx-2 py-2 rounded-[10px] hover:bg-surface2 transition-colors flex items-center justify-between gap-3 cursor-pointer group"
+                      onKeyDown={e => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          onEditTxn?.(t);
+                        }
+                      }}
+                      className="min-h-[56px] px-2 -mx-2 py-2 rounded-[10px] hover:bg-surface2 focus-visible:ring-2 ring-ring/40 outline-none transition-colors flex items-center justify-between gap-3 cursor-pointer group"
                     >
                       <div className="flex items-center gap-3 min-w-0 flex-1">
                         <div className="w-8 h-8 rounded-full bg-surface2 flex items-center justify-center shrink-0 text-sm">
@@ -373,7 +418,7 @@ export const Level3CategoryView: React.FC<Level3CategoryViewProps> = ({
 
                       <div className="flex items-center gap-2 shrink-0">
                         <span className="text-body font-semibold text-foreground tabular-nums num">
-                          {formatMoney(-t.amount, { cents: true, sign: 'auto' })}
+                          {formatMoney(-(Number(t.amount) || 0), { cents: true, sign: 'auto' })}
                         </span>
 
                         {onEditTxn && (
@@ -384,7 +429,7 @@ export const Level3CategoryView: React.FC<Level3CategoryViewProps> = ({
                               onEditTxn(t);
                             }}
                             title="Edit Transaction"
-                            className="p-1.5 rounded-[8px] opacity-0 group-hover:opacity-100 focus:opacity-100 hover:bg-secondary text-muted-foreground hover:text-foreground transition-all"
+                            className="p-1.5 rounded-[8px] hover:bg-secondary text-muted-foreground hover:text-foreground focus-visible:ring-2 ring-ring/40 transition-all"
                           >
                             <Edit2 className="w-3.5 h-3.5" />
                           </button>
@@ -397,7 +442,7 @@ export const Level3CategoryView: React.FC<Level3CategoryViewProps> = ({
                               onDeleteTxn(t.id);
                             }}
                             title="Delete Transaction"
-                            className="p-1.5 rounded-[8px] opacity-0 group-hover:opacity-100 focus:opacity-100 hover:bg-negative/10 text-muted-foreground hover:text-negative transition-all"
+                            className="p-1.5 rounded-[8px] hover:bg-negative/10 text-muted-foreground hover:text-negative focus-visible:ring-2 ring-ring/40 transition-all"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>

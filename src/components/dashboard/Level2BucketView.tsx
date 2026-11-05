@@ -24,7 +24,7 @@ export interface Level2BucketViewProps {
 }
 
 export const Level2BucketView: React.FC<Level2BucketViewProps> = ({
-  bucketId,
+  bucketId: rawBucketId,
   month,
   totalIncome,
   transactions,
@@ -34,6 +34,8 @@ export const Level2BucketView: React.FC<Level2BucketViewProps> = ({
   className = '',
 }) => {
   const { navigate } = useNavigation();
+  const bucketId: SpendingBucket | 'income' =
+    (rawBucketId as string) === 'variable' ? 'flexible' : rawBucketId;
   const routeSlug = bucketId === 'flexible' ? 'variable' : bucketId;
 
   const bucketMeta = useMemo(() => {
@@ -87,14 +89,14 @@ export const Level2BucketView: React.FC<Level2BucketViewProps> = ({
           t.type === 'transfer' &&
           (month === 'all' || (t.date && t.date.startsWith(month)))
       )
-      .reduce((s, t) => s + t.amount, 0);
+      .reduce((s, t) => s + (Number(t.amount) || 0), 0);
   }, [transactions, month]);
 
   const totalSpent = useMemo(() => {
     return Math.max(
       0,
       bucketTransactions.reduce(
-        (sum, t) => sum + (isRefundTransaction(t) ? -t.amount : t.amount),
+        (sum, t) => sum + (isRefundTransaction(t) ? -(Number(t.amount) || 0) : (Number(t.amount) || 0)),
         0
       )
     );
@@ -103,7 +105,7 @@ export const Level2BucketView: React.FC<Level2BucketViewProps> = ({
   const monthExpensesTotal = useMemo(() => {
     return transactions
       .filter(t => t.type === 'expense' && (month === 'all' || (t.date && t.date.startsWith(month))))
-      .reduce((s, t) => s + t.amount, 0);
+      .reduce((s, t) => s + (Number(t.amount) || 0), 0);
   }, [transactions, month]);
 
   const savedAmount = totalIncome - monthExpensesTotal;
@@ -129,7 +131,7 @@ export const Level2BucketView: React.FC<Level2BucketViewProps> = ({
       if (bucketId === 'income') return t.type === 'income';
       return t.type === 'expense' && bucketOf(t, categories) === bucketId;
     });
-    return pTxns.reduce((sum, t) => sum + t.amount, 0);
+    return pTxns.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
   }, [transactions, priorMonthKey, bucketId, categories]);
 
   const momDeltaInfo = useMemo(() => {
@@ -167,7 +169,7 @@ export const Level2BucketView: React.FC<Level2BucketViewProps> = ({
             isIncomeSource: true,
           };
         }
-        map[id].spent += t.amount;
+        map[id].spent += Number(t.amount) || 0;
         map[id].txnCount += 1;
       });
     } else {
@@ -194,10 +196,11 @@ export const Level2BucketView: React.FC<Level2BucketViewProps> = ({
             emoji: catEmoji,
             spent: 0,
             txnCount: 0,
-            budget: bObj?.amount || 0,
+            budget: Number(bObj?.amount) || 0,
           };
         }
-        map[key].spent += isRefundTransaction(t) ? -t.amount : t.amount;
+        const amt = Number(t.amount) || 0;
+        map[key].spent += isRefundTransaction(t) ? -amt : amt;
         map[key].txnCount += 1;
       });
 
@@ -268,34 +271,36 @@ export const Level2BucketView: React.FC<Level2BucketViewProps> = ({
       data-testid="level2-bucket-view"
       className={`max-w-[1120px] mx-auto space-y-6 pb-6 ${className}`}
     >
-      {/* Screen-reader compatibility controls */}
-      <button
-        type="button"
-        data-testid="back-to-overview-btn"
-        onClick={() => navigate(`#/month/${month}`)}
-        className="sr-only"
-      >
-        Back to Overview
-      </button>
-      <button
-        type="button"
-        data-testid="add-bucket-txn-btn"
-        onClick={onOpenAddTxn}
-        className="sr-only"
-      >
-        Add Expense
-      </button>
-
       {/* Bare Hero Header */}
       <div className="space-y-3 pt-1">
-        <div className="flex items-center gap-2 text-label text-muted-foreground">
-          <span
-            className="w-2 h-2 rounded-full shrink-0"
-            style={{ backgroundColor: bucketMeta.accentColor }}
-          />
-          <span className="font-medium text-foreground">{bucketMeta.title}</span>
-          <span className="text-faint">·</span>
-          <span>{bucketMeta.subtitle}</span>
+        <div className="flex items-center justify-between gap-2 text-label text-muted-foreground">
+          <div className="flex items-center gap-2">
+            <span
+              className="w-2 h-2 rounded-full shrink-0"
+              style={{ backgroundColor: bucketMeta.accentColor }}
+            />
+            <span className="font-medium text-foreground">{bucketMeta.title}</span>
+            <span className="text-faint">·</span>
+            <span>{bucketMeta.subtitle}</span>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              data-testid="back-to-overview-btn"
+              onClick={() => navigate(`#/month/${month}`)}
+              className="px-2.5 py-1 rounded-[8px] bg-surface2 hover:bg-secondary text-foreground border border-border font-medium transition-colors focus-visible:ring-2 ring-ring/40"
+            >
+              ← Overview
+            </button>
+            <button
+              type="button"
+              data-testid="add-bucket-txn-btn"
+              onClick={onOpenAddTxn}
+              className="px-2.5 py-1 rounded-[8px] bg-primary text-primary-foreground font-medium hover:opacity-90 transition-opacity focus-visible:ring-2 ring-ring/40"
+            >
+              + Add
+            </button>
+          </div>
         </div>
 
         <motion.div

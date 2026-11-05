@@ -1,6 +1,5 @@
 import React, { useEffect, useCallback } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
 import { formatMonthLabel } from '../../utils/navigation';
 
 export interface MonthSwitcherProps {
@@ -72,8 +71,6 @@ export const MonthSwitcher: React.FC<MonthSwitcherProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handlePrev, handleNext]);
 
-  const monthDisplay = formatMonthLabel(selectedMonth);
-
   return (
     <div
       data-testid="month-switcher"
@@ -90,35 +87,26 @@ export const MonthSwitcher: React.FC<MonthSwitcherProps> = ({
         <ChevronLeft className="w-4 h-4" />
       </button>
 
-      <div className="relative flex items-center justify-center min-w-0 sm:min-w-[128px] h-8 px-1.5 sm:px-2.5 rounded-[8px] hover:bg-card transition-colors overflow-hidden">
-        <AnimatePresence mode="wait" initial={false}>
-          <motion.span
-            key={selectedMonth}
-            initial={{ opacity: 0, y: 3 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -3 }}
-            transition={{ duration: 0.12 }}
-            className="font-medium text-label sm:text-body text-foreground select-none pointer-events-none truncate tabular-nums num"
-          >
-            {monthDisplay}
-          </motion.span>
-        </AnimatePresence>
-
+      <div className="relative flex items-center justify-center min-w-0 sm:min-w-[128px] h-8 rounded-[8px] hover:bg-card transition-colors overflow-hidden">
         <select
           data-testid="month-selector"
-          className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+          className="appearance-none bg-transparent cursor-pointer w-full h-full px-2 sm:px-2.5 font-medium text-label sm:text-body text-foreground text-center tabular-nums num outline-none focus-visible:ring-2 ring-ring/40 rounded-[8px]"
           value={selectedMonth}
           onChange={e => onSelectMonth(e.target.value)}
           aria-label="Select Financial Period"
         >
-          <option value="all">All Time</option>
+          <option value="all" className="bg-popover text-popover-foreground">
+            All Time
+          </option>
           {availableMonths.map(m => (
-            <option key={m} value={m}>
-              {m}
+            <option key={m} value={m} className="bg-popover text-popover-foreground">
+              {formatMonthLabel(m)} ({m})
             </option>
           ))}
           {selectedMonth && !availableMonths.includes(selectedMonth) && selectedMonth !== 'all' && (
-            <option value={selectedMonth}>{selectedMonth}</option>
+            <option value={selectedMonth} className="bg-popover text-popover-foreground">
+              {formatMonthLabel(selectedMonth)} ({selectedMonth})
+            </option>
           )}
         </select>
       </div>

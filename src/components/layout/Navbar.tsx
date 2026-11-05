@@ -65,7 +65,7 @@ export function Navbar({
             data-testid="mock-banner"
             className="mock-mode-banner px-2 py-0.5 rounded text-label text-muted-foreground bg-surface2 border border-border"
           >
-            Demo data<span className="sr-only"> (Mock Mode)</span>
+            Demo data (Mock Mode)
           </span>
         )}
         {isAuthenticated && onOpenCommandPalette && (

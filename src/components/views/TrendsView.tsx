@@ -32,13 +32,17 @@ export function TrendsView({
   onRequestGeminiKey,
 }: TrendsViewProps) {
   // Waterfall Chart Data for cash flow breakdown via computeMonthMetrics
+  const monthMetrics = useMemo(
+    () => computeMonthMetrics(transactions, month, categories),
+    [transactions, month, categories]
+  );
+
   const waterfallData = useMemo<WaterfallItem[]>(() => {
-    const m = computeMonthMetrics(transactions, month, categories);
-    const totalIncome = m.income;
-    const fixedExpenses = m.fixed;
-    const flexibleExpenses = m.flexible;
-    const nonMonthlyExpenses = m.nonMonthly;
-    const savingsAmount = m.savings;
+    const totalIncome = monthMetrics.income;
+    const fixedExpenses = monthMetrics.fixed;
+    const flexibleExpenses = monthMetrics.flexible;
+    const nonMonthlyExpenses = monthMetrics.nonMonthly;
+    const savingsAmount = monthMetrics.savings;
 
     const items: WaterfallItem[] = [];
 
@@ -97,7 +101,7 @@ export function TrendsView({
     });
 
     return items;
-  }, [transactions, month, categories]);
+  }, [monthMetrics]);
 
   return (
     <div
@@ -148,6 +152,65 @@ export function TrendsView({
           >
             <WaterfallChart data={waterfallData} />
           </Suspense>
+        </div>
+      </div>
+
+      {/* 50/30/20 Guideline Benchmark Card */}
+      <div
+        className="p-5 rounded-[14px] bg-card border border-border space-y-4"
+        data-testid="guideline-meter-50-30-20"
+      >
+        <div className="flex items-baseline justify-between">
+          <div>
+            <h2 className="text-heading text-foreground">
+              50 / 30 / 20 Guideline Benchmark
+            </h2>
+            <p className="text-label text-muted-foreground">
+              Needs ≤ 50% · Wants ≤ 30% · Savings ≥ 20% of monthly income
+            </p>
+          </div>
+          <span className="text-label text-muted-foreground">
+            {formatMonthLabel(month)}
+          </span>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {(() => {
+            const inc = monthMetrics.income;
+            const needsPct = inc > 0 ? ((monthMetrics.fixed + monthMetrics.nonMonthly) / inc) * 100 : 0;
+            const wantsPct = inc > 0 ? (monthMetrics.flexible / inc) * 100 : 0;
+            const savingsPct = inc > 0 ? (monthMetrics.savings / inc) * 100 : 0;
+            const rows = [
+              { label: 'Needs', pct: needsPct, target: '≤ 50%', ok: needsPct <= 50, color: bucketColor('fixed') },
+              { label: 'Wants', pct: wantsPct, target: '≤ 30%', ok: wantsPct <= 30, color: bucketColor('flexible') },
+              { label: 'Savings', pct: savingsPct, target: '≥ 20%', ok: savingsPct >= 20, color: bucketColor('saved') },
+            ];
+            return rows.map(r => (
+              <div key={r.label} className="p-3.5 rounded-[10px] bg-surface2 border border-border/60 space-y-2">
+                <div className="flex items-baseline justify-between">
+                  <span className="text-xs font-semibold text-foreground">{r.label}</span>
+                  <span className="text-label text-muted-foreground">Target {r.target}</span>
+                </div>
+                <div className="flex items-baseline justify-between">
+                  <span className="text-lg font-bold tabular-nums num text-foreground">
+                    {inc > 0 ? `${r.pct.toFixed(1)}%` : '—'}
+                  </span>
+                  <span className={`text-xs font-medium ${r.ok ? 'text-bucket-saved' : 'text-warning'}`}>
+                    {inc > 0 ? (r.ok ? 'On target' : 'Off target') : 'No income'}
+                  </span>
+                </div>
+                <div className="h-1.5 w-full rounded-full bg-border overflow-hidden">
+                  <div
+                    className="h-full rounded-full transition-all"
+                    style={{
+                      width: `${Math.max(0, Math.min(100, r.pct))}%`,
+                      backgroundColor: r.color,
+                    }}
+                  />
+                </div>
+              </div>
+            ));
+          })()}
         </div>
       </div>
     </div>

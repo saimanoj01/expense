@@ -220,7 +220,7 @@ export function TransactionList({
                     e.target.value = '';
                   }
                 }}
-                className="px-2.5 py-1 bg-surface2 border border-border text-foreground hover:bg-secondary rounded-[8px] text-label font-medium transition-colors cursor-pointer outline-none"
+                className="px-2.5 py-1 bg-surface2 border border-border text-foreground hover:bg-secondary rounded-[8px] text-label font-medium transition-colors cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
               >
                 <option value="" disabled>
                   Set Category ({selectedTxnIds.size})...
@@ -256,7 +256,7 @@ export function TransactionList({
                     e.target.value = '';
                   }
                 }}
-                className="px-2.5 py-1 bg-surface2 border border-border text-foreground hover:bg-secondary rounded-[8px] text-label font-medium transition-colors cursor-pointer outline-none"
+                className="px-2.5 py-1 bg-surface2 border border-border text-foreground hover:bg-secondary rounded-[8px] text-label font-medium transition-colors cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
               >
                 <option value="" disabled>
                   Set Bucket ({selectedTxnIds.size})...
@@ -301,7 +301,7 @@ export function TransactionList({
                     e.target.value = '';
                   }
                 }}
-                className="px-2.5 py-1 bg-surface2 border border-border text-foreground hover:bg-secondary rounded-[8px] text-label font-medium transition-colors cursor-pointer outline-none"
+                className="px-2.5 py-1 bg-surface2 border border-border text-foreground hover:bg-secondary rounded-[8px] text-label font-medium transition-colors cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
               >
                 <option value="" disabled>
                   Remove Tag ({selectedTxnIds.size})...

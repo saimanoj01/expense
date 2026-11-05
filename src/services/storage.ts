@@ -264,17 +264,6 @@ export class LocalStorageAdapter implements StorageAdapter {
     this.ensureInitialized();
   }
 
-  private clearAllExpenseKeys(): void {
-    const keysToRemove: string[] = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key && key.startsWith('expense_') && key !== 'expense_mock_session' && key !== 'expense_google_token') {
-        keysToRemove.push(key);
-      }
-    }
-    keysToRemove.forEach(key => localStorage.removeItem(key));
-  }
-
   private ensureInitialized(): void {
     try {
       const projectsRaw = localStorage.getItem('expense_projects');
@@ -285,7 +274,9 @@ export class LocalStorageAdapter implements StorageAdapter {
       try {
         const parsed = JSON.parse(projectsRaw);
         if (!Array.isArray(parsed)) {
+          localStorage.setItem(`expense_corrupt_backup_${Date.now()}`, projectsRaw);
           localStorage.setItem('expense_projects', '[]');
+          localStorage.setItem('expense_corrupt_recovered', 'true');
         } else {
           parsed.forEach((proj: Project) => {
             if (!proj || !proj.id) return;
@@ -295,19 +286,13 @@ export class LocalStorageAdapter implements StorageAdapter {
           });
         }
       } catch (parseError) {
-        console.error('Local storage data corrupted, resetting:', parseError);
-        this.clearAllExpenseKeys();
+        console.error('Local storage data corrupted, backing up without wiping data keys:', parseError);
+        localStorage.setItem(`expense_corrupt_backup_${Date.now()}`, projectsRaw);
         localStorage.setItem('expense_projects', '[]');
         localStorage.setItem('expense_corrupt_recovered', 'true');
       }
     } catch (error) {
       console.error('Failed to initialize local storage:', error);
-      try {
-        this.clearAllExpenseKeys();
-      } catch (_e) {
-        // Ignore error during key clear
-      }
-      this.seedMockDatabase();
     }
   }
 
@@ -685,17 +670,29 @@ export class LocalStorageAdapter implements StorageAdapter {
 
   async saveCategory(projectId: string, category: Category): Promise<Category> {
     const categories = await this.getCategories(projectId);
+    if (!category.id) {
+      category.id = category.name.toLowerCase().replace(/[^a-z0-9]/g, '-');
+    }
     const existingIndex = categories.findIndex(c => c.id === category.id);
     if (existingIndex > -1) {
       categories[existingIndex] = category;
     } else {
-      if (!category.id) {
-        category.id = category.name.toLowerCase().replace(/[^a-z0-9]/g, '-');
-      }
       categories.push(category);
     }
     try {
       localStorage.setItem(`expense_categories_${projectId}`, JSON.stringify(categories));
+      const deletedRaw = localStorage.getItem(`expense_deleted_categories_${projectId}`);
+      if (deletedRaw) {
+        try {
+          const parsedDeleted = JSON.parse(deletedRaw);
+          if (Array.isArray(parsedDeleted) && parsedDeleted.includes(category.id)) {
+            const nextDeleted = parsedDeleted.filter((id: string) => id !== category.id);
+            localStorage.setItem(`expense_deleted_categories_${projectId}`, JSON.stringify(nextDeleted));
+          }
+        } catch {
+          // Ignore malformed deleted categories list
+        }
+      }
     } catch (e) {
       throw new Error('Local storage quota exceeded. Unable to save category.');
     }
@@ -730,10 +727,19 @@ export class GoogleSheetsAdapter implements StorageAdapter {
     locks: MonthlyLock[];
     notes: Record<string, BudgetNote>;
   }> = {};
+  private writeQueues: Record<string, Promise<unknown>> = {};
+  private sheetRowCounts: Record<string, number> = {};
 
   constructor(getToken: () => string | null, onAuthError?: (status: number) => void) {
     this.getToken = getToken;
     this.onAuthError = onAuthError;
+  }
+
+  private enqueueWrite<T>(projectId: string, task: () => Promise<T>): Promise<T> {
+    const prev = this.writeQueues[projectId] ?? Promise.resolve();
+    const next = prev.catch(() => {}).then(task);
+    this.writeQueues[projectId] = next;
+    return next;
   }
 
   private async fetchApi(url: string, options: RequestInit = {}) {
@@ -906,6 +912,12 @@ export class GoogleSheetsAdapter implements StorageAdapter {
     const lockRows = valueRanges[3]?.values || [];
     const noteRows = valueRanges[4]?.values || [];
 
+    this.sheetRowCounts[`${projectId}:Transactions!A:K`] = txRows.length;
+    this.sheetRowCounts[`${projectId}:Categories!A:E`] = catRows.length;
+    this.sheetRowCounts[`${projectId}:Budgets!A:B`] = bgRows.length;
+    this.sheetRowCounts[`${projectId}:Locks!A:C`] = lockRows.length;
+    this.sheetRowCounts[`${projectId}:Notes!A:B`] = noteRows.length;
+
     const transactions: Transaction[] = txRows.slice(1).map((r: (string | number | boolean)[]) => {
       const rawL = parseJSON(String(r[8] || '[]'));
       let labels: string[] = [];
@@ -979,21 +991,27 @@ export class GoogleSheetsAdapter implements StorageAdapter {
     const sheetName = range.split('!')[0];
     const colPart = range.split('!')[1] || 'A:Z';
     const [startCol, endCol] = colPart.split(':');
+    const rangeKey = `${projectId}:${sheetName}!${startCol}:${endCol || startCol}`;
+    const prevCount = this.sheetRowCounts[rangeKey] ?? 0;
 
     // 1. Write data using PUT with valueInputOption=RAW
-    const putRange = `${sheetName}!${startCol}1:${endCol || startCol}${values.length}`;
-    await this.fetchApi(`https://sheets.googleapis.com/v4/spreadsheets/${project.spreadsheetId}/values/${putRange}?valueInputOption=RAW`, {
-      method: 'PUT',
-      body: JSON.stringify({ values })
-    });
-
-    // 2. Clear any trailing rows
-    const clearRange = `${sheetName}!${startCol}${values.length + 1}:${endCol || startCol}`;
-    try {
-      await this.fetchApi(`https://sheets.googleapis.com/v4/spreadsheets/${project.spreadsheetId}/values/${clearRange}:clear`, { method: 'POST' });
-    } catch {
-      // Harmless if sheet has no trailing rows
+    if (values.length > 0) {
+      const putRange = `${sheetName}!${startCol}1:${endCol || startCol}${values.length}`;
+      await this.fetchApi(`https://sheets.googleapis.com/v4/spreadsheets/${project.spreadsheetId}/values/${putRange}?valueInputOption=RAW`, {
+        method: 'PUT',
+        body: JSON.stringify({ values })
+      });
     }
+
+    // 2. Clear any trailing rows when row count decreased, surfacing any HTTP failure
+    if (prevCount > values.length) {
+      const clearRange = `${sheetName}!${startCol}${values.length + 1}:${endCol || startCol}${prevCount}`;
+      await this.fetchApi(`https://sheets.googleapis.com/v4/spreadsheets/${project.spreadsheetId}/values/${encodeURIComponent(clearRange)}:clear`, {
+        method: 'POST'
+      });
+    }
+
+    this.sheetRowCounts[rangeKey] = values.length;
   }
 
   private async saveTransactionsToSheet(projectId: string, txs: Transaction[]) {
@@ -1026,119 +1044,130 @@ export class GoogleSheetsAdapter implements StorageAdapter {
   }
 
   async saveTransaction(projectId: string, transaction: Transaction): Promise<Transaction> {
-    await this.ensureCache(projectId);
-    const locks = await this.getLocks(projectId);
+    return this.enqueueWrite(projectId, async () => {
+      await this.ensureCache(projectId);
+      const locks = await this.getLocks(projectId);
 
-    // Enforce lock check on target month
-    const txnMonth = transaction.date.substring(0, 7);
-    const isTargetLocked = locks.some(lock => lock.month === txnMonth && lock.locked);
-    if (isTargetLocked) {
-      throw new Error(`Cannot write to locked month ${txnMonth}`);
-    }
-
-    if (!transaction.id) {
-      transaction.id = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 9);
-    }
-
-    const txs = this.cache[projectId].transactions;
-    const idx = txs.findIndex(t => t.id === transaction.id);
-    if (idx > -1) {
-      const originalTx = txs[idx];
-      const originalMonth = originalTx.date.substring(0, 7);
-      const isOriginalLocked = locks.some(lock => lock.month === originalMonth && lock.locked);
-      if (isOriginalLocked) {
-        throw new Error(`Cannot modify transaction. The original month ${originalMonth} is locked.`);
-      }
-      txs[idx] = transaction;
-    } else {
-      txs.push(transaction);
-    }
-    await this.saveTransactionsToSheet(projectId, txs);
-    return transaction;
-  }
-
-  async saveTransactions(projectId: string, newTransactions: Transaction[]): Promise<Transaction[]> {
-    await this.ensureCache(projectId);
-    const locks = await this.getLocks(projectId);
-    const txs = [...this.cache[projectId].transactions];
-
-    // Validate ALL transactions against locks before mutating cache (C12)
-    for (const transaction of newTransactions) {
+      // Enforce lock check on target month
       const txnMonth = transaction.date.substring(0, 7);
       const isTargetLocked = locks.some(lock => lock.month === txnMonth && lock.locked);
       if (isTargetLocked) {
         throw new Error(`Cannot write to locked month ${txnMonth}`);
       }
 
-      if (transaction.id) {
-        const originalTx = txs.find(t => t.id === transaction.id);
-        if (originalTx) {
-          const originalMonth = originalTx.date.substring(0, 7);
-          const isOriginalLocked = locks.some(lock => lock.month === originalMonth && lock.locked);
-          if (isOriginalLocked) {
-            throw new Error(`Cannot modify transaction. The original month ${originalMonth} is locked.`);
-          }
-        }
-      }
-    }
-
-    // Now safely apply mutations
-    const updatedTxs = [...txs];
-    for (const transaction of newTransactions) {
       if (!transaction.id) {
         transaction.id = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 9);
       }
 
-      const idx = updatedTxs.findIndex(t => t.id === transaction.id);
+      const nextTxs = [...this.cache[projectId].transactions];
+      const idx = nextTxs.findIndex(t => t.id === transaction.id);
       if (idx > -1) {
-        updatedTxs[idx] = transaction;
+        const originalTx = nextTxs[idx];
+        const originalMonth = originalTx.date.substring(0, 7);
+        const isOriginalLocked = locks.some(lock => lock.month === originalMonth && lock.locked);
+        if (isOriginalLocked) {
+          throw new Error(`Cannot modify transaction. The original month ${originalMonth} is locked.`);
+        }
+        nextTxs[idx] = transaction;
       } else {
-        updatedTxs.push(transaction);
+        nextTxs.push(transaction);
       }
-    }
+      await this.saveTransactionsToSheet(projectId, nextTxs);
+      this.cache[projectId].transactions = nextTxs;
+      return transaction;
+    });
+  }
 
-    await this.saveTransactionsToSheet(projectId, updatedTxs);
-    this.cache[projectId].transactions = updatedTxs;
-    return newTransactions;
+  async saveTransactions(projectId: string, newTransactions: Transaction[]): Promise<Transaction[]> {
+    return this.enqueueWrite(projectId, async () => {
+      await this.ensureCache(projectId);
+      const locks = await this.getLocks(projectId);
+      const txs = [...this.cache[projectId].transactions];
+
+      // Validate ALL transactions against locks before mutating cache (C12)
+      for (const transaction of newTransactions) {
+        const txnMonth = transaction.date.substring(0, 7);
+        const isTargetLocked = locks.some(lock => lock.month === txnMonth && lock.locked);
+        if (isTargetLocked) {
+          throw new Error(`Cannot write to locked month ${txnMonth}`);
+        }
+
+        if (transaction.id) {
+          const originalTx = txs.find(t => t.id === transaction.id);
+          if (originalTx) {
+            const originalMonth = originalTx.date.substring(0, 7);
+            const isOriginalLocked = locks.some(lock => lock.month === originalMonth && lock.locked);
+            if (isOriginalLocked) {
+              throw new Error(`Cannot modify transaction. The original month ${originalMonth} is locked.`);
+            }
+          }
+        }
+      }
+
+      // Now safely apply mutations
+      const updatedTxs = [...txs];
+      for (const transaction of newTransactions) {
+        if (!transaction.id) {
+          transaction.id = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 9);
+        }
+
+        const idx = updatedTxs.findIndex(t => t.id === transaction.id);
+        if (idx > -1) {
+          updatedTxs[idx] = transaction;
+        } else {
+          updatedTxs.push(transaction);
+        }
+      }
+
+      await this.saveTransactionsToSheet(projectId, updatedTxs);
+      this.cache[projectId].transactions = updatedTxs;
+      return newTransactions;
+    });
   }
 
   async deleteTransaction(projectId: string, transactionId: string): Promise<void> {
-    await this.ensureCache(projectId);
-    const txs = this.cache[projectId].transactions;
-    const txIndex = txs.findIndex(t => t.id === transactionId);
-    if (txIndex === -1) return;
+    return this.enqueueWrite(projectId, async () => {
+      await this.ensureCache(projectId);
+      const txs = this.cache[projectId].transactions;
+      const txIndex = txs.findIndex(t => t.id === transactionId);
+      if (txIndex === -1) return;
 
-    // Enforce lock check
-    const locks = await this.getLocks(projectId);
-    const txMonth = txs[txIndex].date.substring(0, 7);
-    const isLocked = locks.some(lock => lock.month === txMonth && lock.locked);
-    if (isLocked) {
-      throw new Error(`Cannot delete transaction. The month ${txMonth} is locked.`);
-    }
+      // Enforce lock check
+      const locks = await this.getLocks(projectId);
+      const txMonth = txs[txIndex].date.substring(0, 7);
+      const isLocked = locks.some(lock => lock.month === txMonth && lock.locked);
+      if (isLocked) {
+        throw new Error(`Cannot delete transaction. The month ${txMonth} is locked.`);
+      }
 
-    this.cache[projectId].transactions = txs.filter(t => t.id !== transactionId);
-    await this.saveTransactionsToSheet(projectId, this.cache[projectId].transactions);
+      const nextTxs = txs.filter(t => t.id !== transactionId);
+      await this.saveTransactionsToSheet(projectId, nextTxs);
+      this.cache[projectId].transactions = nextTxs;
+    });
   }
 
   async deleteTransactions(projectId: string, transactionIds: string[]): Promise<void> {
     if (transactionIds.length === 0) return;
-    await this.ensureCache(projectId);
-    const txs = this.cache[projectId].transactions;
-    const idSet = new Set(transactionIds);
-    const locks = await this.getLocks(projectId);
+    return this.enqueueWrite(projectId, async () => {
+      await this.ensureCache(projectId);
+      const txs = this.cache[projectId].transactions;
+      const idSet = new Set(transactionIds);
+      const locks = await this.getLocks(projectId);
 
-    for (const t of txs) {
-      if (idSet.has(t.id)) {
-        const txMonth = t.date.substring(0, 7);
-        const isLocked = locks.some(lock => lock.month === txMonth && lock.locked);
-        if (isLocked) {
-          throw new Error(`Cannot delete transaction. The month ${txMonth} is locked.`);
+      for (const t of txs) {
+        if (idSet.has(t.id)) {
+          const txMonth = t.date.substring(0, 7);
+          const isLocked = locks.some(lock => lock.month === txMonth && lock.locked);
+          if (isLocked) {
+            throw new Error(`Cannot delete transaction. The month ${txMonth} is locked.`);
+          }
         }
       }
-    }
 
-    this.cache[projectId].transactions = txs.filter(t => !idSet.has(t.id));
-    await this.saveTransactionsToSheet(projectId, this.cache[projectId].transactions);
+      const nextTxs = txs.filter(t => !idSet.has(t.id));
+      await this.saveTransactionsToSheet(projectId, nextTxs);
+      this.cache[projectId].transactions = nextTxs;
+    });
   }
 
   async getCategories(projectId: string): Promise<Category[]> {
@@ -1147,39 +1176,81 @@ export class GoogleSheetsAdapter implements StorageAdapter {
   }
 
   async saveCategory(projectId: string, category: Category): Promise<Category> {
-    await this.ensureCache(projectId);
-    const cats = this.cache[projectId].categories;
-    const idx = cats.findIndex(c => c.id === category.id);
-    if (idx > -1) cats[idx] = category;
-    else cats.push(category);
-    await this.saveCategoriesToSheet(projectId, cats);
-    return category;
+    return this.enqueueWrite(projectId, async () => {
+      await this.ensureCache(projectId);
+      if (!category.id) {
+        category.id = category.name.toLowerCase().replace(/[^a-z0-9]/g, '-');
+      }
+      const nextCats = [...this.cache[projectId].categories];
+      const idx = nextCats.findIndex(c => c.id === category.id);
+      if (idx > -1) nextCats[idx] = category;
+      else nextCats.push(category);
+
+      let nextNotes: Record<string, BudgetNote> | null = null;
+      const deletedNote = this.cache[projectId].notes?.['__meta_deleted_categories__'];
+      if (deletedNote?.text) {
+        try {
+          const parsed = JSON.parse(deletedNote.text);
+          if (Array.isArray(parsed) && parsed.includes(category.id)) {
+            const filtered = parsed.filter((id: string) => id !== category.id);
+            nextNotes = {
+              ...this.cache[projectId].notes,
+              __meta_deleted_categories__: {
+                text: JSON.stringify(filtered),
+                updatedAt: new Date().toISOString()
+              }
+            };
+          }
+        } catch {
+          // Ignore malformed deleted categories metadata
+        }
+      }
+
+      await this.saveCategoriesToSheet(projectId, nextCats);
+      if (nextNotes) {
+        await this.saveNotesToSheet(projectId, nextNotes);
+        this.cache[projectId].notes = nextNotes;
+      }
+      this.cache[projectId].categories = nextCats;
+      return category;
+    });
   }
 
   async deleteCategory(projectId: string, categoryId: string): Promise<void> {
-    await this.ensureCache(projectId);
-    this.cache[projectId].categories = this.cache[projectId].categories.filter(c => c.id !== categoryId);
-    await this.saveCategoriesToSheet(projectId, this.cache[projectId].categories);
+    return this.enqueueWrite(projectId, async () => {
+      await this.ensureCache(projectId);
+      const nextCats = this.cache[projectId].categories.filter(c => c.id !== categoryId);
+      await this.saveCategoriesToSheet(projectId, nextCats);
 
-    // If deleting a default category, persist exclusion to Notes!A:B (__meta_deleted_categories__)
-    const isDefault = DEFAULT_CATEGORIES.some(c => c.id === categoryId);
-    if (isDefault) {
-      let deletedSet = new Set<string>();
-      if (this.cache[projectId].notes['__meta_deleted_categories__']?.text) {
-        try {
-          const parsed = JSON.parse(this.cache[projectId].notes['__meta_deleted_categories__'].text);
-          if (Array.isArray(parsed)) deletedSet = new Set(parsed);
-        } catch {
-        // Fallback if metadata notes cannot be parsed
+      // If deleting a default category, persist exclusion to Notes!A:B (__meta_deleted_categories__)
+      const isDefault = DEFAULT_CATEGORIES.some(c => c.id === categoryId);
+      let nextNotes: Record<string, BudgetNote> | null = null;
+      if (isDefault) {
+        let deletedSet = new Set<string>();
+        if (this.cache[projectId].notes['__meta_deleted_categories__']?.text) {
+          try {
+            const parsed = JSON.parse(this.cache[projectId].notes['__meta_deleted_categories__'].text);
+            if (Array.isArray(parsed)) deletedSet = new Set(parsed);
+          } catch {
+            // Fallback if metadata notes cannot be parsed
+          }
+        }
+        deletedSet.add(categoryId);
+        nextNotes = {
+          ...this.cache[projectId].notes,
+          __meta_deleted_categories__: {
+            text: JSON.stringify(Array.from(deletedSet)),
+            updatedAt: new Date().toISOString()
+          }
+        };
+        await this.saveNotesToSheet(projectId, nextNotes);
       }
+
+      this.cache[projectId].categories = nextCats;
+      if (nextNotes) {
+        this.cache[projectId].notes = nextNotes;
       }
-      deletedSet.add(categoryId);
-      this.cache[projectId].notes['__meta_deleted_categories__'] = {
-        text: JSON.stringify(Array.from(deletedSet)),
-        updatedAt: new Date().toISOString()
-      };
-      await this.saveNotesToSheet(projectId, this.cache[projectId].notes);
-    }
+    });
   }
 
   async getBudgets(projectId: string): Promise<Budget[]> {
@@ -1188,9 +1259,12 @@ export class GoogleSheetsAdapter implements StorageAdapter {
   }
 
   async saveBudgets(projectId: string, budgets: Budget[]): Promise<void> {
-    await this.ensureCache(projectId);
-    this.cache[projectId].budgets = budgets;
-    await this.saveBudgetsToSheet(projectId, budgets);
+    return this.enqueueWrite(projectId, async () => {
+      await this.ensureCache(projectId);
+      const nextBudgets = [...budgets];
+      await this.saveBudgetsToSheet(projectId, nextBudgets);
+      this.cache[projectId].budgets = nextBudgets;
+    });
   }
 
   async getLocks(projectId: string): Promise<MonthlyLock[]> {
@@ -1199,12 +1273,15 @@ export class GoogleSheetsAdapter implements StorageAdapter {
   }
 
   async saveLock(projectId: string, lock: MonthlyLock): Promise<void> {
-    await this.ensureCache(projectId);
-    const locks = this.cache[projectId].locks;
-    const idx = locks.findIndex(l => l.month === lock.month);
-    if (idx > -1) locks[idx] = lock;
-    else locks.push(lock);
-    await this.saveLocksToSheet(projectId, locks);
+    return this.enqueueWrite(projectId, async () => {
+      await this.ensureCache(projectId);
+      const nextLocks = [...this.cache[projectId].locks];
+      const idx = nextLocks.findIndex(l => l.month === lock.month);
+      if (idx > -1) nextLocks[idx] = lock;
+      else nextLocks.push(lock);
+      await this.saveLocksToSheet(projectId, nextLocks);
+      this.cache[projectId].locks = nextLocks;
+    });
   }
 
   private async saveNotesToSheet(projectId: string, notes: Record<string, BudgetNote>) {
@@ -1238,17 +1315,23 @@ export class GoogleSheetsAdapter implements StorageAdapter {
   }
 
   async saveBudgetNote(projectId: string, key: string, note: BudgetNote): Promise<void> {
-    await this.ensureCache(projectId);
-    if (!this.cache[projectId].notes) this.cache[projectId].notes = {};
-    this.cache[projectId].notes[key] = note;
-    await this.saveNotesToSheet(projectId, this.cache[projectId].notes);
+    return this.enqueueWrite(projectId, async () => {
+      await this.ensureCache(projectId);
+      const nextNotes = { ...(this.cache[projectId].notes || {}), [key]: note };
+      await this.saveNotesToSheet(projectId, nextNotes);
+      this.cache[projectId].notes = nextNotes;
+    });
   }
 
   async deleteBudgetNote(projectId: string, key: string): Promise<void> {
-    await this.ensureCache(projectId);
-    if (this.cache[projectId].notes) {
-      delete this.cache[projectId].notes[key];
-      await this.saveNotesToSheet(projectId, this.cache[projectId].notes);
-    }
+    return this.enqueueWrite(projectId, async () => {
+      await this.ensureCache(projectId);
+      if (this.cache[projectId].notes && key in this.cache[projectId].notes) {
+        const nextNotes = { ...this.cache[projectId].notes };
+        delete nextNotes[key];
+        await this.saveNotesToSheet(projectId, nextNotes);
+        this.cache[projectId].notes = nextNotes;
+      }
+    });
   }
 }

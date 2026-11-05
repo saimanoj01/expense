@@ -60,105 +60,109 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
     >
       <BreadcrumbTrail />
 
-      {isOverview && (
-        <div className="relative flex items-center gap-0.5 opacity-0 pointer-events-auto z-20 overflow-hidden h-2">
-          {onOpenCategoryManager && (
-            <button
-              type="button"
-              data-testid="open-add-category-btn"
-              onClick={onOpenCategoryManager}
-              tabIndex={-1}
-              className="w-2 h-2"
-            >
-              Categories
-            </button>
-          )}
-          {onOpenShare && (
-            <button
-              type="button"
-              data-testid="share-project-btn"
-              onClick={onOpenShare}
-              tabIndex={-1}
-              className="w-2 h-2"
-            >
-              Share
-            </button>
-          )}
-          {!isLockedMonth && onCsvFileUpload && (
-            <label
-              data-testid="import-csv-trigger-btn"
-              className="w-2 h-2 cursor-pointer inline-block"
-            >
-              Import CSV
-              <input
-                type="file"
-                accept=".csv"
-                data-testid="csv-file-input"
-                className="hidden"
-                onChange={onCsvFileUpload}
-                onClick={(e: React.MouseEvent<HTMLInputElement>) => {
-                  (e.target as HTMLInputElement).value = '';
-                }}
-              />
-            </label>
-          )}
-          {!isLockedMonth && onOpenAddTxn && (
-            <button
-              type="button"
-              data-testid="open-add-transaction-btn"
-              onClick={onOpenAddTxn}
-              tabIndex={-1}
-              className="w-2 h-2"
-            >
-              Add Record
-            </button>
-          )}
-          {onOpenReport && (
-            <button
-              type="button"
-              data-testid="story-print-report-btn"
-              onClick={onOpenReport}
-              tabIndex={-1}
-              className="w-2 h-2"
-            >
-              Report
-            </button>
-          )}
-          {selectedMonth !== 'all' &&
-            (isLockedMonth ? (
-              <>
-                <span data-testid="lock-status-indicator" className="w-2 h-2">
-                  Locked
-                </span>
-                {onUnlockMonth && (
+      <div className="flex items-center gap-1.5 shrink-0">
+        {isOverview && (
+          <div className="flex items-center gap-1 mr-1">
+            {onOpenCategoryManager && (
+              <button
+                type="button"
+                data-testid="open-add-category-btn"
+                onClick={onOpenCategoryManager}
+                title="Manage Categories"
+                className="px-2 py-1 rounded-[8px] text-label text-muted-foreground hover:text-foreground hover:bg-surface2 transition-colors focus-visible:ring-2 ring-ring/40"
+              >
+                Categories
+              </button>
+            )}
+            {onOpenShare && (
+              <button
+                type="button"
+                data-testid="share-project-btn"
+                onClick={onOpenShare}
+                title="Share Project"
+                className="px-2 py-1 rounded-[8px] text-label text-muted-foreground hover:text-foreground hover:bg-surface2 transition-colors focus-visible:ring-2 ring-ring/40"
+              >
+                Share
+              </button>
+            )}
+            {!isLockedMonth && onCsvFileUpload && (
+              <label
+                data-testid="import-csv-trigger-btn"
+                title="Import CSV"
+                className="px-2 py-1 rounded-[8px] text-label text-muted-foreground hover:text-foreground hover:bg-surface2 transition-colors cursor-pointer inline-flex items-center"
+              >
+                CSV
+                <input
+                  type="file"
+                  accept=".csv"
+                  data-testid="csv-file-input"
+                  className="hidden"
+                  onChange={onCsvFileUpload}
+                  onClick={(e: React.MouseEvent<HTMLInputElement>) => {
+                    (e.target as HTMLInputElement).value = '';
+                  }}
+                />
+              </label>
+            )}
+            {!isLockedMonth && onOpenAddTxn && (
+              <button
+                type="button"
+                data-testid="open-add-transaction-btn"
+                onClick={onOpenAddTxn}
+                title="Add Transaction"
+                className="px-2 py-1 rounded-[8px] text-label text-muted-foreground hover:text-foreground hover:bg-surface2 transition-colors focus-visible:ring-2 ring-ring/40"
+              >
+                + Add
+              </button>
+            )}
+            {onOpenReport && (
+              <button
+                type="button"
+                data-testid="story-print-report-btn"
+                onClick={onOpenReport}
+                title="Monthly Report"
+                className="px-2 py-1 rounded-[8px] text-label text-muted-foreground hover:text-foreground hover:bg-surface2 transition-colors focus-visible:ring-2 ring-ring/40"
+              >
+                Report
+              </button>
+            )}
+            {selectedMonth !== 'all' &&
+              (isLockedMonth ? (
+                <>
+                  <span
+                    data-testid="lock-status-indicator"
+                    className="px-1.5 py-0.5 rounded bg-warning/15 text-warning text-label font-medium"
+                  >
+                    Locked
+                  </span>
+                  {onUnlockMonth && (
+                    <button
+                      type="button"
+                      data-testid="unlock-month-btn"
+                      onClick={onUnlockMonth}
+                      title="Unlock Month"
+                      className="px-2 py-1 rounded-[8px] text-label text-muted-foreground hover:text-foreground hover:bg-surface2 transition-colors focus-visible:ring-2 ring-ring/40"
+                    >
+                      Unlock
+                    </button>
+                  )}
+                </>
+              ) : (
+                onLockMonth && (
                   <button
                     type="button"
-                    data-testid="unlock-month-btn"
-                    onClick={onUnlockMonth}
-                    tabIndex={-1}
-                    className="w-2 h-2"
+                    data-testid="lock-month-btn"
+                    onClick={onLockMonth}
+                    title="Lock Month"
+                    className="px-2 py-1 rounded-[8px] text-label text-muted-foreground hover:text-foreground hover:bg-surface2 transition-colors focus-visible:ring-2 ring-ring/40"
                   >
-                    Unlock
+                    Lock
                   </button>
-                )}
-              </>
-            ) : (
-              onLockMonth && (
-                <button
-                  type="button"
-                  data-testid="lock-month-btn"
-                  onClick={onLockMonth}
-                  tabIndex={-1}
-                  className="w-2 h-2"
-                >
-                  Lock
-                </button>
-              )
-            ))}
-        </div>
-      )}
+                )
+              ))}
+          </div>
+        )}
 
-      <div className="flex items-center gap-1.5 shrink-0">
         <MonthSwitcher
           selectedMonth={selectedMonth}
           availableMonths={availableMonths}

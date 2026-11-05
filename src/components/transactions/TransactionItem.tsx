@@ -83,7 +83,7 @@ export const TransactionItem = forwardRef<HTMLDivElement, TransactionItemProps>(
       ? 'Variable'
       : transaction.type === 'income'
       ? 'Income'
-      : 'Transfer';
+      : '↔️ Transfer';
 
   const { formattedAmount, colorClass } = formatTransactionAmount(transaction.amount, transaction.type);
 
@@ -108,11 +108,7 @@ export const TransactionItem = forwardRef<HTMLDivElement, TransactionItemProps>(
             onClick={e => e.stopPropagation()}
             onChange={() => toggleSelectTxn(transaction.id)}
             aria-label={`Select ${transaction.description}`}
-            className={`w-4 h-4 rounded bg-background border-border text-primary focus:ring-primary cursor-pointer transition-opacity shrink-0 ${
-              isSelected
-                ? 'opacity-100'
-                : 'opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100'
-            }`}
+            className="w-4 h-4 rounded bg-background border-border text-primary focus:ring-primary cursor-pointer shrink-0"
           />
         )}
 
@@ -127,14 +123,18 @@ export const TransactionItem = forwardRef<HTMLDivElement, TransactionItemProps>(
             </h4>
             {isDuplicate && (
               <span className="px-1.5 py-0.5 rounded text-label font-medium bg-negative/10 text-negative border border-negative/25 shrink-0">
-                Possible duplicate<span className="sr-only"> Duplicate</span>
+                Duplicate
               </span>
             )}
           </div>
 
           <div className="flex items-center gap-1.5 text-label text-muted-foreground mt-0.5 flex-wrap">
-            <span data-testid="transaction-date-row" className="sr-only">
+            <span data-testid="transaction-date-row" className="tabular-nums num">
               {transaction.date}
+            </span>
+
+            <span className="text-faint" aria-hidden="true">
+              ·
             </span>
 
             <span
@@ -163,9 +163,6 @@ export const TransactionItem = forwardRef<HTMLDivElement, TransactionItemProps>(
                 />
               )}
               <span>{bucketLabel}</span>
-              {transaction.type === 'transfer' && (
-                <span className="sr-only">↔️ Transfer</span>
-              )}
             </span>
 
             {currentLabels.length > 0 && (
@@ -195,7 +192,7 @@ export const TransactionItem = forwardRef<HTMLDivElement, TransactionItemProps>(
                             e.stopPropagation();
                             handleRemoveTag(transaction.id, lbl);
                           }}
-                          className="opacity-0 group-hover:opacity-100 focus:opacity-100 text-muted-foreground hover:text-negative transition-opacity p-0.5"
+                          className="text-muted-foreground hover:text-negative transition-colors p-0.5"
                         >
                           <X className="w-2.5 h-2.5" />
                         </button>
@@ -206,23 +203,23 @@ export const TransactionItem = forwardRef<HTMLDivElement, TransactionItemProps>(
               </>
             )}
 
-            {/* Compatibility controls for inline category/bucket/tag test selectors */}
+            {/* Visible inline category/bucket/tag controls */}
             {!isLockedMonth && (
               <div
                 onClick={e => e.stopPropagation()}
-                className="inline-flex items-center gap-0.5 opacity-0 w-2 h-2 overflow-hidden pointer-events-auto"
+                className="inline-flex flex-wrap items-center gap-1 ml-1"
               >
                 <select
                   data-testid={`transaction-category-select-${transaction.id}`}
                   value={activeValue}
-                  tabIndex={-1}
+                  aria-label={`Category for ${transaction.description}`}
                   onChange={e => {
                     if (handleCategoryChange) {
                       const [catId, subId] = e.target.value.split('|');
                       handleCategoryChange(transaction, catId, subId || null);
                     }
                   }}
-                  className="w-1 h-1"
+                  className="h-6 px-1.5 rounded bg-surface2 border border-border text-label text-foreground hover:bg-secondary cursor-pointer focus-visible:ring-2 focus-visible:ring-primary/40 outline-none"
                 >
                   {parentCats.map(p => {
                     const subs = allCategories.filter(c => c.parentId === p.id);
@@ -242,16 +239,23 @@ export const TransactionItem = forwardRef<HTMLDivElement, TransactionItemProps>(
                 </select>
 
                 {handleBucketChange && transaction.type === 'expense' && (
-                  <div data-testid={`bucket-switcher-${transaction.id}`} className="inline-flex">
+                  <div
+                    data-testid={`bucket-switcher-${transaction.id}`}
+                    className="inline-flex items-center rounded bg-surface2 border border-border p-0.5 gap-0.5"
+                  >
                     <button
                       type="button"
                       title="Fixed"
                       aria-label="Set Fixed"
-                      tabIndex={-1}
                       onClick={e => {
                         e.stopPropagation();
                         handleBucketChange(transaction, 'fixed');
                       }}
+                      className={`px-1.5 py-0.5 rounded text-[11px] font-medium transition-colors ${
+                        resolvedBucket === 'fixed'
+                          ? 'bg-primary text-primary-foreground'
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`}
                     >
                       Fixed
                     </button>
@@ -259,11 +263,15 @@ export const TransactionItem = forwardRef<HTMLDivElement, TransactionItemProps>(
                       type="button"
                       title="Variable"
                       aria-label="Set Variable"
-                      tabIndex={-1}
                       onClick={e => {
                         e.stopPropagation();
                         handleBucketChange(transaction, 'flexible');
                       }}
+                      className={`px-1.5 py-0.5 rounded text-[11px] font-medium transition-colors ${
+                        resolvedBucket === 'flexible'
+                          ? 'bg-primary text-primary-foreground'
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`}
                     >
                       Variable
                     </button>
@@ -271,11 +279,15 @@ export const TransactionItem = forwardRef<HTMLDivElement, TransactionItemProps>(
                       type="button"
                       title="Non-monthly"
                       aria-label="Set Non-Monthly"
-                      tabIndex={-1}
                       onClick={e => {
                         e.stopPropagation();
                         handleBucketChange(transaction, 'non-monthly');
                       }}
+                      className={`px-1.5 py-0.5 rounded text-[11px] font-medium transition-colors ${
+                        resolvedBucket === 'non-monthly'
+                          ? 'bg-primary text-primary-foreground'
+                          : 'text-muted-foreground hover:text-foreground'
+                      }`}
                     >
                       Non-monthly
                     </button>
@@ -286,11 +298,11 @@ export const TransactionItem = forwardRef<HTMLDivElement, TransactionItemProps>(
                   <button
                     type="button"
                     data-testid={`add-tag-btn-${transaction.id}`}
-                    tabIndex={-1}
                     onClick={e => {
                       e.stopPropagation();
                       setShowTagPopover(prev => !prev);
                     }}
+                    className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-surface2 hover:bg-secondary border border-border text-[11px] font-medium text-muted-foreground hover:text-foreground transition-colors"
                   >
                     <Plus className="w-2.5 h-2.5" /> Tag
                   </button>
@@ -320,7 +332,7 @@ export const TransactionItem = forwardRef<HTMLDivElement, TransactionItemProps>(
         {!isLockedMonth && (
           <div
             onClick={e => e.stopPropagation()}
-            className="flex items-center gap-0.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100 transition-opacity"
+            className="flex items-center gap-0.5"
           >
             <button
               type="button"

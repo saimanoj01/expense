@@ -24,12 +24,23 @@ export function delta(
   prevMonthShort: string = 'last month'
 ): DeltaResult {
   if (prev == null) return { text: 'No prior month', tone: 'neutral' };
+  const shortLabel = formatShortMonth(prevMonthShort);
+  if (kind === 'rate') {
+    if (prev === 0 && curr === 0) return { text: '—', tone: 'neutral' };
+    const diffPts = curr - prev;
+    if (Math.abs(diffPts) < 0.5) return { text: `≈ same as ${shortLabel}`, tone: 'neutral', pct: diffPts };
+    const big = Math.abs(diffPts) >= 2;
+    return {
+      text: `${diffPts > 0 ? '↑' : '↓'} ${Math.abs(diffPts).toFixed(1)} pts vs ${shortLabel}`,
+      tone: !big ? 'neutral' : diffPts > 0 ? 'positive' : 'negative',
+      pct: diffPts,
+    };
+  }
   if (prev === 0) return { text: curr === 0 ? '—' : 'New', tone: 'neutral' };
   const pct = ((curr - prev) / Math.abs(prev)) * 100;
-  if (Math.abs(pct) < 3) return { text: '≈ same as last month', tone: 'neutral', pct };
+  if (Math.abs(pct) < 3) return { text: `≈ same as ${shortLabel}`, tone: 'neutral', pct };
   const good = kind === 'expense' ? pct < 0 : pct > 0;
   const big = Math.abs(pct) >= 10;
-  const shortLabel = formatShortMonth(prevMonthShort);
   return {
     text: `${pct > 0 ? '↑' : '↓'} ${Math.abs(pct).toFixed(0)}% vs ${shortLabel}`,
     tone: !big ? 'neutral' : good ? 'positive' : 'negative',

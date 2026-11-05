@@ -228,8 +228,11 @@ test.describe('Tier 12: v3 Progressive Disclosure Drill-Down Experience', () => 
     await expect(page.getByTestId('kpi-flexible-spent')).toBeVisible();
     await expect(page.getByTestId('kpi-non-monthly')).toBeVisible();
 
-    // Story Narrative Card
+    // Story Narrative Card & Trends Breakdown Link
     await expect(page.getByTestId('story-narrative')).toBeVisible();
+    const trendsLink = page.getByTestId('view-trends-breakdown-link');
+    await expect(trendsLink).toBeVisible();
+    await trendsLink.click();
     await expect(page.getByTestId('guideline-meter-50-30-20')).toBeVisible();
   });
 
@@ -472,6 +475,45 @@ test.describe('Tier 12: v3 Progressive Disclosure Drill-Down Experience', () => 
     const heroCard = page.getByTestId('hero-savings-card');
     await expect(heroCard).toContainText('You overspent by');
     await expect(page.getByTestId('income-allocation-ring')).toBeVisible();
+  });
+
+  test('18. Zero-Shim Guard: no [data-testid] element or ancestor uses sr-only or opacity-0 across core routes', async ({ page }) => {
+    const routes = [
+      '/#/month/2026-11',
+      '/#/month/2026-11/bucket/fixed',
+      '/#/month/2026-11/category/housing',
+      '/#/transactions',
+      '/#/budgets',
+      '/#/trends',
+    ];
+
+    for (const route of routes) {
+      await page.goto(route);
+      await page.locator('main [data-testid]').first().waitFor({ state: 'visible' });
+      const shimViolations = await page.evaluate(() => {
+        const nodes = Array.from(document.querySelectorAll('[data-testid]'));
+        const violations: string[] = [];
+        for (const el of nodes) {
+          const testId = el.getAttribute('data-testid') || '';
+          let curr: HTMLElement | null = el as HTMLElement;
+          while (curr && curr !== document.body) {
+            const cls = typeof curr.className === 'string' ? curr.className : '';
+            const tokens = cls.split(/\s+/);
+            if (tokens.includes('sr-only') || tokens.includes('opacity-0')) {
+              violations.push(`${testId} (via ${curr.tagName.toLowerCase()}.${tokens.filter(t => t === 'sr-only' || t === 'opacity-0').join('.')})`);
+              break;
+            }
+            curr = curr.parentElement;
+          }
+          const hiddenChild = el.querySelector('.sr-only, .opacity-0');
+          if (hiddenChild) {
+            violations.push(`${testId} (contains descendant .sr-only/.opacity-0)`);
+          }
+        }
+        return violations;
+      });
+      expect(shimViolations, `Shim violations on ${route}`).toEqual([]);
+    }
   });
 });
 

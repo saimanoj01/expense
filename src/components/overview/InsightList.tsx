@@ -95,9 +95,12 @@ export const InsightList: React.FC<InsightListProps> = ({
 
   return (
     <div data-testid="story-narrative" className={`space-y-1.5 ${className}`}>
-      <span className="sr-only">{srNarrative}</span>
-
-      <h3 className="text-heading text-foreground">What changed</h3>
+      <div className="flex items-baseline justify-between gap-3">
+        <h3 className="text-heading text-foreground shrink-0">What changed</h3>
+        <p className="text-label text-muted-foreground truncate" title={srNarrative}>
+          {srNarrative}
+        </p>
+      </div>
 
       {insights.length === 0 ? (
         <p className="text-body text-muted-foreground py-2">

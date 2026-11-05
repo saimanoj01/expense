@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef, lazy, Suspense } from 'react';
-import { AnimatePresence, LayoutGroup, motion, MotionConfig } from 'framer-motion';
+import { AnimatePresence, LayoutGroup, motion, MotionConfig, useReducedMotion } from 'framer-motion';
 import { Loader2 } from 'lucide-react';
 import { dur, ease } from './theme/motion';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { AppProvider, useApp } from './context/AppContext';
 import { useNavigation } from './hooks/useNavigation';
+import { getCurrentLocalMonth } from './utils/navigation';
+import { bucketSource, suggestSpendingBucket } from './utils/categorizer';
 import { Transaction, SpendingBucket, Category, Project, MonthlyLock } from './services/storage';
 import { NavigationProvider } from './context/NavigationContext';
 import { PageHeader } from './components/layout/PageHeader';
@@ -95,6 +97,7 @@ function MainRouter({
   onLoadSampleData
 }: MainRouterProps) {
   const { currentRoute, direction } = useNavigation();
+  const reducedMotion = useReducedMotion();
   const routeKey = `${currentRoute.view}:${currentRoute.bucketId ?? ''}:${currentRoute.categoryId ?? ''}`;
   const headerNode = (
     <PageHeader
@@ -278,8 +281,29 @@ function MainRouter({
     screen = (
       <>
         {txnHooks.unclassifiedCount > 0 && (
-          <div data-testid="backfill-banner" className="sr-only">
-            <button data-testid="backfill-btn">Classify</button>
+          <div
+            data-testid="backfill-banner"
+            className="max-w-[1120px] mx-auto mb-3 px-3.5 py-2 rounded-[10px] bg-surface2 border border-border flex items-center justify-between gap-3 text-label text-foreground"
+          >
+            <span>
+              {txnHooks.unclassifiedCount} transaction{txnHooks.unclassifiedCount === 1 ? '' : 's'} need bucket classification
+            </span>
+            <button
+              type="button"
+              data-testid="backfill-btn"
+              onClick={() => {
+                const map: Record<string, SpendingBucket> = {};
+                txnHooks.monthTransactions.forEach(t => {
+                  if (t.type === 'expense' && bucketSource(t, budgetHooks.categories) === 'fallback') {
+                    map[t.id] = suggestSpendingBucket(t.description, t.category);
+                  }
+                });
+                txnHooks.backfillSpendingBuckets(map);
+              }}
+              className="px-2.5 py-1 rounded-[8px] bg-primary text-primary-foreground font-medium hover:opacity-90 transition-opacity"
+            >
+              Classify
+            </button>
           </div>
         )}
 
@@ -321,9 +345,9 @@ function MainRouter({
           key={routeKey}
           custom={direction}
           variants={{
-            enter: (d: number) => ({ opacity: 0, x: d > 0 ? 32 : d < 0 ? -32 : 0 }),
-            center: { opacity: 1, x: 0, pointerEvents: 'auto', transition: { duration: dur.page, ease } },
-            exit: (d: number) => ({ opacity: 0, x: d > 0 ? -16 : d < 0 ? 16 : 0, pointerEvents: 'none', transition: { duration: dur.small } }),
+            enter: (d: number) => ({ opacity: 0, x: reducedMotion ? 0 : d > 0 ? 32 : d < 0 ? -32 : 0 }),
+            center: { opacity: 1, x: 0, pointerEvents: 'auto', transition: reducedMotion ? { duration: 0 } : { duration: dur.page, ease } },
+            exit: (d: number) => ({ opacity: 0, x: reducedMotion ? 0 : d > 0 ? -16 : d < 0 ? 16 : 0, pointerEvents: 'none', transition: reducedMotion ? { duration: 0 } : { duration: dur.small } }),
           }}
           initial="enter"
           animate="center"
@@ -484,7 +508,7 @@ function AppInner() {
   const handleOpenAddTxn = () => {
     setEditingTxnId(null);
     setEditingTxnData({
-      date: `${txnHooks.selectedMonth === 'all' ? new Date().toISOString().substring(0,7) : txnHooks.selectedMonth}-15`
+      date: `${txnHooks.selectedMonth === 'all' ? getCurrentLocalMonth() : txnHooks.selectedMonth}-15`
     });
     setShowTxnModal(true);
   };

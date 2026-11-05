@@ -50,25 +50,7 @@ export function WaterfallChart({ data }: WaterfallChartProps) {
   ];
 
   return (
-    <div className="w-full relative select-none" data-testid="cash-flow-waterfall">
-      {/* Screen-reader accessible data table for compliance */}
-      <table className="sr-only" aria-label="Cash Flow Waterfall Table">
-        <thead>
-          <tr>
-            <th scope="col">Step</th>
-            <th scope="col">Amount</th>
-          </tr>
-        </thead>
-        <tbody>
-          {data.map(item => (
-            <tr key={item.name}>
-              <td>{item.name}</td>
-              <td>{formatCurrency(item.displayValue)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-
+    <div className="w-full relative select-none space-y-4" data-testid="cash-flow-waterfall">
       {/* SVG Visualization (Zero-recharts, pure SVG for high-perf and instant paint) */}
       <div className="w-full h-[220px]">
         <svg
@@ -186,6 +168,26 @@ export function WaterfallChart({ data }: WaterfallChartProps) {
             );
           })}
         </svg>
+      </div>
+
+      {/* Visible data table for allocation steps */}
+      <div className="border-t border-border/60 pt-3">
+        <table className="w-full text-xs text-left" aria-label="Cash Flow Waterfall Table">
+          <thead>
+            <tr className="text-muted-foreground border-b border-border/40">
+              <th scope="col" className="pb-1.5 font-medium">Step</th>
+              <th scope="col" className="pb-1.5 font-medium text-right">Amount</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border/30">
+            {data.map(item => (
+              <tr key={item.name}>
+                <td className="py-1.5 text-foreground font-medium">{item.name}</td>
+                <td className="py-1.5 text-right tabular-nums num text-foreground">{formatCurrency(item.displayValue)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
 
       {/* Floating Hover Tooltip */}

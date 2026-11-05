@@ -36,6 +36,18 @@ export function getBucketLabel(bucketId?: string): string {
   }
 }
 
+const VALID_MONTH_RE = /^(?:\d{4}-(0[1-9]|1[0-2])|all)$/;
+const VALID_BUCKETS = new Set([
+  'fixed',
+  'flexible',
+  'variable',
+  'non-monthly',
+  'nonmonthly',
+  'irregular',
+  'income',
+  'inflow',
+]);
+
 export function parseHash(hashString: string, fallbackMonth: string = getCurrentLocalMonth()): AppRoute {
   let hash = hashString;
   if (hash.startsWith('#')) hash = hash.slice(1);
@@ -56,6 +68,7 @@ export function parseHash(hashString: string, fallbackMonth: string = getCurrent
   }
   const queryParams = new URLSearchParams(queryString);
   const queryMonth = queryParams.get('month');
+  const validQueryMonth = queryMonth && VALID_MONTH_RE.test(queryMonth) ? queryMonth : fallbackMonth;
   const queryProject = queryParams.get('project');
 
   // Strip trailing slashes
@@ -66,19 +79,19 @@ export function parseHash(hashString: string, fallbackMonth: string = getCurrent
     return { view: 'projects', level: 1 };
   }
   if (path === 'budgets') {
-    return { view: 'budgets', level: 1, month: queryMonth || fallbackMonth };
+    return { view: 'budgets', level: 1, month: validQueryMonth };
   }
   if (path === 'trends') {
-    return { view: 'trends', level: 1, month: queryMonth || fallbackMonth };
+    return { view: 'trends', level: 1, month: validQueryMonth };
   }
   if (path === 'reports') {
-    return { view: 'reports', level: 1, month: queryMonth || fallbackMonth };
+    return { view: 'reports', level: 1, month: validQueryMonth };
   }
   if (path === 'settings') {
-    return { view: 'settings', level: 1, month: queryMonth || fallbackMonth };
+    return { view: 'settings', level: 1, month: validQueryMonth };
   }
   if (path === 'transactions') {
-    return { view: 'transactions', level: 4, month: queryMonth || fallbackMonth };
+    return { view: 'transactions', level: 4, month: validQueryMonth };
   }
 
   // Dashboard route compatibility: redirect to canonical overview
@@ -86,7 +99,7 @@ export function parseHash(hashString: string, fallbackMonth: string = getCurrent
     return {
       view: 'overview',
       level: 1,
-      month: (queryMonth && /^\d{4}-\d{2}$/.test(queryMonth)) ? queryMonth : fallbackMonth,
+      month: validQueryMonth,
       projectId: queryProject || undefined
     };
   }
@@ -99,9 +112,9 @@ export function parseHash(hashString: string, fallbackMonth: string = getCurrent
   let rest = segments;
 
   if (segments[0] === 'month' && segments.length > 1) {
-    month = segments[1];
+    month = VALID_MONTH_RE.test(segments[1]) ? segments[1] : fallbackMonth;
     rest = segments.slice(2);
-  } else if (/^\d{4}-\d{2}$/.test(segments[0])) {
+  } else if (VALID_MONTH_RE.test(segments[0])) {
     month = segments[0];
     rest = segments.slice(1);
   }
@@ -119,6 +132,9 @@ export function parseHash(hashString: string, fallbackMonth: string = getCurrent
   // Level 2 Bucket: #/month/:month/bucket/:bucketId
   if (rest[0] === 'bucket' && rest[1]) {
     const bucketId = rest[1].toLowerCase();
+    if (!VALID_BUCKETS.has(bucketId)) {
+      return { view: 'overview', level: 1, month };
+    }
     return { view: 'bucket', level: 2, month, bucketId };
   }
 
@@ -209,7 +225,7 @@ export function buildBreadcrumbs(
   txnCounts?: { categoryTxnCount?: number; monthTxnCount?: number }
 ): BreadcrumbItem[] {
   const items: BreadcrumbItem[] = [];
-  const month = route.month || new Date().toISOString().substring(0, 7);
+  const month = route.month || getCurrentLocalMonth();
 
   // Level 1: Month Overview root
   const monthLabel = formatMonthLabel(month);

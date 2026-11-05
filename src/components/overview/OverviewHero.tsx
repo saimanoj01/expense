@@ -92,26 +92,29 @@ export const OverviewHero: React.FC<OverviewHeroProps> = ({
   const priorMonthName = formatMonthLong(priorMonthKey);
   const currentMonthName = formatMonthLong(selectedMonth);
 
+  const now = new Date();
+  const currentLocalMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const isCurrentCalendarMonth = selectedMonth === currentLocalMonth;
+  const daysInSelectedMonth = /^\d{4}-\d{2}$/.test(selectedMonth)
+    ? new Date(parseInt(selectedMonth.split('-')[0], 10), parseInt(selectedMonth.split('-')[1], 10), 0).getDate()
+    : 30;
+  const mtdBadge =
+    isCurrentCalendarMonth && now.getDate() < daysInSelectedMonth
+      ? ` · Month to date (Day ${now.getDate()} of ${daysInSelectedMonth})`
+      : '';
+
   return (
     <div data-testid={isOverview ? 'hero-savings-card' : undefined} className={`py-1 ${className}`}>
-      {/* Screen-reader compatibility nodes for legacy KPI selectors */}
-      <span data-testid={isOverview ? 'kpi-flex-number' : undefined} className="sr-only">
-        {formatCurrency(Math.max(0, flexNumber))}
-      </span>
-      <span data-testid={isOverview ? 'kpi-total-budget' : undefined} className="sr-only">
-        {formatCurrency(totalBudget)}
-      </span>
-
       {isEmpty ? (
         <div className="space-y-2">
           <p className="text-heading text-muted-foreground">
-            Nothing recorded for {currentMonthName} yet
+            Nothing recorded for {currentMonthName} yet{mtdBadge}
           </p>
           <div
             data-testid={isOverview ? 'kpi-savings-amount' : undefined}
             className="text-[44px] leading-[48px] sm:text-display-xl font-semibold tracking-tight tabular-nums num text-muted-foreground"
           >
-            $0<span className="sr-only">.00</span>
+            $0<span className="text-[0.55em] opacity-70 font-normal">.00</span>
           </div>
           <div className="flex flex-wrap items-center gap-3 pt-1 text-body">
             {onOpenAddTxn && (
@@ -130,20 +133,41 @@ export const OverviewHero: React.FC<OverviewHeroProps> = ({
             >
               Import CSV
             </button>
-            <span data-testid={isOverview ? 'kpi-savings-rate' : undefined} className="sr-only">
-              —
-            </span>
-            <span data-testid={isOverview ? 'kpi-total-income' : undefined} className="sr-only">
-              $0.00
-            </span>
-            <span data-testid={isOverview ? 'mom-delta-income' : undefined} className="sr-only">
-              {incomeDelta.text}
+            <span className="text-label text-muted-foreground tabular-nums num inline-flex flex-wrap items-center gap-1.5">
+              <span>
+                Income{' '}
+                <span data-testid={isOverview ? 'kpi-total-income' : undefined} className="text-foreground font-medium">
+                  $0.00
+                </span>
+              </span>
+              <span className="text-faint">·</span>
+              <span>
+                Rate{' '}
+                <span data-testid={isOverview ? 'kpi-savings-rate' : undefined} className="text-foreground font-medium">
+                  —
+                </span>
+              </span>
+              <span className="text-faint">·</span>
+              <span
+                data-testid={isOverview ? 'mom-delta-income' : undefined}
+                className={deltaToneClass(incomeDelta.tone)}
+              >
+                {incomeDelta.text}
+              </span>
+              <span className="text-faint">·</span>
+              <span data-testid={isOverview ? 'kpi-flex-number' : undefined}>
+                Flex {formatCurrency(Math.max(0, flexNumber))}
+              </span>
+              <span className="text-faint">·</span>
+              <span data-testid={isOverview ? 'kpi-total-budget' : undefined}>
+                Target {formatCurrency(totalBudget)}
+              </span>
             </span>
           </div>
         </div>
       ) : isZeroIncome ? (
         <div className="space-y-1">
-          <p className="text-heading text-muted-foreground">You spent</p>
+          <p className="text-heading text-muted-foreground">You spent{mtdBadge}</p>
           <div
             data-testid={isOverview ? 'kpi-savings-amount' : undefined}
             className="text-[44px] leading-[48px] sm:text-display-xl font-semibold tracking-tight tabular-nums num text-foreground"
@@ -151,7 +175,13 @@ export const OverviewHero: React.FC<OverviewHeroProps> = ({
             <RollingNumber value={expenseParts.whole} srSuffix={expenseParts.cents} />
           </div>
           <p className="text-body text-muted-foreground flex flex-wrap items-center gap-1.5">
-            <span>No income recorded this month</span>
+            <span>
+              No income recorded this month (
+              <span data-testid={isOverview ? 'kpi-total-income' : undefined} className="tabular-nums num">
+                $0.00
+              </span>
+              )
+            </span>
             <span className="text-faint">·</span>
             {onOpenAddTxn ? (
               <button
@@ -168,17 +198,26 @@ export const OverviewHero: React.FC<OverviewHeroProps> = ({
             <span data-testid={isOverview ? 'kpi-savings-rate' : undefined} className="text-muted-foreground">
               —
             </span>
-            <span data-testid={isOverview ? 'kpi-total-income' : undefined} className="sr-only">
-              $0.00
-            </span>
-            <span data-testid={isOverview ? 'mom-delta-income' : undefined} className="sr-only">
+            <span className="text-faint">·</span>
+            <span
+              data-testid={isOverview ? 'mom-delta-income' : undefined}
+              className={`text-label tabular-nums num ${deltaToneClass(incomeDelta.tone)}`}
+            >
               {incomeDelta.text}
+            </span>
+            <span className="text-faint">·</span>
+            <span data-testid={isOverview ? 'kpi-flex-number' : undefined} className="text-label tabular-nums num">
+              Flex {formatCurrency(Math.max(0, flexNumber))}
+            </span>
+            <span className="text-faint">·</span>
+            <span data-testid={isOverview ? 'kpi-total-budget' : undefined} className="text-label tabular-nums num">
+              Target {formatCurrency(totalBudget)}
             </span>
           </p>
         </div>
       ) : isDeficit ? (
         <div className="space-y-1">
-          <p className="text-heading text-muted-foreground">You overspent by</p>
+          <p className="text-heading text-muted-foreground">You overspent by{mtdBadge}</p>
           <div
             data-testid={isOverview ? 'kpi-savings-amount' : undefined}
             className="text-[44px] leading-[48px] sm:text-display-xl font-semibold tracking-tight tabular-nums num text-negative"
@@ -190,6 +229,7 @@ export const OverviewHero: React.FC<OverviewHeroProps> = ({
               Spending was{' '}
               <span className="text-foreground font-medium tabular-nums num">
                 {expenseParts.whole}
+                {expenseParts.cents && <span className="text-[0.75em] opacity-75">{expenseParts.cents}</span>}
               </span>{' '}
               on{' '}
               <span
@@ -197,31 +237,33 @@ export const OverviewHero: React.FC<OverviewHeroProps> = ({
                 className="text-foreground font-medium tabular-nums num"
               >
                 {incomeParts.whole}
-                <span className="sr-only">{incomeParts.cents}</span>
+                {incomeParts.cents && <span className="text-[0.75em] opacity-75">{incomeParts.cents}</span>}
               </span>{' '}
-              income
-            </span>
-            <span data-testid={isOverview ? 'kpi-savings-rate' : undefined} className="sr-only">
-              {savingsRate.toFixed(1)}%
+              income (
+              <span data-testid={isOverview ? 'kpi-savings-rate' : undefined} className="tabular-nums num">
+                {savingsRate.toFixed(1)}%
+              </span>
+              )
             </span>
             <span
               data-testid={isOverview ? 'mom-delta-income' : undefined}
               className={`text-label tabular-nums num ${deltaToneClass(incomeDelta.tone)}`}
             >
               · {incomeDelta.text}
-              {hasPriorMonthData && priorIncome !== undefined && priorIncome > 0 && (
-                <span className="sr-only">
-                  {' '}
-                  {((totalIncome - priorIncome) / priorIncome) * 100 >= 0 ? '+' : ''}
-                  {(((totalIncome - priorIncome) / priorIncome) * 100).toFixed(1)}% MoM
-                </span>
-              )}
+            </span>
+            <span className="text-faint">·</span>
+            <span data-testid={isOverview ? 'kpi-flex-number' : undefined} className="text-label tabular-nums num">
+              Flex {formatCurrency(Math.max(0, flexNumber))}
+            </span>
+            <span className="text-faint">·</span>
+            <span data-testid={isOverview ? 'kpi-total-budget' : undefined} className="text-label tabular-nums num">
+              Target {formatCurrency(totalBudget)}
             </span>
           </p>
         </div>
       ) : (
         <div className="space-y-1">
-          <p className="text-heading text-muted-foreground">You kept</p>
+          <p className="text-heading text-muted-foreground">You kept{mtdBadge}</p>
           <motion.div
             data-testid={isOverview ? 'kpi-savings-amount' : undefined}
             title="Income minus spending. Refunds reduce spending; transfers between your accounts aren't counted."
@@ -242,8 +284,7 @@ export const OverviewHero: React.FC<OverviewHeroProps> = ({
                 data-testid={isOverview ? 'kpi-savings-rate' : undefined}
                 className="text-foreground font-medium tabular-nums num"
               >
-                {Math.round(savingsRate)}%
-                <span className="sr-only"> ({savingsRate.toFixed(1)}%)</span>
+                {savingsRate.toFixed(1)}%
               </span>{' '}
               of your{' '}
               <span
@@ -251,7 +292,7 @@ export const OverviewHero: React.FC<OverviewHeroProps> = ({
                 className="text-foreground font-medium tabular-nums num"
               >
                 {incomeParts.whole}
-                <span className="sr-only">{incomeParts.cents}</span>
+                {incomeParts.cents && <span className="text-[0.75em] opacity-75">{incomeParts.cents}</span>}
               </span>{' '}
               income
             </span>
@@ -264,18 +305,20 @@ export const OverviewHero: React.FC<OverviewHeroProps> = ({
                 </span>
               </>
             )}
+            <span className="text-faint">·</span>
             <span
               data-testid={isOverview ? 'mom-delta-income' : undefined}
-              className={`sr-only ${deltaToneClass(incomeDelta.tone)}`}
+              className={`text-label tabular-nums num ${deltaToneClass(incomeDelta.tone)}`}
             >
               {incomeDelta.text}
-              {hasPriorMonthData && priorIncome !== undefined && priorIncome > 0 && (
-                <span>
-                  {' '}
-                  {((totalIncome - priorIncome) / priorIncome) * 100 >= 0 ? '+' : ''}
-                  {(((totalIncome - priorIncome) / priorIncome) * 100).toFixed(1)}% MoM
-                </span>
-              )}
+            </span>
+            <span className="text-faint">·</span>
+            <span data-testid={isOverview ? 'kpi-flex-number' : undefined} className="text-label tabular-nums num">
+              Flex {formatCurrency(Math.max(0, flexNumber))}
+            </span>
+            <span className="text-faint">·</span>
+            <span data-testid={isOverview ? 'kpi-total-budget' : undefined} className="text-label tabular-nums num">
+              Target {formatCurrency(totalBudget)}
             </span>
           </p>
         </div>

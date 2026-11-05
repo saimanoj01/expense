@@ -21,7 +21,7 @@ export const RollingNumber: React.FC<RollingNumberProps> = ({
     return (
       <span className={className}>
         {value}
-        {srSuffix && <span className="sr-only">{srSuffix}</span>}
+        {srSuffix && <span className="text-[0.55em] opacity-70 font-normal">{srSuffix}</span>}
       </span>
     );
   }
@@ -76,7 +76,7 @@ export const RollingNumber: React.FC<RollingNumberProps> = ({
           </span>
         );
       })}
-      {srSuffix && <span className="sr-only">{srSuffix}</span>}
+      {srSuffix && <span className="text-[0.55em] opacity-70 font-normal">{srSuffix}</span>}
     </span>
   );
 };

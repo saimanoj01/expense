@@ -17,6 +17,7 @@ import {
   X
 } from 'lucide-react';
 import { useNavigation } from '../../hooks/useNavigation';
+import { getCurrentLocalMonth } from '../../utils/navigation';
 import { Category } from '../../services/storage';
 
 export interface CommandPaletteProps {
@@ -62,7 +63,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
-  const activeMonth = currentRoute.month || new Date().toISOString().substring(0, 7);
+  const activeMonth = currentRoute.month || getCurrentLocalMonth();
 
   // Focus input when opened
   useEffect(() => {
@@ -92,7 +93,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         icon: Receipt,
         category: 'Views',
         keywords: ['expenses', 'ledger', 'history', 'txns'],
-        action: () => navigate('#/transactions')
+        action: () => navigate(`#/transactions?month=${activeMonth}`)
       },
       {
         id: 'view-budgets',
@@ -101,7 +102,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         icon: Target,
         category: 'Views',
         keywords: ['targets', 'caps', 'allocation'],
-        action: () => navigate('#/budgets')
+        action: () => navigate(`#/budgets?month=${activeMonth}`)
       },
       {
         id: 'view-trends',
@@ -110,7 +111,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         icon: BarChart3,
         category: 'Views',
         keywords: ['charts', 'graphs', 'visual', 'pacing'],
-        action: () => navigate('#/trends')
+        action: () => navigate(`#/trends?month=${activeMonth}`)
       },
       {
         id: 'view-reports',
@@ -119,7 +120,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         icon: FileText,
         category: 'Views',
         keywords: ['pdf', 'print', 'statement', 'export'],
-        action: () => navigate('#/reports')
+        action: () => navigate(`#/reports?month=${activeMonth}`)
       },
       {
         id: 'view-settings',
@@ -128,7 +129,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         icon: Settings,
         category: 'Views',
         keywords: ['config', 'preferences', 'workspace'],
-        action: () => navigate('#/settings')
+        action: () => navigate(`#/settings?month=${activeMonth}`)
       },
 
       // Drill Down Buckets

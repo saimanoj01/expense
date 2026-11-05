@@ -2,6 +2,7 @@ import { Printer, Download, X, Calendar, ShieldCheck, Mail, Layers } from 'lucid
 import { Modal } from '../common/Modal';
 import { CategorySummary } from '../dashboard/BudgetUtilization';
 import { Transaction } from '../../services/storage';
+import { escapeCsvCell } from '../../utils/csv';
 
 interface MonthlyReportModalProps {
   isOpen: boolean;
@@ -59,8 +60,8 @@ export function MonthlyReportModal({
     const rows = categories
       .filter(c => !c.isNonBudgetable)
       .map(c => [
-        `"${c.name.replace(/"/g, '""')}"`,
-        `"${c.bucket || 'flexible'}"`,
+        escapeCsvCell(c.name),
+        escapeCsvCell(c.bucket || 'flexible'),
         c.budget.toFixed(2),
         c.spent.toFixed(2),
         (c.budget - c.spent).toFixed(2),

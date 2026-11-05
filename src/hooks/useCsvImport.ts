@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { parseCsv, standardizeDate, parseCurrencyAmount } from '../utils/csv';
+import { parseCsv, standardizeDate, parseCurrencyAmount, getLocalTodayDate } from '../utils/csv';
 import { computeTxHash } from '../utils/crypto';
 import { Transaction, MonthlyLock, Category, SpendingBucket, Project, StorageAdapter } from '../services/storage';
 import { suggestCategory, detectTransactionType, suggestSpendingBucket } from '../utils/categorizer';
@@ -108,7 +108,7 @@ export function useCsvImport(
 
     for (let idx = 0; idx < csvRawRows.length; idx++) {
       const row = csvRawRows[idx];
-      const rawDate = standardizeDate(row[dateIdx] || new Date().toISOString().substring(0, 10));
+      const rawDate = standardizeDate(row[dateIdx] || getLocalTodayDate());
       const rawDesc = row[descIdx] || 'Imported Transaction';
       const parsedAmt = parseCurrencyAmount(row[amtIdx] || '0');
       let rawAmt = parsedAmt.amount;

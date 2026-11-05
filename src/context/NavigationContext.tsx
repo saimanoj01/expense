@@ -92,11 +92,11 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({
       onMonthChangeRef.current(parsed.month);
     }
 
-    // Canonical redirect for empty or #/dashboard hashes
-    const clean = hash.replace(/^#\/?/, '').split('?')[0];
-    if (clean === '' || clean === 'dashboard') {
-      const targetMonth = parsed.month || activeMonthRef.current;
-      window.history.replaceState(null, '', `#/month/${targetMonth}`);
+    // Canonical redirect for empty, #/dashboard, or fallback overview hashes
+    const targetMonth = parsed.month || activeMonthRef.current;
+    const canonicalOverviewHash = `#/month/${targetMonth}`;
+    if (parsed.view === 'overview' && hash !== canonicalOverviewHash) {
+      window.history.replaceState(null, '', canonicalOverviewHash);
     }
   }, []);
 

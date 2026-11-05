@@ -19,6 +19,7 @@ import {
   FolderKanban,
 } from 'lucide-react';
 import { useNavigation } from '../../hooks/useNavigation';
+import { getCurrentLocalMonth } from '../../utils/navigation';
 import { Project } from '../../services/storage';
 
 interface UserProfile {
@@ -81,7 +82,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     }
   }, [collapsed]);
 
-  const activeMonth = currentRoute.month || new Date().toISOString().substring(0, 7);
+  const activeMonth = currentRoute.month || getCurrentLocalMonth();
 
   const navItems = [
     {
@@ -98,28 +99,28 @@ export const Sidebar: React.FC<SidebarProps> = ({
       id: 'transactions',
       label: 'Transactions',
       icon: Receipt,
-      route: '#/transactions',
+      route: `#/transactions?month=${activeMonth}`,
       isActive: currentRoute.view === 'transactions',
     },
     {
       id: 'budgets',
       label: 'Budgets',
       icon: Target,
-      route: '#/budgets',
+      route: `#/budgets?month=${activeMonth}`,
       isActive: currentRoute.view === 'budgets',
     },
     {
       id: 'trends',
       label: 'Trends',
       icon: BarChart3,
-      route: '#/trends',
+      route: `#/trends?month=${activeMonth}`,
       isActive: currentRoute.view === 'trends',
     },
     {
       id: 'reports',
       label: 'Reports',
       icon: FileText,
-      route: '#/reports',
+      route: `#/reports?month=${activeMonth}`,
       isActive: currentRoute.view === 'reports',
     },
   ];
@@ -136,7 +137,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       <div className="h-14 flex items-center justify-between gap-1.5 px-3 border-b border-border">
         <div
           className={`flex items-center gap-1.5 min-w-0 flex-1 ${
-            collapsed ? 'sr-only' : ''
+            collapsed ? 'hidden' : ''
           }`}
         >
           {projects.length > 0 ? (
@@ -200,7 +201,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               type="button"
               onClick={onManageProjects}
               data-testid="manage-projects-icon-btn"
-              className="sr-only"
+              className="w-7 h-7 rounded-[8px] inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-surface2 transition-colors focus-visible:ring-2 ring-ring/40"
               title="Manage Projects"
               aria-label="Manage & Delete Projects"
             >
@@ -285,7 +286,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <button
           type="button"
           data-testid="nav-item-settings"
-          onClick={() => navigate('#/settings')}
+          onClick={() => navigate(`#/settings?month=${activeMonth}`)}
           className={`w-full h-9 flex items-center gap-3 px-2.5 rounded-[10px] text-body font-medium transition-colors focus-visible:ring-2 ring-ring/40 ${
             currentRoute.view === 'settings'
               ? 'bg-surface2 text-foreground'
@@ -317,7 +318,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     className="mock-mode-banner text-label text-muted-foreground truncate block"
                     title="Demo data active"
                   >
-                    Demo data<span className="sr-only"> (Mock Mode)</span>
+                    Demo data (Mock Mode)
                   </span>
                 ) : (
                   user.email && (

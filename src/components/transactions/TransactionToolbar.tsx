@@ -229,8 +229,7 @@ export function TransactionToolbar({
               className="h-9 px-3.5 bg-primary hover:opacity-90 text-primary-foreground rounded-[10px] text-label font-semibold inline-flex items-center gap-1.5 transition-opacity shrink-0"
             >
               <Plus className="w-4 h-4" />
-              <span>Add</span>
-              <span className="sr-only"> Record</span>
+              <span>Add Record</span>
             </button>
           )}
 
@@ -365,123 +364,158 @@ export function TransactionToolbar({
         </div>
       )}
 
-      {/* Zero-height compatibility action nodes for existing Playwright tests */}
-      <div className="flex items-center gap-0.5 opacity-0 h-1 overflow-hidden pointer-events-auto">
-        {setSelectedBucket && (
-          <div data-testid="toolbar-bucket-filters" className="inline-flex">
-            <button
-              type="button"
-              tabIndex={-1}
-              data-testid="filter-bucket-income"
-              onClick={() =>
-                setSelectedBucket(selectedBucket === 'income' ? null : 'income')
-              }
-            >
-              Income
-            </button>
-            <button
-              type="button"
-              tabIndex={-1}
-              data-testid="filter-bucket-fixed"
-              onClick={() =>
-                setSelectedBucket(selectedBucket === 'fixed' ? null : 'fixed')
-              }
-            >
-              Fixed
-            </button>
-            <button
-              type="button"
-              tabIndex={-1}
-              data-testid="filter-bucket-flexible"
-              onClick={() =>
-                setSelectedBucket(selectedBucket === 'flexible' ? null : 'flexible')
-              }
-            >
-              Variable
-            </button>
-            <button
-              type="button"
-              tabIndex={-1}
-              data-testid="filter-bucket-non-monthly"
-              onClick={() =>
-                setSelectedBucket(selectedBucket === 'non-monthly' ? null : 'non-monthly')
-              }
-            >
-              Non-monthly
-            </button>
-          </div>
-        )}
-
-        {selectedMonth !== 'all' && (
-          <>
-            <button
-              type="button"
-              tabIndex={-1}
-              onClick={
-                isCurrentMonthLocked ? handleUnlockCurrentMonth : handleLockCurrentMonth
-              }
-              data-testid={isCurrentMonthLocked ? 'unlock-month-btn' : 'lock-month-btn'}
-            >
-              <span data-testid="lock-status-indicator">
-                {isCurrentMonthLocked ? 'Locked' : 'Unlocked'}
-              </span>
-            </button>
-            {onOpenMonthlyReport && (
+      {/* Visible Bucket & Tag Filter Strip + Quick Actions */}
+      <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+        <div className="flex flex-wrap items-center gap-1.5">
+          {setSelectedBucket && (
+            <div data-testid="toolbar-bucket-filters" className="inline-flex flex-wrap items-center gap-1">
               <button
                 type="button"
-                tabIndex={-1}
-                onClick={onOpenMonthlyReport}
-                data-testid="view-monthly-report-btn"
-              >
-                Report
-              </button>
-            )}
-          </>
-        )}
-
-        <button
-          type="button"
-          tabIndex={-1}
-          onClick={() => setShowShareModal(true)}
-          data-testid="share-project-btn"
-        >
-          Share
-        </button>
-
-        {!isCurrentMonthLocked && (
-          <label data-testid="import-csv-trigger-btn" className="cursor-pointer">
-            <Upload className="w-3 h-3" /> Import CSV
-            <input
-              type="file"
-              accept=".csv"
-              data-testid="csv-file-input"
-              className="hidden"
-              onChange={handleCsvFileUpload}
-              onClick={(e: React.MouseEvent<HTMLInputElement>) => {
-                (e.target as HTMLInputElement).value = '';
-              }}
-            />
-          </label>
-        )}
-
-        {availableTags.length > 0 && setSelectedTagFilter && (
-          <div className="inline-flex">
-            <Tag className="w-3 h-3" />
-            {availableTags.map(tag => (
-              <button
-                key={tag}
-                type="button"
-                tabIndex={-1}
-                data-testid={`filter-tag-${tag}`}
+                data-testid="filter-bucket-income"
                 onClick={() =>
-                  setSelectedTagFilter(selectedTagFilter === tag ? null : tag)
+                  setSelectedBucket(selectedBucket === 'income' ? null : 'income')
                 }
+                className={`px-2.5 py-1 rounded-full text-label font-medium border transition-colors ${
+                  selectedBucket === 'income'
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'bg-surface2 text-muted-foreground border-border hover:text-foreground'
+                }`}
               >
-                {tag}
+                Income
               </button>
-            ))}
-          </div>
-        )}
+              <button
+                type="button"
+                data-testid="filter-bucket-fixed"
+                onClick={() =>
+                  setSelectedBucket(selectedBucket === 'fixed' ? null : 'fixed')
+                }
+                className={`px-2.5 py-1 rounded-full text-label font-medium border transition-colors ${
+                  selectedBucket === 'fixed'
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'bg-surface2 text-muted-foreground border-border hover:text-foreground'
+                }`}
+              >
+                Fixed
+              </button>
+              <button
+                type="button"
+                data-testid="filter-bucket-flexible"
+                onClick={() =>
+                  setSelectedBucket(selectedBucket === 'flexible' ? null : 'flexible')
+                }
+                className={`px-2.5 py-1 rounded-full text-label font-medium border transition-colors ${
+                  selectedBucket === 'flexible'
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'bg-surface2 text-muted-foreground border-border hover:text-foreground'
+                }`}
+              >
+                Variable
+              </button>
+              <button
+                type="button"
+                data-testid="filter-bucket-non-monthly"
+                onClick={() =>
+                  setSelectedBucket(selectedBucket === 'non-monthly' ? null : 'non-monthly')
+                }
+                className={`px-2.5 py-1 rounded-full text-label font-medium border transition-colors ${
+                  selectedBucket === 'non-monthly'
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'bg-surface2 text-muted-foreground border-border hover:text-foreground'
+                }`}
+              >
+                Non-monthly
+              </button>
+            </div>
+          )}
+
+          {availableTags.length > 0 && setSelectedTagFilter && (
+            <div className="inline-flex flex-wrap items-center gap-1 pl-1">
+              <Tag className="w-3 h-3 text-muted-foreground" />
+              {availableTags.map(tag => (
+                <button
+                  key={tag}
+                  type="button"
+                  data-testid={`filter-tag-${tag}`}
+                  onClick={() =>
+                    setSelectedTagFilter(selectedTagFilter === tag ? null : tag)
+                  }
+                  className={`px-2 py-0.5 rounded-full text-label font-medium border transition-colors ${
+                    selectedTagFilter === tag
+                      ? 'bg-primary text-primary-foreground border-primary'
+                      : 'bg-surface2 text-muted-foreground border-border hover:text-foreground'
+                  }`}
+                >
+                  #{tag}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-1.5">
+          {selectedMonth !== 'all' && (
+            <>
+              <button
+                type="button"
+                onClick={
+                  isCurrentMonthLocked ? handleUnlockCurrentMonth : handleLockCurrentMonth
+                }
+                data-testid={isCurrentMonthLocked ? 'unlock-month-btn' : 'lock-month-btn'}
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-[8px] bg-surface2 hover:bg-secondary border border-border text-label font-medium text-muted-foreground hover:text-foreground transition-colors"
+              >
+                {isCurrentMonthLocked ? (
+                  <Lock className="w-3 h-3 text-amber-500" />
+                ) : (
+                  <Unlock className="w-3 h-3" />
+                )}
+                <span data-testid="lock-status-indicator">
+                  {isCurrentMonthLocked ? 'Locked' : 'Unlocked'}
+                </span>
+              </button>
+              {onOpenMonthlyReport && (
+                <button
+                  type="button"
+                  onClick={onOpenMonthlyReport}
+                  data-testid="view-monthly-report-btn"
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-[8px] bg-surface2 hover:bg-secondary border border-border text-label font-medium text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  <FileText className="w-3 h-3" />
+                  <span>Report</span>
+                </button>
+              )}
+            </>
+          )}
+
+          <button
+            type="button"
+            onClick={() => setShowShareModal(true)}
+            data-testid="share-project-btn"
+            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-[8px] bg-surface2 hover:bg-secondary border border-border text-label font-medium text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <Share2 className="w-3 h-3" />
+            <span>Share</span>
+          </button>
+
+          {!isCurrentMonthLocked && (
+            <label
+              data-testid="import-csv-trigger-btn"
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-[8px] bg-surface2 hover:bg-secondary border border-border text-label font-medium text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+            >
+              <Upload className="w-3 h-3" />
+              <span>Import CSV</span>
+              <input
+                type="file"
+                accept=".csv"
+                data-testid="csv-file-input"
+                className="hidden"
+                onChange={handleCsvFileUpload}
+                onClick={(e: React.MouseEvent<HTMLInputElement>) => {
+                  (e.target as HTMLInputElement).value = '';
+                }}
+              />
+            </label>
+          )}
+        </div>
       </div>
     </div>
   );

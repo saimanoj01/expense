@@ -113,7 +113,7 @@ export function TrendChart({
         m.income > 0
           ? Math.max(-100, Math.min(100, m.savingsRate))
           : m.expenses > 0
-          ? -25
+          ? -100
           : 0;
 
       return {
@@ -143,7 +143,7 @@ export function TrendChart({
       if (mIdx === -1) continue;
       const cat = t.category || 'Uncategorized';
       const arr = map.get(cat) || [0, 0, 0, 0, 0, 0];
-      arr[mIdx] += t.amount;
+      arr[mIdx] += Number(t.amount) || 0;
       map.set(cat, arr);
     }
 
@@ -287,7 +287,9 @@ export function TrendChart({
               <span className={hoveredMonth.saved >= 0 ? 'text-bucket-saved font-medium' : 'text-negative font-medium'}>
                 {hoveredMonth.saved >= 0
                   ? `Kept ${formatMoney(hoveredMonth.saved)} (${Math.round(hoveredMonth.savingsRate)}%)`
-                  : `Overspent ${formatMoney(Math.abs(hoveredMonth.saved))}`}
+                  : hoveredMonth.income <= 0 && hoveredMonth.totalExpense > 0
+                  ? `Deficit ${formatMoney(Math.abs(hoveredMonth.saved))} (no income)`
+                  : `Overspent ${formatMoney(Math.abs(hoveredMonth.saved))} (${Math.round(hoveredMonth.savingsRate)}%)`}
               </span>
             </div>
           ) : (

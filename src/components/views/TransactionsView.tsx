@@ -4,6 +4,7 @@ import { TransactionList } from '../transactions/TransactionList';
 import { Transaction, Category, SpendingBucket } from '../../services/storage';
 import { formatCurrency } from '../../utils/formatters';
 import { bucketOf, bucketSource } from '../../utils/categorizer';
+import { computeMonthMetrics } from '../../utils/metrics';
 import { Filter, X } from 'lucide-react';
 
 export interface TransactionsViewProps {
@@ -227,23 +228,14 @@ export function TransactionsView({
   ]);
 
   const monthFinancials = useMemo(() => {
-    const nonTransfer = transactions.filter(t => t.type !== 'transfer');
-    const income = nonTransfer
-      .filter(t => t.type === 'income')
-      .reduce((s, t) => s + t.amount, 0);
-    const expenses = nonTransfer
-      .filter(t => t.type === 'expense')
-      .reduce((s, t) => s + t.amount, 0);
-    const fixed = nonTransfer
-      .filter(t => t.type === 'expense' && bucketOf(t, categories) === 'fixed')
-      .reduce((s, t) => s + t.amount, 0);
-    const flexible = nonTransfer
-      .filter(t => t.type === 'expense' && bucketOf(t, categories) === 'flexible')
-      .reduce((s, t) => s + t.amount, 0);
-    const nonMonthly = nonTransfer
-      .filter(t => t.type === 'expense' && bucketOf(t, categories) === 'non-monthly')
-      .reduce((s, t) => s + t.amount, 0);
-    return { income, expenses, fixed, flexible, nonMonthly };
+    const m = computeMonthMetrics(transactions, 'all', categories);
+    return {
+      income: m.income,
+      expenses: m.expenses,
+      fixed: m.fixed,
+      flexible: m.flexible,
+      nonMonthly: m.nonMonthly,
+    };
   }, [transactions, categories]);
 
   return (
@@ -251,21 +243,28 @@ export function TransactionsView({
       className="max-w-[1120px] mx-auto space-y-3 pb-12"
       data-testid="level4-transactions-workspace"
     >
-      {/* Compatibility KPI filter nodes */}
-      <div className="flex items-center gap-0.5 opacity-0 pointer-events-auto overflow-hidden h-1">
-        <span data-testid="kpi-total-expenses" className="w-2 h-2 overflow-hidden">
-          {formatCurrency(monthFinancials.expenses)}
-        </span>
+      {/* Visible KPI Summary & Quick-Filter Strip */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[10px] bg-card border border-border text-label font-medium text-muted-foreground overflow-hidden">
+          <span>Expenses</span>
+          <span data-testid="kpi-total-expenses" className="font-semibold text-foreground tabular-nums num inline-block overflow-hidden max-w-full align-bottom">
+            {formatCurrency(monthFinancials.expenses)}
+          </span>
+        </div>
         <button
           type="button"
           data-testid="kpi-total-income"
           onClick={() =>
             onSelectBucket && onSelectBucket(selectedBucket === 'income' ? null : 'income')
           }
-          tabIndex={-1}
-          className="w-2 h-2"
+          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[10px] border text-label font-medium transition-colors focus-visible:ring-2 focus-visible:ring-primary/40 ${
+            selectedBucket === 'income'
+              ? 'bg-primary text-primary-foreground border-primary'
+              : 'bg-card border-border text-muted-foreground hover:text-foreground hover:bg-surface2'
+          }`}
         >
-          {formatCurrency(monthFinancials.income)}
+          <span>Income</span>
+          <span className="font-semibold tabular-nums num">{formatCurrency(monthFinancials.income)}</span>
         </button>
         <button
           type="button"
@@ -273,10 +272,14 @@ export function TransactionsView({
           onClick={() =>
             onSelectBucket && onSelectBucket(selectedBucket === 'fixed' ? null : 'fixed')
           }
-          tabIndex={-1}
-          className="w-2 h-2"
+          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[10px] border text-label font-medium transition-colors focus-visible:ring-2 focus-visible:ring-primary/40 ${
+            selectedBucket === 'fixed'
+              ? 'bg-primary text-primary-foreground border-primary'
+              : 'bg-card border-border text-muted-foreground hover:text-foreground hover:bg-surface2'
+          }`}
         >
-          {formatCurrency(monthFinancials.fixed)}
+          <span>Fixed</span>
+          <span className="font-semibold tabular-nums num">{formatCurrency(monthFinancials.fixed)}</span>
         </button>
         <button
           type="button"
@@ -285,10 +288,14 @@ export function TransactionsView({
             onSelectBucket &&
             onSelectBucket(selectedBucket === 'flexible' ? null : 'flexible')
           }
-          tabIndex={-1}
-          className="w-2 h-2"
+          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[10px] border text-label font-medium transition-colors focus-visible:ring-2 focus-visible:ring-primary/40 ${
+            selectedBucket === 'flexible'
+              ? 'bg-primary text-primary-foreground border-primary'
+              : 'bg-card border-border text-muted-foreground hover:text-foreground hover:bg-surface2'
+          }`}
         >
-          {formatCurrency(monthFinancials.flexible)}
+          <span>Variable</span>
+          <span className="font-semibold tabular-nums num">{formatCurrency(monthFinancials.flexible)}</span>
         </button>
         <button
           type="button"
@@ -297,10 +304,14 @@ export function TransactionsView({
             onSelectBucket &&
             onSelectBucket(selectedBucket === 'non-monthly' ? null : 'non-monthly')
           }
-          tabIndex={-1}
-          className="w-2 h-2"
+          className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[10px] border text-label font-medium transition-colors focus-visible:ring-2 focus-visible:ring-primary/40 ${
+            selectedBucket === 'non-monthly'
+              ? 'bg-primary text-primary-foreground border-primary'
+              : 'bg-card border-border text-muted-foreground hover:text-foreground hover:bg-surface2'
+          }`}
         >
-          {formatCurrency(monthFinancials.nonMonthly)}
+          <span>Non-monthly</span>
+          <span className="font-semibold tabular-nums num">{formatCurrency(monthFinancials.nonMonthly)}</span>
         </button>
       </div>
 

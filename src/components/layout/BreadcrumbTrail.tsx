@@ -94,9 +94,8 @@ export const BreadcrumbTrail: React.FC<BreadcrumbTrailProps> = ({ className = ''
                     aria-current="page"
                     className="text-eyebrow uppercase text-muted-foreground truncate"
                   >
-                    <span className="sm:hidden">{formatEyebrow(currentRoute.month, true, smoothNonMonthly)}</span>
-                    <span className="hidden sm:inline">{formatEyebrow(currentRoute.month, false, smoothNonMonthly)}</span>
-                    <span className="sr-only"> ({item.label})</span>
+                    <span className="sm:hidden">{formatEyebrow(currentRoute.month, true, smoothNonMonthly)} ({item.label})</span>
+                    <span className="hidden sm:inline">{formatEyebrow(currentRoute.month, false, smoothNonMonthly)} ({item.label})</span>
                   </motion.span>
                 ) : isLast ? (
                   <motion.span

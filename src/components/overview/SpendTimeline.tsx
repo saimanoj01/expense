@@ -60,7 +60,7 @@ export const SpendTimeline: React.FC<SpendTimelineProps> = ({
       const d = parseInt((t.date || '').split('-')[2] || '1', 10);
       const clamped = Math.min(daysInMonth, Math.max(1, d));
       maxTxnDay = Math.max(maxTxnDay, clamped);
-      byDay[clamped - 1] += t.amount;
+      byDay[clamped - 1] += Number(t.amount) || 0;
     });
 
     const now = new Date();
@@ -93,8 +93,9 @@ export const SpendTimeline: React.FC<SpendTimelineProps> = ({
     const byDay = new Array(daysInMonth).fill(0);
     expTxns.forEach(t => {
       const d = parseInt((t.date || '').split('-')[2] || '1', 10);
-      const idx = Math.min(daysInMonth - 1, Math.max(0, d - 1));
-      byDay[idx] += t.amount;
+      if (d >= 1 && d <= daysInMonth) {
+        byDay[d - 1] += Number(t.amount) || 0;
+      }
     });
 
     const cum: number[] = [];
@@ -230,15 +231,28 @@ export const SpendTimeline: React.FC<SpendTimelineProps> = ({
             </span>
           )}
         </div>
-        <span className="text-label text-muted-foreground tabular-nums num shrink-0">
-          <span
-            data-testid={isOverview ? 'kpi-total-expenses' : undefined}
-            className="text-foreground font-medium inline-block overflow-hidden max-w-full align-bottom"
-          >
-            {expenseParts.whole}
-            <span className="sr-only">{expenseParts.cents}</span>
-          </span>{' '}
-          so far
+        <span className="text-label text-muted-foreground tabular-nums num shrink-0 inline-flex items-center gap-3">
+          <span>
+            <span
+              data-testid={isOverview ? 'kpi-total-expenses' : undefined}
+              className="text-foreground font-medium inline-block overflow-hidden max-w-full align-bottom"
+            >
+              {expenseParts.whole}
+              {expenseParts.cents && <span className="text-[0.75em] opacity-75">{expenseParts.cents}</span>}
+            </span>{' '}
+            so far
+            {Math.abs(totalExpenses - (currentCum[daysInMonth - 1] || 0)) >= 1 ? ' (smoothed)' : ''}
+          </span>
+          {isOverview && (
+            <button
+              type="button"
+              data-testid="view-trends-breakdown-link"
+              onClick={() => navigate(`#/trends?month=${selectedMonth}`)}
+              className="text-xs font-medium text-muted-foreground hover:text-foreground underline underline-offset-4 transition-colors"
+            >
+              Full breakdown →
+            </button>
+          )}
         </span>
       </div>
 

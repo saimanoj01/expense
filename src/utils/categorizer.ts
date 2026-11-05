@@ -230,7 +230,7 @@ export function bucketSource(
             c.id.toLowerCase() === transaction.category?.toLowerCase() ||
             c.name.toLowerCase() === transaction.category?.toLowerCase()
         );
-        if (parentCat) return 'category';
+        if (parentCat?.defaultBucket) return 'category';
       }
     } else {
       if (transaction.subCategory && categoryDefaults[transaction.subCategory]) {

@@ -85,7 +85,7 @@ export function computeMonthMetrics(
 
   const expenses = fixed + flexible + nonMonthly;
   const savings = income - expenses;
-  const savingsRate = income > 0 ? (savings / income) * 100 : 0;
+  const savingsRate = income > 0 ? (savings / income) * 100 : (expenses > 0 ? -100 : 0);
   const flexNumber = income - fixed - nonMonthly;
 
   return {

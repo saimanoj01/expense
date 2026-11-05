@@ -193,8 +193,8 @@ export function generateInsights(
     });
   }
 
-  const totalIncome = currentTxns.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
-  const totalExpenses = currentTxns.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+  const totalIncome = currentTxns.filter(t => t.type === 'income').reduce((s, t) => s + (Number(t.amount) || 0), 0);
+  const totalExpenses = currentTxns.filter(t => t.type === 'expense').reduce((s, t) => s + (Number(t.amount) || 0), 0);
   const saved = totalIncome - totalExpenses;
 
   if (totalIncome > 0 && candidates.length < 3) {
@@ -209,6 +209,34 @@ export function generateInsights(
       href: `#/month/${selectedMonth}/bucket/income`,
       impact: Math.abs(saved) * 0.25,
     });
+  }
+
+  // 6. Fallback: recent notable transactions so every recorded activity month surfaces real items
+  if (candidates.length < 3) {
+    const remainingTxns = [...currentTxns].sort(
+      (a, b) => (Number(b.amount) || 0) - (Number(a.amount) || 0)
+    );
+    for (const tx of remainingTxns) {
+      if (candidates.length >= 3) break;
+      if (tx.description && !candidates.some(c => c.text.includes(tx.description))) {
+        const b = tx.type === 'income' ? 'saved' : bucketOf(tx, categories);
+        const bucketKey: BucketKey =
+          b === 'fixed'
+            ? 'fixed'
+            : b === 'non-monthly'
+            ? 'non-monthly'
+            : b === 'saved'
+            ? 'saved'
+            : 'flexible';
+        candidates.push({
+          id: `recent-tx-${tx.id}`,
+          bucket: bucketKey,
+          text: `${tx.description} posted at ${formatMoney(Number(tx.amount) || 0)}.`,
+          href: `#/transactions?month=${selectedMonth}`,
+          impact: (Number(tx.amount) || 0) * 0.1,
+        });
+      }
+    }
   }
 
   return candidates.sort((a, b) => b.impact - a.impact).slice(0, 3);

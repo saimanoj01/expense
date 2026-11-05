@@ -65,9 +65,10 @@ export const DailySpendTimeline: React.FC<DailySpendTimelineProps> = ({
       if (t.type === 'expense' && t.date) {
         const day = parseInt(t.date.split('-')[2] || '0', 10);
         if (day >= 1 && day <= daysInMonth) {
-          map[day].amount += t.amount;
-          if (t.amount >= map[day].topAmt) {
-            map[day].topAmt = t.amount;
+          const amt = Number(t.amount) || 0;
+          map[day].amount += amt;
+          if (amt >= map[day].topAmt) {
+            map[day].topAmt = amt;
             map[day].topMerchant = t.description || '';
           }
         }

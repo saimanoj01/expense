@@ -89,7 +89,7 @@ export async function callGemini(config: GeminiConfig): Promise<unknown> {
   }
 
   const model = config.model || DEFAULT_GEMINI_MODEL;
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
 
   const contents: GeminiContentItem[] = [
     {
@@ -122,7 +122,8 @@ export async function callGemini(config: GeminiConfig): Promise<unknown> {
     response = await fetch(url, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'x-goog-api-key': apiKey
       },
       body: JSON.stringify(body)
     });

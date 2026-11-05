@@ -1,7 +1,7 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { Transaction, MonthlyLock, Category, DEFAULT_CATEGORIES, SpendingBucket, Project, StorageAdapter } from '../services/storage';
-import { bucketOf } from '../utils/categorizer';
-import { computeMonthMetrics } from '../utils/metrics';
+import { bucketOf, bucketSource } from '../utils/categorizer';
+import { computeMonthMetrics, isRefundTransaction } from '../utils/metrics';
 
 export interface TrendPoint {
   date: string;
@@ -214,6 +214,14 @@ export function useTransactions(
 
     if (latest && latest !== selectedMonth) {
       setSelectedMonthState(latest);
+      try {
+        const hash = window.location.hash;
+        if (!hash || hash === '#' || hash === '#/' || hash === `#/month/${selectedMonth}`) {
+          window.history.replaceState(null, '', `#/month/${latest}`);
+        }
+      } catch {
+        // Ignore history errors
+      }
     }
   }, [transactions, selectedMonth]);
 
@@ -381,10 +389,10 @@ export function useTransactions(
   const savingsRate = monthMetrics.savingsRate;
 
   const unclassifiedCount = useMemo(() => monthTransactions
-    .filter(t => t.type === 'expense' && (bucketOf(t, categories) as string) === 'unclassified').length, [monthTransactions, categories]);
+    .filter(t => t.type === 'expense' && bucketSource(t, categories) === 'fallback').length, [monthTransactions, categories]);
 
   const unclassifiedExpenses = useMemo(() => monthTransactions
-    .filter(t => t.type === 'expense' && (bucketOf(t, categories) as string) === 'unclassified')
+    .filter(t => t.type === 'expense' && bucketSource(t, categories) === 'fallback')
     .reduce((sum, t) => sum + (typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount || 0)) || 0), 0), [monthTransactions, categories]);
 
   const availableMonths = useMemo(() => {
@@ -420,7 +428,8 @@ export function useTransactions(
 
   // Enhanced Trend Chart Details
   const trendDetails = useMemo<TrendChartDetails>(() => {
-    const currentMonthStr = selectedMonth === 'all' ? '2026-07' : selectedMonth;
+    const fallbackMonth = availableMonths[availableMonths.length - 1] || `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+    const currentMonthStr = selectedMonth === 'all' ? fallbackMonth : selectedMonth;
     const [yearNum, monthNum] = currentMonthStr.split('-').map(n => parseInt(n, 10));
     const validYear = isNaN(yearNum) ? 2026 : yearNum;
     const validMonth = isNaN(monthNum) ? 7 : monthNum;
@@ -638,14 +647,26 @@ export function useTransactions(
             .reduce((s, t) => s + (typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount || 0)) || 0), 0);
           return sum + mVar;
         }, 0);
-        avgDailyVar = totalPriorVar / (priorMonthsWithVar.length * 30);
+        const totalPriorDays = priorMonthsWithVar.reduce((days, pk) => {
+          const [py, pm] = pk.split('-').map(Number);
+          const dim = (!isNaN(py) && !isNaN(pm)) ? new Date(py, pm, 0).getDate() : 30;
+          return days + dim;
+        }, 0);
+        avgDailyVar = totalPriorDays > 0 ? totalPriorVar / totalPriorDays : 0;
       }
 
       const projectedFixed = Math.max(fixedExpenses, priorFixed);
       const projectedVariable = flexibleExpenses + avgDailyVar * daysRemaining;
       eomProjection = Math.round(projectedFixed + nonMonthlyExpenses + projectedVariable);
     }
-    const pacingStatus: 'under_budget' | 'on_track' | 'over_budget' = 'on_track';
+    let pacingStatus: 'under_budget' | 'on_track' | 'over_budget' = 'on_track';
+    if (prevMaxCumulative > 0 && eomProjection > 0) {
+      if (eomProjection > prevMaxCumulative * 1.05) {
+        pacingStatus = 'over_budget';
+      } else if (eomProjection < prevMaxCumulative * 0.95) {
+        pacingStatus = 'under_budget';
+      }
+    }
 
     // 4. Multi-Month Cash Flow Summaries
     const monthGroupMap: Record<string, { income: number; expense: number; fixedExpense: number; flexibleExpense: number; nonMonthlyExpense: number }> = {};
@@ -672,7 +693,18 @@ export function useTransactions(
             monthGroupMap[mKey].flexibleExpense += validAmt;
           }
         } else if (t.type === 'income') {
-          monthGroupMap[mKey].income += validAmt;
+          if (isRefundTransaction(t)) {
+            const b = bucketOf(t, categories);
+            if (b === 'fixed') {
+              monthGroupMap[mKey].fixedExpense -= validAmt;
+            } else if (b === 'non-monthly') {
+              monthGroupMap[mKey].nonMonthlyExpense -= validAmt;
+            } else {
+              monthGroupMap[mKey].flexibleExpense -= validAmt;
+            }
+          } else {
+            monthGroupMap[mKey].income += validAmt;
+          }
         }
       }
     });
@@ -681,16 +713,20 @@ export function useTransactions(
       .sort()
       .map(mKey => {
         const data = monthGroupMap[mKey];
-        const net = data.income - data.expense;
-        const savingsRate = data.income > 0 ? Math.round((net / data.income) * 100) : 0;
+        const clampedFixed = Math.max(0, data.fixedExpense);
+        const clampedFlexible = Math.max(0, data.flexibleExpense);
+        const clampedNonMonthly = Math.max(0, data.nonMonthlyExpense);
+        const totalExp = clampedFixed + clampedFlexible + clampedNonMonthly;
+        const net = data.income - totalExp;
+        const savingsRate = data.income > 0 ? Math.round((net / data.income) * 100) : (totalExp > 0 ? -100 : 0);
         return {
           month: mKey,
           formattedMonth: formatMonthLabel(mKey),
           income: Math.round(data.income),
-          expense: Math.round(data.expense),
-          fixedExpense: Math.round(data.fixedExpense),
-          flexibleExpense: Math.round(data.flexibleExpense),
-          nonMonthlyExpense: Math.round(data.nonMonthlyExpense),
+          expense: Math.round(totalExp),
+          fixedExpense: Math.round(clampedFixed),
+          flexibleExpense: Math.round(clampedFlexible),
+          nonMonthlyExpense: Math.round(clampedNonMonthly),
           net: Math.round(net),
           savingsRate
         };
