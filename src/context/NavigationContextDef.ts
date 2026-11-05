@@ -9,6 +9,8 @@ export interface NavigationContextType {
   canGoBack: boolean;
   direction: number;
   mainRef: React.RefObject<HTMLElement>;
+  smoothNonMonthly: boolean;
+  setSmoothNonMonthly: (v: boolean | ((prev: boolean) => boolean)) => void;
 }
 
 export const NavigationContext = createContext<NavigationContextType | undefined>(undefined);

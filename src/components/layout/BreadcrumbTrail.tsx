@@ -8,8 +8,8 @@ interface BreadcrumbTrailProps {
   className?: string;
 }
 
-function formatEyebrow(monthStr?: string, short = false): string {
-  if (!monthStr || monthStr === 'all') return 'ALL TIME';
+function formatEyebrow(monthStr?: string, short = false, smoothed = false): string {
+  if (!monthStr || monthStr === 'all') return smoothed ? 'ALL TIME · SMOOTHED' : 'ALL TIME';
   if (/^\d{4}-\d{2}$/.test(monthStr)) {
     const [yStr, mStr] = monthStr.split('-');
     const y = parseInt(yStr, 10);
@@ -18,6 +18,9 @@ function formatEyebrow(monthStr?: string, short = false): string {
     const label = date
       .toLocaleDateString('en-US', { month: short ? 'short' : 'long', year: 'numeric', timeZone: 'UTC' })
       .toUpperCase();
+    if (smoothed) {
+      return `${label} · SMOOTHED`;
+    }
     const now = new Date();
     const currKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     if (monthStr === currKey) {
@@ -29,11 +32,11 @@ function formatEyebrow(monthStr?: string, short = false): string {
     }
     return label;
   }
-  return monthStr.toUpperCase();
+  return smoothed ? `${monthStr.toUpperCase()} · SMOOTHED` : monthStr.toUpperCase();
 }
 
 export const BreadcrumbTrail: React.FC<BreadcrumbTrailProps> = ({ className = '' }) => {
-  const { currentRoute, breadcrumbs, navigate, goBack, canGoBack } = useNavigation();
+  const { currentRoute, breadcrumbs, navigate, goBack, canGoBack, smoothNonMonthly } = useNavigation();
 
   return (
     <nav
@@ -91,8 +94,8 @@ export const BreadcrumbTrail: React.FC<BreadcrumbTrailProps> = ({ className = ''
                     aria-current="page"
                     className="text-eyebrow uppercase text-muted-foreground truncate"
                   >
-                    <span className="sm:hidden">{formatEyebrow(currentRoute.month, true)}</span>
-                    <span className="hidden sm:inline">{formatEyebrow(currentRoute.month, false)}</span>
+                    <span className="sm:hidden">{formatEyebrow(currentRoute.month, true, smoothNonMonthly)}</span>
+                    <span className="hidden sm:inline">{formatEyebrow(currentRoute.month, false, smoothNonMonthly)}</span>
                     <span className="sr-only"> ({item.label})</span>
                   </motion.span>
                 ) : isLast ? (

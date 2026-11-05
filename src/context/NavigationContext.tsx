@@ -38,6 +38,26 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({
   const prevRouteRef = useRef<AppRoute>(currentRoute);
   const [direction, setDirection] = useState<number>(0);
 
+  const [smoothNonMonthly, setSmoothNonMonthlyState] = useState<boolean>(() => {
+    try {
+      return typeof window !== 'undefined' && window.localStorage.getItem('expense_smooth_non_monthly') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const setSmoothNonMonthly = useCallback((v: boolean | ((prev: boolean) => boolean)) => {
+    setSmoothNonMonthlyState(prev => {
+      const next = typeof v === 'function' ? v(prev) : v;
+      try {
+        window.localStorage.setItem('expense_smooth_non_monthly', String(next));
+      } catch {
+        // ignore storage errors
+      }
+      return next;
+    });
+  }, []);
+
   const onMonthChangeRef = useRef(onMonthChange);
   onMonthChangeRef.current = onMonthChange;
 
@@ -182,7 +202,9 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({
     canGoBack,
     direction,
     mainRef,
-  }), [currentRoute, breadcrumbs, navigate, goBack, canGoBack, direction, mainRef]);
+    smoothNonMonthly,
+    setSmoothNonMonthly,
+  }), [currentRoute, breadcrumbs, navigate, goBack, canGoBack, direction, mainRef, smoothNonMonthly, setSmoothNonMonthly]);
 
   return (
     <NavigationContext.Provider value={value}>

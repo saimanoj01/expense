@@ -68,10 +68,78 @@ export const Level1MonthOverview: React.FC<Level1MonthOverviewProps> = ({
   onOpenAddTxn,
   className = '',
 }) => {
-  const { currentRoute } = useNavigation();
+  const { currentRoute, smoothNonMonthly } = useNavigation();
   const isOverview = currentRoute.view === 'overview';
   const prevMonthRef = useRef(selectedMonth);
   const [slideOffset, setSlideOffset] = useState(0);
+
+  // Smoothed non-monthly calculation (§3.10: trailing 12-month non-monthly total / months of history)
+  const smoothedMetrics = useMemo(() => {
+    if (!smoothNonMonthly) {
+      return {
+        nonMonthly: nonMonthlyExpenses,
+        totalExpenses,
+        savingsAmount,
+        savingsRate,
+      };
+    }
+
+    const trailingKeys: string[] = [];
+    if (selectedMonth && /^\d{4}-\d{2}$/.test(selectedMonth)) {
+      const [yStr, mStr] = selectedMonth.split('-');
+      const y = parseInt(yStr, 10);
+      const m = parseInt(mStr, 10);
+      for (let i = 0; i < 12; i++) {
+        const d = new Date(Date.UTC(y, m - 1 - i, 1));
+        trailingKeys.push(`${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`);
+      }
+    }
+
+    const relevantTxns = allTransactions.filter(t => {
+      if (t.type === 'transfer') return false;
+      if (trailingKeys.length === 0) return true;
+      const mKey = (t.date || '').substring(0, 7);
+      return trailingKeys.includes(mKey);
+    });
+
+    const distinctMonths = new Set(
+      relevantTxns.map(t => (t.date || '').substring(0, 7)).filter(m => /^\d{4}-\d{2}$/.test(m))
+    );
+    const divisor = Math.min(12, Math.max(1, distinctMonths.size));
+
+    const totalTrailingNonMonthly = relevantTxns
+      .filter(t => t.type === 'expense' && bucketOf(t, categories) === 'non-monthly')
+      .reduce((s, t) => s + t.amount, 0);
+
+    const sNonMonthly = totalTrailingNonMonthly / divisor;
+    const sTotalExpenses = fixedExpenses + flexibleExpenses + sNonMonthly;
+    const sSavingsAmount = totalIncome - sTotalExpenses;
+    const sSavingsRate = totalIncome > 0 ? (sSavingsAmount / totalIncome) * 100 : 0;
+
+    return {
+      nonMonthly: sNonMonthly,
+      totalExpenses: sTotalExpenses,
+      savingsAmount: sSavingsAmount,
+      savingsRate: sSavingsRate,
+    };
+  }, [
+    smoothNonMonthly,
+    selectedMonth,
+    allTransactions,
+    categories,
+    nonMonthlyExpenses,
+    fixedExpenses,
+    flexibleExpenses,
+    totalExpenses,
+    totalIncome,
+    savingsAmount,
+    savingsRate,
+  ]);
+
+  const effectiveNonMonthly = smoothedMetrics.nonMonthly;
+  const effectiveTotalExpenses = smoothedMetrics.totalExpenses;
+  const effectiveSavingsAmount = smoothedMetrics.savingsAmount;
+  const effectiveSavingsRate = smoothedMetrics.savingsRate;
 
   useEffect(() => {
     if (prevMonthRef.current !== selectedMonth) {
@@ -238,9 +306,9 @@ export const Level1MonthOverview: React.FC<Level1MonthOverviewProps> = ({
       <OverviewHero
         selectedMonth={selectedMonth}
         totalIncome={totalIncome}
-        totalExpenses={totalExpenses}
-        savingsAmount={savingsAmount}
-        savingsRate={savingsRate}
+        totalExpenses={effectiveTotalExpenses}
+        savingsAmount={effectiveSavingsAmount}
+        savingsRate={effectiveSavingsRate}
         totalBudget={totalBudget}
         flexNumber={flexNumber}
         priorIncome={priorMetrics?.income}
@@ -257,18 +325,18 @@ export const Level1MonthOverview: React.FC<Level1MonthOverviewProps> = ({
           totalIncome={totalIncome}
           fixedExpenses={fixedExpenses}
           flexibleExpenses={flexibleExpenses}
-          nonMonthlyExpenses={nonMonthlyExpenses}
-          savingsAmount={savingsAmount}
+          nonMonthlyExpenses={effectiveNonMonthly}
+          savingsAmount={effectiveSavingsAmount}
         />
 
         <BucketStats
           selectedMonth={selectedMonth}
           totalIncome={totalIncome}
-          totalExpenses={totalExpenses}
+          totalExpenses={effectiveTotalExpenses}
           fixedExpenses={fixedExpenses}
           flexibleExpenses={flexibleExpenses}
-          nonMonthlyExpenses={nonMonthlyExpenses}
-          savingsAmount={savingsAmount}
+          nonMonthlyExpenses={effectiveNonMonthly}
+          savingsAmount={effectiveSavingsAmount}
           priorMetrics={priorMetrics}
           priorMonthKey={priorMonthKey}
           hasPriorMonthData={hasPriorMonthData}
@@ -283,14 +351,14 @@ export const Level1MonthOverview: React.FC<Level1MonthOverviewProps> = ({
           categories={categories}
           budgets={budgets}
           totalIncome={totalIncome}
-          totalExpenses={totalExpenses}
+          totalExpenses={effectiveTotalExpenses}
           fixedExpenses={fixedExpenses}
           flexibleExpenses={flexibleExpenses}
-          nonMonthlyExpenses={nonMonthlyExpenses}
+          nonMonthlyExpenses={effectiveNonMonthly}
           unclassifiedExpenses={unclassifiedExpenses}
           flexNumber={flexNumber}
-          savingsAmount={savingsAmount}
-          savingsRate={savingsRate}
+          savingsAmount={effectiveSavingsAmount}
+          savingsRate={effectiveSavingsRate}
         />
       </div>
 
@@ -300,7 +368,7 @@ export const Level1MonthOverview: React.FC<Level1MonthOverviewProps> = ({
           selectedMonth={selectedMonth}
           priorMonthKey={priorMonthKey}
           allTransactions={allTransactions}
-          totalExpenses={totalExpenses}
+          totalExpenses={effectiveTotalExpenses}
           totalBudget={totalBudget}
           isOverview={isOverview}
         />

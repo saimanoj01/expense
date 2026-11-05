@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Printer, MoreHorizontal, Share2, Lock, Unlock, Upload } from 'lucide-react';
+import { Printer, MoreHorizontal, Share2, Lock, Unlock, Upload, Check } from 'lucide-react';
 import { BreadcrumbTrail } from './BreadcrumbTrail';
 import { MonthSwitcher } from '../dashboard/MonthSwitcher';
 import { useNavigation } from '../../hooks/useNavigation';
@@ -35,7 +35,7 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
   onUnlockMonth,
   className = '',
 }) => {
-  const { currentRoute } = useNavigation();
+  const { currentRoute, smoothNonMonthly, setSmoothNonMonthly } = useNavigation();
   const [scrolled, setScrolled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -183,8 +183,22 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
               />
               <div
                 data-popover="page-header-overflow"
-                className="absolute right-0 mt-1.5 w-48 rounded-[14px] bg-popover border border-border p-1.5 shadow-lg z-30 space-y-0.5"
+                className="absolute right-0 mt-1.5 w-52 rounded-[14px] bg-popover border border-border p-1.5 shadow-lg z-30 space-y-0.5"
               >
+                <button
+                  type="button"
+                  role="menuitemcheckbox"
+                  aria-checked={smoothNonMonthly}
+                  data-testid="toggle-smooth-non-monthly-btn"
+                  onClick={() => {
+                    setSmoothNonMonthly(prev => !prev);
+                    setMenuOpen(false);
+                  }}
+                  className="w-full px-3 py-2 text-left text-body text-foreground hover:bg-surface2 rounded-[10px] flex items-center justify-between gap-2 transition-colors"
+                >
+                  <span>Smooth non-monthly</span>
+                  {smoothNonMonthly && <Check className="w-4 h-4 text-bucket-saved shrink-0" />}
+                </button>
                 {onOpenReport && (
                   <button
                     type="button"
