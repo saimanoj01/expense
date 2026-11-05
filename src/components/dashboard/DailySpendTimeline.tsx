@@ -1,10 +1,9 @@
 import React, { useState, useMemo } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
 import { Transaction } from '../../services/storage';
-import { formatCurrency } from '../../utils/formatters';
+import { formatMoney } from '../../utils/formatters';
 
 export interface DailySpendTimelineProps {
-  month: string; // e.g. '2026-11' or 'all'
+  month: string;
   transactions: Transaction[];
   budget?: number;
   color?: string;
@@ -12,306 +11,203 @@ export interface DailySpendTimelineProps {
   className?: string;
 }
 
+function getShortMonthName(month: string): string {
+  if (!month || !/^\d{4}-\d{2}$/.test(month)) return '';
+  const [yStr, mStr] = month.split('-');
+  const d = new Date(Date.UTC(parseInt(yStr, 10), parseInt(mStr, 10) - 1, 1));
+  return d.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' });
+}
+
 export const DailySpendTimeline: React.FC<DailySpendTimelineProps> = ({
   month,
   transactions,
-  budget = 0,
   color = 'hsl(var(--c-fixed))',
-  height = 140,
-  className = ''
+  height = 120,
+  className = '',
 }) => {
   const [hoveredDay, setHoveredDay] = useState<{
     day: number;
     amount: number;
-    cumulative: number;
-    x: number;
-    y: number;
-    txnCount: number;
+    topMerchant: string;
+    xPct: number;
   } | null>(null);
 
-  // Calculate days in month
   const daysInMonth = useMemo(() => {
     if (!month || month === 'all' || !/^\d{4}-\d{2}$/.test(month)) return 30;
     const [yStr, mStr] = month.split('-');
-    const y = parseInt(yStr, 10);
-    const m = parseInt(mStr, 10);
-    return new Date(y, m, 0).getDate();
+    return new Date(parseInt(yStr, 10), parseInt(mStr, 10), 0).getDate();
   }, [month]);
 
-  // Aggregate daily expenses
+  // Determine active cutoff day for current month (future days left blank)
+  const cutoffDay = useMemo(() => {
+    const now = new Date();
+    const currKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    const maxTxnDay = transactions.reduce((maxD, t) => {
+      if (t.type === 'expense' && t.date) {
+        const d = parseInt(t.date.split('-')[2] || '0', 10);
+        return Math.max(maxD, d);
+      }
+      return maxD;
+    }, 0);
+    if (month === currKey) {
+      return Math.max(now.getDate(), maxTxnDay);
+    }
+    return daysInMonth;
+  }, [month, transactions, daysInMonth]);
+
   const dailyData = useMemo(() => {
-    const dailyMap: Record<number, { amount: number; txnCount: number }> = {};
+    const map: Record<number, { amount: number; topMerchant: string; topAmt: number }> = {};
     for (let d = 1; d <= daysInMonth; d++) {
-      dailyMap[d] = { amount: 0, txnCount: 0 };
+      map[d] = { amount: 0, topMerchant: '', topAmt: 0 };
     }
 
     transactions.forEach(t => {
       if (t.type === 'expense' && t.date) {
         const day = parseInt(t.date.split('-')[2] || '0', 10);
         if (day >= 1 && day <= daysInMonth) {
-          dailyMap[day].amount += t.amount;
-          dailyMap[day].txnCount += 1;
+          map[day].amount += t.amount;
+          if (t.amount >= map[day].topAmt) {
+            map[day].topAmt = t.amount;
+            map[day].topMerchant = t.description || '';
+          }
         }
       }
     });
 
-    let running = 0;
-    return Object.entries(dailyMap).map(([dStr, data]) => {
-      const day = parseInt(dStr, 10);
-      running += data.amount;
-      return {
-        day,
-        dailyAmount: data.amount,
-        cumulativeAmount: running,
-        txnCount: data.txnCount
-      };
-    });
+    return Object.entries(map).map(([dStr, val]) => ({
+      day: parseInt(dStr, 10),
+      amount: val.amount,
+      topMerchant: val.topMerchant,
+    }));
   }, [transactions, daysInMonth]);
 
-  const maxAmount = useMemo(() => {
-    const maxDaily = Math.max(...dailyData.map(d => d.dailyAmount), 0);
-    return Math.max(maxDaily, budget > 0 ? budget / daysInMonth * 2 : 10, 1);
-  }, [dailyData, budget, daysInMonth]);
+  const maxDaily = useMemo(() => {
+    return Math.max(...dailyData.map(d => d.amount), 10);
+  }, [dailyData]);
 
-  const width = 500;
-  const paddingX = 24;
-  const paddingY = 20;
-  const chartWidth = width - paddingX * 2;
-  const chartHeight = height - paddingY * 2;
+  const totalSpend = useMemo(
+    () => dailyData.reduce((s, d) => s + d.amount, 0),
+    [dailyData]
+  );
+  const avgDaily = cutoffDay > 0 ? totalSpend / cutoffDay : 0;
 
-  // Scale functions
-  const getX = (day: number) => paddingX + ((day - 1) / (daysInMonth - 1)) * chartWidth;
-  const getY = (amount: number) => paddingY + chartHeight - (amount / maxAmount) * chartHeight;
-
-  // Generate SVG path for daily bar / step points
-  const points = dailyData.map(d => ({
-    x: getX(d.day),
-    y: getY(d.dailyAmount),
-    data: d
-  }));
-
-  // Build smooth path
-  const linePath = useMemo(() => {
-    if (points.length === 0) return '';
-    return points.reduce((acc, curr, idx) => {
-      if (idx === 0) return `M ${curr.x} ${curr.y}`;
-      return `${acc} L ${curr.x} ${curr.y}`;
-    }, '');
-  }, [points]);
-
-  const areaPath = useMemo(() => {
-    if (points.length === 0) return '';
-    const firstX = points[0].x;
-    const lastX = points[points.length - 1].x;
-    const bottomY = paddingY + chartHeight;
-    return `${linePath} L ${lastX} ${bottomY} L ${firstX} ${bottomY} Z`;
-  }, [linePath, points, chartHeight, paddingY]);
-
-  // Average daily spend
-  const totalSpend = dailyData.length > 0 ? dailyData[dailyData.length - 1].cumulativeAmount : 0;
-  const avgDaily = daysInMonth > 0 ? totalSpend / daysInMonth : 0;
+  const width = 600;
+  const padTop = 8;
+  const padBottom = 22;
+  const chartHeight = height - padTop - padBottom;
+  const slotWidth = width / daysInMonth;
+  const barWidth = Math.max(4, slotWidth - 3);
+  const avgY = padTop + chartHeight - Math.min(1, avgDaily / maxDaily) * chartHeight;
+  const shortMonth = getShortMonthName(month);
 
   return (
     <div
       data-testid="daily-spend-timeline"
-      className={`relative rounded-2xl p-4 bg-card/70 border border-border/70 backdrop-blur-md shadow-sm ${className}`}
+      className={`relative py-2 ${className}`}
     >
-      <div className="flex items-center justify-between gap-2 mb-2">
-        <div>
-          <h4 className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: color }} />
-            Daily Spending Velocity
-          </h4>
-          <span className="text-[10px] text-muted-foreground">Velocity & pace across day 1 to {daysInMonth}</span>
-        </div>
-
-        <div className="flex items-center gap-3 text-xs tabular-nums num">
-          <div className="text-right">
-            <span className="text-xs text-muted-foreground block">Avg / Day</span>
-            <span className="font-semibold text-foreground tabular-nums">{formatCurrency(avgDaily)}</span>
-          </div>
-          <div className="text-right">
-            <span className="text-xs text-muted-foreground block">Total</span>
-            <span className="font-semibold text-foreground tabular-nums">{formatCurrency(totalSpend)}</span>
-          </div>
-        </div>
-      </div>
-
-      <div className="relative w-full overflow-hidden">
+      <div className="relative w-full">
         <svg
           viewBox={`0 0 ${width} ${height}`}
-          className="w-full h-auto overflow-visible select-none"
+          className="w-full h-[120px] overflow-visible select-none"
           onMouseLeave={() => setHoveredDay(null)}
         >
-          <defs>
-            <linearGradient id={`gradient-${color.replace('#', '')}`} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={color} stopOpacity="0.35" />
-              <stop offset="100%" stopColor={color} stopOpacity="0.0" />
-            </linearGradient>
-          </defs>
-
-          {/* Grid lines */}
-          <line
-            x1={paddingX}
-            y1={paddingY}
-            x2={width - paddingX}
-            y2={paddingY}
-            stroke="currentColor"
-            strokeOpacity="0.08"
-            strokeDasharray="4 4"
-          />
-          <line
-            x1={paddingX}
-            y1={paddingY + chartHeight / 2}
-            x2={width - paddingX}
-            y2={paddingY + chartHeight / 2}
-            stroke="currentColor"
-            strokeOpacity="0.08"
-            strokeDasharray="4 4"
-          />
-          <line
-            x1={paddingX}
-            y1={paddingY + chartHeight}
-            x2={width - paddingX}
-            y2={paddingY + chartHeight}
-            stroke="currentColor"
-            strokeOpacity="0.15"
-          />
-
-          {/* Area fill */}
-          {areaPath && (
-            <path
-              d={areaPath}
-              fill={`url(#gradient-${color.replace('#', '')})`}
+          {/* Faint horizontal average daily spend line */}
+          {totalSpend > 0 && (
+            <line
+              x1={0}
+              y1={avgY}
+              x2={width}
+              y2={avgY}
+              stroke="hsl(var(--border))"
+              strokeWidth="1"
+              strokeDasharray="3 3"
             />
           )}
 
-          {/* Line stroke */}
-          {linePath && (
-            <path
-              d={linePath}
-              fill="none"
-              stroke={color}
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          )}
-
-          {/* Data Points */}
-          {points.map(pt => {
-            const hasSpend = pt.data.dailyAmount > 0;
-            const isHighSpike = pt.data.dailyAmount > avgDaily * 1.5 && avgDaily > 0;
-            const isHovered = hoveredDay?.day === pt.data.day;
+          {/* Daily bars (future days blank, zero days as 2px surface2 stubs) */}
+          {dailyData.map(d => {
+            if (d.day > cutoffDay) return null;
+            const x = (d.day - 1) * slotWidth + 1.5;
+            const isZero = d.amount <= 0;
+            const barH = isZero
+              ? 2
+              : Math.max(4, (d.amount / maxDaily) * chartHeight);
+            const y = padTop + chartHeight - barH;
 
             return (
               <g
-                key={pt.data.day}
+                key={d.day}
                 onMouseEnter={() =>
                   setHoveredDay({
-                    day: pt.data.day,
-                    amount: pt.data.dailyAmount,
-                    cumulative: pt.data.cumulativeAmount,
-                    x: pt.x,
-                    y: pt.y,
-                    txnCount: pt.data.txnCount
+                    day: d.day,
+                    amount: d.amount,
+                    topMerchant: d.topMerchant,
+                    xPct: ((d.day - 0.5) / daysInMonth) * 100,
                   })
                 }
-                className="cursor-pointer group"
+                className="cursor-pointer"
               >
-                {/* Invisible hover target */}
                 <rect
-                  x={pt.x - chartWidth / daysInMonth / 2}
-                  y={paddingY}
-                  width={chartWidth / daysInMonth}
+                  x={(d.day - 1) * slotWidth}
+                  y={padTop}
+                  width={slotWidth}
                   height={chartHeight}
                   fill="transparent"
                 />
-
-                {hasSpend && (
-                  <circle
-                    cx={pt.x}
-                    cy={pt.y}
-                    r={isHovered ? 5.5 : isHighSpike ? 4 : 3}
-                    fill={isHighSpike ? 'hsl(var(--c-nonmonthly))' : color}
-                    stroke="#ffffff"
-                    strokeWidth="1.5"
-                    className="transition-all duration-150"
-                  />
-                )}
+                <rect
+                  x={x}
+                  y={y}
+                  width={barWidth}
+                  height={barH}
+                  rx={isZero ? 1 : 3}
+                  fill={isZero ? 'hsl(var(--surface-2))' : color}
+                  fillOpacity={isZero ? 1 : 0.9}
+                />
               </g>
             );
           })}
 
-          {/* Hover indicator vertical line */}
-          {hoveredDay && (
-            <line
-              x1={hoveredDay.x}
-              y1={paddingY}
-              x2={hoveredDay.x}
-              y2={paddingY + chartHeight}
-              stroke={color}
-              strokeWidth="1"
-              strokeDasharray="2 2"
-              opacity="0.6"
-            />
-          )}
-
-          {/* Day Axis ticks */}
+          {/* Axis labels: 1st, 15th, last day at 12/500 text-muted-foreground */}
           <text
-            x={paddingX}
+            x={slotWidth / 2}
             y={height - 4}
-            className="text-xs fill-muted-foreground/60 tabular-nums num"
+            textAnchor="start"
+            className="text-label font-medium fill-muted-foreground tabular-nums num"
           >
-            Day 1
+            {shortMonth} 1
           </text>
           <text
-            x={paddingX + chartWidth / 2}
+            x={14.5 * slotWidth}
             y={height - 4}
             textAnchor="middle"
-            className="text-xs fill-muted-foreground/60 tabular-nums num"
+            className="text-label font-medium fill-muted-foreground tabular-nums num"
           >
-            Day {Math.round(daysInMonth / 2)}
+            15
           </text>
           <text
-            x={width - paddingX}
+            x={width - 1.5}
             y={height - 4}
             textAnchor="end"
-            className="text-xs fill-muted-foreground/60 tabular-nums num"
+            className="text-label font-medium fill-muted-foreground tabular-nums num"
           >
-            Day {daysInMonth}
+            {daysInMonth}
           </text>
         </svg>
 
-        {/* Hover Floating Tooltip */}
-        <AnimatePresence>
-          {hoveredDay && (
-            <motion.div
-              initial={{ opacity: 0, y: 4 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 4 }}
-              transition={{ duration: 0.12 }}
-              style={{
-                left: `${Math.min(Math.max(hoveredDay.x - 60, 8), width - 128)}px`,
-                top: '8px'
-              }}
-              className="absolute pointer-events-none p-2 rounded-xl bg-popover/95 border border-border shadow-xl backdrop-blur-md text-xs z-20 min-w-[120px]"
-            >
-              <div className="font-semibold text-foreground flex items-center justify-between">
-                <span>Day {hoveredDay.day}</span>
-                <span className="text-xs text-muted-foreground tabular-nums num">
-                  {hoveredDay.txnCount} txn{hoveredDay.txnCount !== 1 ? 's' : ''}
-                </span>
-              </div>
-              <div className="text-xs font-semibold text-primary mt-0.5 tabular-nums num">
-                {formatCurrency(hoveredDay.amount)}
-              </div>
-              <div className="text-xs text-muted-foreground mt-0.5 tabular-nums num">
-                Cumulative: {formatCurrency(hoveredDay.cumulative)}
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+        {hoveredDay && (
+          <div
+            style={{
+              left: `${Math.min(88, Math.max(12, hoveredDay.xPct))}%`,
+              top: 0,
+            }}
+            className="absolute -translate-x-1/2 -translate-y-full pointer-events-none px-2.5 py-1 rounded-[10px] bg-popover border border-border shadow-md text-label text-foreground whitespace-nowrap z-20 tabular-nums num"
+          >
+            <span>
+              {shortMonth} {hoveredDay.day} · {formatMoney(hoveredDay.amount)}
+              {hoveredDay.topMerchant ? ` · ${hoveredDay.topMerchant}` : ''}
+            </span>
+          </div>
+        )}
       </div>
     </div>
   );

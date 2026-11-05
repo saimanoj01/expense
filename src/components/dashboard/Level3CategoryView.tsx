@@ -1,24 +1,12 @@
 import React, { useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
-import {
-  ArrowRight,
-  Search,
-  Plus,
-  Receipt,
-  Store,
-  Calendar,
-  CheckCircle2,
-  AlertTriangle,
-  Edit2,
-  Trash2,
-  Tag
-} from 'lucide-react';
+import { ArrowRight, Search, Plus, Edit2, Trash2 } from 'lucide-react';
 import { Transaction, Category, Budget, SpendingBucket } from '../../services/storage';
 import { useNavigation } from '../../hooks/useNavigation';
 import { formatMoney, splitMoneyParts } from '../../utils/formatters';
 import { suggestSpendingBucket } from '../../utils/categorizer';
 import { DailySpendTimeline } from './DailySpendTimeline';
-import { bucketColor, negativeColor } from '../../theme/buckets';
+import { BUCKETS, bucketColor, negativeColor } from '../../theme/buckets';
 import { spring } from '../../theme/motion';
 import { RollingNumber } from '../motion/RollingNumber';
 
@@ -34,14 +22,18 @@ export interface Level3CategoryViewProps {
   className?: string;
 }
 
-function getUtilizationColor(pct: number): { text: string; bg: string; border: string; hex: string } {
-  if (pct > 100) {
-    return { text: 'text-negative', bg: 'bg-negative/10', border: 'border-negative/20', hex: negativeColor() };
-  }
-  if (pct >= 90) {
-    return { text: 'text-bucket-nonmonthly', bg: 'bg-bucket-nonmonthly/10', border: 'border-bucket-nonmonthly/20', hex: bucketColor('non-monthly') };
-  }
-  return { text: 'text-bucket-saved', bg: 'bg-bucket-saved/10', border: 'border-bucket-saved/20', hex: bucketColor('saved') };
+function formatDayGroupHeader(dateStr: string): string {
+  if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr || 'Recent';
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  return dt
+    .toLocaleDateString('en-US', {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      timeZone: 'UTC',
+    })
+    .toUpperCase();
 }
 
 export const Level3CategoryView: React.FC<Level3CategoryViewProps> = ({
@@ -53,16 +45,16 @@ export const Level3CategoryView: React.FC<Level3CategoryViewProps> = ({
   onOpenAddTxn,
   onEditTxn,
   onDeleteTxn,
-  className = ''
+  className = '',
 }) => {
   const { navigate } = useNavigation();
   const [searchTerm, setSearchTerm] = useState('');
 
-  // Find category metadata
   const category = useMemo(() => {
-    const match = categories.find(c => 
-      c.id.toLowerCase() === categoryId.toLowerCase() ||
-      c.name.toLowerCase() === categoryId.toLowerCase()
+    const match = categories.find(
+      c =>
+        c.id.toLowerCase() === categoryId.toLowerCase() ||
+        c.name.toLowerCase() === categoryId.toLowerCase()
     );
     if (match) return match;
 
@@ -70,34 +62,39 @@ export const Level3CategoryView: React.FC<Level3CategoryViewProps> = ({
       id: categoryId,
       name: categoryId.charAt(0).toUpperCase() + categoryId.slice(1),
       emoji: '🏷️',
-      color: bucketColor('fixed')
+      color: bucketColor('fixed'),
     };
   }, [categories, categoryId]);
 
-  // Determine bucket
   const bucketId: SpendingBucket = useMemo(() => {
     if (category.defaultBucket) return category.defaultBucket as SpendingBucket;
     return suggestSpendingBucket('', category.id);
   }, [category]);
 
-  // Find budget for this category
+  const bucketRouteSlug = bucketId === 'flexible' ? 'variable' : bucketId;
+  const bucketLabel = BUCKETS[bucketId]?.label || 'Variable';
+  const accentColor = bucketColor(bucketId);
+
   const budget = useMemo(() => {
-    const bObj = budgets.find(b => 
-      b.category.toLowerCase() === category.id.toLowerCase() ||
-      b.category.toLowerCase() === category.name.toLowerCase()
+    const bObj = budgets.find(
+      b =>
+        b.category.toLowerCase() === category.id.toLowerCase() ||
+        b.category.toLowerCase() === category.name.toLowerCase()
     );
     return bObj?.amount || 0;
   }, [budgets, category]);
 
-  // Filter category transactions for this month
   const categoryTransactions = useMemo(() => {
     return transactions.filter(t => {
-      const matchCat = (t.category || '').toLowerCase() === category.id.toLowerCase() ||
-                       (t.category || '').toLowerCase() === category.name.toLowerCase() ||
-                       (t.subCategory || '').toLowerCase() === category.id.toLowerCase();
+      const matchMonth = month === 'all' || (t.date && t.date.startsWith(month));
+      if (!matchMonth) return false;
+      const matchCat =
+        (t.category || '').toLowerCase() === category.id.toLowerCase() ||
+        (t.category || '').toLowerCase() === category.name.toLowerCase() ||
+        (t.subCategory || '').toLowerCase() === category.id.toLowerCase();
       return matchCat && t.type === 'expense';
     });
-  }, [transactions, category]);
+  }, [transactions, month, category]);
 
   const totalSpent = useMemo(() => {
     return categoryTransactions.reduce((sum, t) => sum + t.amount, 0);
@@ -107,14 +104,26 @@ export const Level3CategoryView: React.FC<Level3CategoryViewProps> = ({
   const utilization = budget > 0 ? (totalSpent / budget) * 100 : 0;
   const isOverBudget = budget > 0 && totalSpent > budget;
 
-  // Merchant / Payee breakdown
+  // Pace marker & days remaining for current month
+  const { pacePct, daysToGo } = useMemo(() => {
+    if (!month || !/^\d{4}-\d{2}$/.test(month)) return { pacePct: null, daysToGo: null };
+    const now = new Date();
+    const currKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    if (month !== currKey) return { pacePct: null, daysToGo: null };
+    const [yStr, mStr] = month.split('-');
+    const daysInMonth = new Date(parseInt(yStr, 10), parseInt(mStr, 10), 0).getDate();
+    return {
+      pacePct: Math.min(98, Math.max(2, (now.getDate() / daysInMonth) * 100)),
+      daysToGo: Math.max(0, daysInMonth - now.getDate()),
+    };
+  }, [month]);
+
+  // Top 5 merchants
   const merchantBreakdown = useMemo(() => {
     const map: Record<string, { name: string; amount: number; count: number }> = {};
 
     categoryTransactions.forEach(t => {
-      // Clean description to payee name
       let payee = (t.description || 'Other').trim();
-      // Remove trailing dates or numbers if common
       payee = payee.replace(/\s+#\d+$/, '').replace(/\s+\d{2}\/\d{2}$/, '');
       if (!payee) payee = 'Unspecified Payee';
 
@@ -125,221 +134,192 @@ export const Level3CategoryView: React.FC<Level3CategoryViewProps> = ({
       map[payee].count += 1;
     });
 
-    const list = Object.values(map).map(m => ({
-      ...m,
-      pctOfTotal: totalSpent > 0 ? (m.amount / totalSpent) * 100 : 0
-    }));
-
+    const list = Object.values(map);
     list.sort((a, b) => b.amount - a.amount);
-    return list;
-  }, [categoryTransactions, totalSpent]);
+    return list.slice(0, 5);
+  }, [categoryTransactions]);
 
-  // Filtered transactions for search
+  // Filtered & day-grouped transactions
   const filteredTxns = useMemo(() => {
-    if (!searchTerm.trim()) return categoryTransactions;
+    const base = [...categoryTransactions].sort((a, b) =>
+      (b.date || '').localeCompare(a.date || '')
+    );
+    if (!searchTerm.trim()) return base;
     const term = searchTerm.toLowerCase();
-    return categoryTransactions.filter(t =>
-      t.description.toLowerCase().includes(term) ||
-      (t.notes && t.notes.toLowerCase().includes(term)) ||
-      (t.labels && t.labels.some(l => l.toLowerCase().includes(term)))
+    return base.filter(
+      t =>
+        t.description.toLowerCase().includes(term) ||
+        (t.notes && t.notes.toLowerCase().includes(term)) ||
+        (t.labels && t.labels.some(l => l.toLowerCase().includes(term)))
     );
   }, [categoryTransactions, searchTerm]);
+
+  const groupedTxns = useMemo(() => {
+    const groups: { date: string; txns: Transaction[]; dayTotal: number }[] = [];
+    filteredTxns.forEach(t => {
+      const d = t.date || '';
+      const last = groups[groups.length - 1];
+      if (!last || last.date !== d) {
+        groups.push({ date: d, txns: [t], dayTotal: t.amount });
+      } else {
+        last.txns.push(t);
+        last.dayTotal += t.amount;
+      }
+    });
+    return groups;
+  }, [filteredTxns]);
+
+  const heroParts = splitMoneyParts(totalSpent);
 
   return (
     <div
       data-testid="level3-category-view"
-      className={`space-y-6 ${className}`}
+      className={`max-w-[1120px] mx-auto space-y-6 pb-6 ${className}`}
     >
-      {/* Hero Category Header Card */}
-      <motion.div
-        layoutId={`category-row-${category.id}`}
-        className="p-6 rounded-2xl border border-border/70 bg-gradient-to-br from-card/95 via-card/85 to-card/95 backdrop-blur-xl shadow-xl relative overflow-hidden"
-      >
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 relative z-10">
-          <div className="flex items-start gap-4">
+      {/* Bare Category Hero */}
+      <div className="space-y-3 pt-1">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-full bg-surface2 flex items-center justify-center text-xl shrink-0">
             <motion.span
               layoutId={`cat-emoji-${category.id}`}
               layout="position"
               transition={spring}
-              className="text-3xl p-3.5 rounded-2xl bg-secondary/80 border border-border/60 shrink-0 shadow-sm inline-block"
             >
               {category.emoji}
             </motion.span>
-            <div>
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  data-testid="back-to-bucket-btn"
-                  onClick={() => navigate(`#/month/${month}/bucket/${bucketId === 'flexible' ? 'variable' : bucketId}`)}
-                  className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider bg-surface2 text-muted-foreground hover:text-foreground border border-border transition-colors"
-                >
-                  ‹ {bucketId === 'flexible' ? 'Variable Spending' : bucketId.charAt(0).toUpperCase() + bucketId.slice(1)}
-                </button>
-                <span className="text-xs font-semibold text-muted-foreground">{month}</span>
-              </div>
-              <h2 className="text-2xl font-extrabold tracking-tight text-foreground mt-1">
-                {category.name}
-              </h2>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                {categoryTransactions.length} recorded transaction{categoryTransactions.length !== 1 ? 's' : ''} this month
-              </p>
-            </div>
           </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 text-label text-muted-foreground">
+              <span
+                className="w-2 h-2 rounded-full shrink-0"
+                style={{ backgroundColor: accentColor }}
+              />
+              <button
+                type="button"
+                data-testid="back-to-bucket-btn"
+                onClick={() => navigate(`#/month/${month}/bucket/${bucketRouteSlug}`)}
+                className="hover:text-foreground transition-colors focus-visible:ring-2 ring-ring/40 rounded"
+              >
+                {bucketLabel}
+              </button>
+            </div>
+            <h2 className="text-title font-semibold tracking-tight text-foreground truncate">
+              {category.name}
+            </h2>
+          </div>
+        </div>
 
-          {/* Right Figures: Spent & Pacing */}
-          <div className="flex flex-col md:items-end">
-            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              Total Spent
-            </span>
-            <motion.div
-              layoutId={`cat-amount-${category.id}`}
-              layout="position"
-              transition={spring}
-              data-testid="category-total-spent"
-              className="text-3xl sm:text-4xl font-semibold tracking-tight tabular-nums num text-foreground mt-0.5"
+        <motion.div
+          layoutId={`cat-amount-${category.id}`}
+          layout="position"
+          transition={spring}
+          data-testid="category-total-spent"
+          className="text-[36px] leading-[40px] sm:text-display-l font-semibold tracking-tight tabular-nums num text-foreground"
+        >
+          <RollingNumber value={heroParts.whole} srSuffix={heroParts.cents} />
+        </motion.div>
+
+        {budget > 0 ? (
+          <div className="space-y-2">
+            <p
+              className={`text-body tabular-nums num ${
+                isOverBudget ? 'text-negative font-medium' : 'text-muted-foreground'
+              }`}
             >
-              {(() => {
-                const parts = splitMoneyParts(totalSpent);
-                return <RollingNumber value={parts.whole} srSuffix={parts.cents} />;
-              })()}
-            </motion.div>
-
-            {budget > 0 && (() => {
-              const utilColor = getUtilizationColor(utilization);
-              return (
-                <div className="flex items-center gap-2 text-xs mt-1">
-                  <span className="text-muted-foreground tabular-nums num">
-                    of {formatMoney(budget)} budget
-                  </span>
-                  <span className={`inline-flex items-center gap-1 font-semibold px-2 py-0.5 rounded-full text-xs border ${utilColor.bg} ${utilColor.text} ${utilColor.border}`}>
-                    {isOverBudget ? <AlertTriangle className="w-3 h-3" /> : <CheckCircle2 className="w-3 h-3" />}
-                    <span>{utilization.toFixed(0)}% used</span>
-                  </span>
-                </div>
-              );
-            })()}
-          </div>
-        </div>
-
-        {/* Budget Pacing Progress Bar */}
-        {budget > 0 && (() => {
-          const utilColor = getUtilizationColor(utilization);
-          return (
-            <div className="mt-5 pt-4 border-t border-border/40 relative z-10">
-              <div className="flex items-center justify-between text-xs font-semibold mb-1.5">
-                <span className="text-muted-foreground">Budget Pacing:</span>
-                <span className="tabular-nums num text-foreground">
-                  {isOverBudget
-                    ? `Over budget by ${formatMoney(totalSpent - budget)}`
-                    : `${formatMoney(remainingBudget)} remaining`}
-                </span>
-              </div>
-              <div className="h-2.5 w-full bg-surface2 rounded-full overflow-hidden border border-border/40 p-0.5">
+              {isOverBudget
+                ? `${formatMoney(totalSpent - budget)} over ${formatMoney(budget)} budget`
+                : `${formatMoney(remainingBudget)} left of ${formatMoney(budget)}${
+                    daysToGo !== null ? ` · ${daysToGo} day${daysToGo === 1 ? '' : 's'} to go` : ''
+                  }`}
+            </p>
+            <div className="relative h-1.5 w-full bg-surface2 rounded-full overflow-hidden">
+              <div
+                style={{
+                  width: `${Math.min(100, utilization)}%`,
+                  backgroundColor: isOverBudget ? negativeColor() : accentColor,
+                }}
+                className="h-full rounded-full"
+              />
+              {pacePct !== null && (
                 <div
-                  style={{
-                    width: `${Math.min(100, utilization)}%`,
-                    backgroundColor: utilColor.hex
-                  }}
-                  className="h-full rounded-full transition-all duration-500"
+                  style={{ left: `${pacePct}%` }}
+                  className="absolute top-0 bottom-0 w-[2px] bg-faint pointer-events-none"
+                  title="Today's pace"
                 />
-              </div>
+              )}
             </div>
-          );
-        })()}
-      </motion.div>
-
-      {/* Row 2: Daily Spending Velocity Timeline */}
-      <DailySpendTimeline
-        month={month}
-        transactions={categoryTransactions}
-        budget={budget}
-        color={category.color || bucketColor('fixed')}
-      />
-
-      {/* Row 3: Top Payees / Merchants Breakdown */}
-      <div
-        data-testid="top-merchants-breakdown"
-        className="p-5 rounded-2xl bg-card border border-border/70 shadow-sm space-y-3"
-      >
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="p-1.5 rounded-lg bg-primary/10 text-primary">
-              <Store className="w-4 h-4" />
-            </div>
-            <h3 className="text-sm font-extrabold text-foreground">
-              Top Payees & Merchants
-            </h3>
-          </div>
-          <span className="text-xs text-muted-foreground tabular-nums num">
-            {merchantBreakdown.length} unique payee{merchantBreakdown.length !== 1 ? 's' : ''}
-          </span>
-        </div>
-
-        {merchantBreakdown.length === 0 ? (
-          <div className="p-4 text-center text-xs text-muted-foreground">
-            No merchant transactions recorded.
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
-            {merchantBreakdown.slice(0, 6).map((m, idx) => (
+          <p className="text-body text-muted-foreground">
+            {categoryTransactions.length} transaction
+            {categoryTransactions.length !== 1 ? 's' : ''} this month
+          </p>
+        )}
+      </div>
+
+      {/* Daily Bars Chart */}
+      <div className="pt-4 border-t border-border">
+        <DailySpendTimeline
+          month={month}
+          transactions={categoryTransactions}
+          budget={budget}
+          color={accentColor}
+        />
+      </div>
+
+      {/* Top 5 Merchants ("Where") */}
+      <div
+        data-testid="top-merchants-breakdown"
+        className="pt-4 border-t border-border space-y-2"
+      >
+        <h3 className="text-heading text-foreground">Where</h3>
+        {merchantBreakdown.length === 0 ? (
+          <p className="text-body text-muted-foreground py-2">
+            No merchants recorded this month.
+          </p>
+        ) : (
+          <div className="divide-y divide-border/60">
+            {merchantBreakdown.map(m => (
               <div
                 key={m.name}
-                className="p-3 rounded-xl bg-secondary/40 border border-border/50 flex flex-col justify-between"
+                className="min-h-[44px] py-2 flex items-center justify-between gap-3 text-body"
               >
-                <div className="flex items-center justify-between gap-2 mb-1">
-                  <span className="text-xs font-semibold text-foreground truncate max-w-[160px]" title={m.name}>
-                    {idx + 1}. {m.name}
-                  </span>
-                  <span className="text-xs text-muted-foreground tabular-nums num">
-                    {m.count} txn{m.count !== 1 ? 's' : ''}
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="font-medium text-foreground truncate">{m.name}</span>
+                  <span className="text-label text-muted-foreground tabular-nums num shrink-0">
+                    {m.count} {m.count === 1 ? 'time' : 'times'}
                   </span>
                 </div>
-                <div className="flex items-baseline justify-between mt-1">
-                  <span className="text-sm font-semibold tabular-nums num text-foreground">
-                    {formatMoney(m.amount)}
-                  </span>
-                  <span className="text-xs text-muted-foreground tabular-nums num font-semibold">
-                    {m.pctOfTotal.toFixed(0)}%
-                  </span>
-                </div>
+                <span className="font-semibold text-foreground tabular-nums num shrink-0">
+                  {formatMoney(m.amount)}
+                </span>
               </div>
             ))}
           </div>
         )}
       </div>
 
-      {/* Row 4: Category Transactions Ledger Preview */}
-      <div className="p-5 rounded-2xl bg-card border border-border/70 shadow-sm space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div>
-            <h3 className="text-sm font-extrabold text-foreground flex items-center gap-2">
-              <Receipt className="w-4 h-4 text-primary" />
-              Category Transactions
-            </h3>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Filtered transactions for {category.name} in {month}
-            </p>
-          </div>
-
+      {/* Inline Transactions */}
+      <div className="pt-4 border-t border-border space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+          <h3 className="text-heading text-foreground">Transactions</h3>
           <div className="flex items-center gap-2">
-            {/* Search filter input */}
-            <div className="relative">
-              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+            <div className="relative flex-1 sm:flex-initial">
+              <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
               <input
                 type="text"
                 data-testid="category-txn-search"
                 value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Search description, tag..."
-                className="pl-8 pr-3 py-1.5 rounded-xl bg-secondary/60 border border-border/60 text-xs text-foreground placeholder:text-muted-foreground/60 outline-none focus:ring-2 focus:ring-primary w-48 transition-all"
+                onChange={e => setSearchTerm(e.target.value)}
+                placeholder="Search transactions…"
+                className="h-8 pl-8 pr-3 rounded-[10px] bg-surface2 border border-border text-label text-foreground placeholder:text-muted-foreground focus-visible:ring-2 ring-ring/40 w-full sm:w-48 transition-colors"
               />
             </div>
-
             <button
               type="button"
               data-testid="add-category-txn-btn"
               onClick={onOpenAddTxn}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-bold shadow-sm transition-all active:scale-95"
+              className="h-8 px-2.5 rounded-[10px] bg-surface2 hover:bg-secondary border border-border text-label font-medium text-foreground inline-flex items-center gap-1 transition-colors"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>Add</span>
@@ -347,82 +327,99 @@ export const Level3CategoryView: React.FC<Level3CategoryViewProps> = ({
           </div>
         </div>
 
-        {/* Transactions Table/Cards */}
-        {filteredTxns.length === 0 ? (
-          <div className="p-6 text-center text-xs text-muted-foreground">
-            {searchTerm ? `No transactions match "${searchTerm}".` : 'No transactions recorded for this category.'}
-          </div>
+        {groupedTxns.length === 0 ? (
+          <p className="py-6 text-body text-muted-foreground">
+            {searchTerm
+              ? `No transactions match "${searchTerm}".`
+              : 'No transactions recorded for this category.'}
+          </p>
         ) : (
-          <div className="divide-y divide-border/40 border border-border/40 rounded-xl overflow-hidden bg-card/60">
-            {filteredTxns.map(t => (
-              <div
-                key={t.id}
-                data-testid={`category-txn-${t.id}`}
-                className="p-3 flex items-center justify-between gap-3 hover:bg-secondary/40 transition-colors"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-xl bg-secondary/60 text-muted-foreground shrink-0">
-                    <Calendar className="w-3.5 h-3.5" />
-                  </div>
-                  <div>
-                    <h5 className="text-xs font-bold text-foreground">
-                      {t.description || category.name}
-                    </h5>
-                    <div className="flex items-center gap-2 text-[10px] text-muted-foreground mt-0.5">
-                      <span>{t.date}</span>
-                      {t.labels && t.labels.length > 0 && (
-                        <div className="flex items-center gap-1">
-                          <Tag className="w-2.5 h-2.5" />
-                          <span>{t.labels.join(', ')}</span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <span className="font-semibold text-xs sm:text-sm text-foreground tabular-nums num">
-                    {formatMoney(t.amount, { cents: true, sign: 'auto' })}
+          <div className="divide-y divide-border">
+            {groupedTxns.map(group => (
+              <div key={group.date} className="py-2 first:pt-0">
+                <div className="flex items-center justify-between py-1.5 text-label font-semibold text-muted-foreground tabular-nums num">
+                  <span>{formatDayGroupHeader(group.date)}</span>
+                  <span>
+                    {formatMoney(-group.dayTotal, { cents: true, sign: 'auto' })}
                   </span>
+                </div>
+                <div className="space-y-0.5">
+                  {group.txns.map(t => (
+                    <div
+                      key={t.id}
+                      data-testid={`category-txn-${t.id}`}
+                      onClick={() => onEditTxn?.(t)}
+                      className="min-h-[56px] px-2 -mx-2 py-2 rounded-[10px] hover:bg-surface2 transition-colors flex items-center justify-between gap-3 cursor-pointer group"
+                    >
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <div className="w-8 h-8 rounded-full bg-surface2 flex items-center justify-center shrink-0 text-sm">
+                          {category.emoji}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="text-body font-medium text-foreground truncate">
+                            {t.description || category.name}
+                          </div>
+                          <div className="flex items-center gap-1.5 text-label text-muted-foreground truncate">
+                            <span>{category.name}</span>
+                            {t.labels && t.labels.length > 0 && (
+                              <>
+                                <span>·</span>
+                                <span>#{t.labels.join(' #')}</span>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </div>
 
-                  <div className="flex items-center gap-1">
-                    {onEditTxn && (
-                      <button
-                        type="button"
-                        onClick={() => onEditTxn(t)}
-                        title="Edit Transaction"
-                        className="p-1 rounded-lg hover:bg-secondary text-muted-foreground hover:text-foreground transition-all"
-                      >
-                        <Edit2 className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                    {onDeleteTxn && (
-                      <button
-                        type="button"
-                        onClick={() => onDeleteTxn(t.id)}
-                        title="Delete Transaction"
-                        className="p-1 rounded-lg hover:bg-rose-500/10 text-muted-foreground hover:text-rose-400 transition-all"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                  </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="text-body font-semibold text-foreground tabular-nums num">
+                          {formatMoney(-t.amount, { cents: true, sign: 'auto' })}
+                        </span>
+
+                        {onEditTxn && (
+                          <button
+                            type="button"
+                            onClick={e => {
+                              e.stopPropagation();
+                              onEditTxn(t);
+                            }}
+                            title="Edit Transaction"
+                            className="p-1.5 rounded-[8px] opacity-0 group-hover:opacity-100 focus:opacity-100 hover:bg-secondary text-muted-foreground hover:text-foreground transition-all"
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        {onDeleteTxn && (
+                          <button
+                            type="button"
+                            onClick={e => {
+                              e.stopPropagation();
+                              onDeleteTxn(t.id);
+                            }}
+                            title="Delete Transaction"
+                            className="p-1.5 rounded-[8px] opacity-0 group-hover:opacity-100 focus:opacity-100 hover:bg-negative/10 text-muted-foreground hover:text-negative transition-all"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             ))}
           </div>
         )}
 
-        {/* CTA to Full Ledger */}
-        <div className="pt-2 flex justify-end">
+        <div className="pt-1">
           <button
             type="button"
             data-testid="view-category-ledger-btn"
-            onClick={() => navigate(`#/month/${month}/transactions`)}
-            className="inline-flex items-center gap-1.5 text-xs font-bold text-primary hover:text-primary/80 transition-colors"
+            onClick={() => navigate(`#/month/${month}/category/${category.id}/transactions`)}
+            className="inline-flex items-center gap-1.5 text-body font-medium text-muted-foreground hover:text-foreground transition-colors focus-visible:ring-2 ring-ring/40 rounded px-1 -mx-1"
           >
-            <span>View Full Transaction Ledger (Level 4)</span>
-            <ArrowRight className="w-3.5 h-3.5" />
+            <span>Open in Transactions</span>
+            <ArrowRight className="w-4 h-4" />
           </button>
         </div>
       </div>
