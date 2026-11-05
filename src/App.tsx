@@ -313,9 +313,11 @@ function MainRouter({
         savingsRate={txnHooks.savingsRate}
         allTransactions={txnHooks.transactions}
         categories={budgetHooks.categories}
+        budgets={budgetHooks.budgets}
         selectedBucket={txnHooks.selectedBucket}
         onSelectBucket={txnHooks.setSelectedBucket}
         onOpenReport={() => setShowMonthlyReportModal(true)}
+        onOpenAddTxn={handleOpenAddTxn}
         isCanonicalOverview={true}
       />
     </>
