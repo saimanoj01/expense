@@ -76,13 +76,14 @@ export function parseHash(hashString: string, fallbackMonth: string = new Date()
     return { view: 'transactions', level: 4, month: queryMonth || fallbackMonth };
   }
 
-  // Dashboard route compatibility
+  // Dashboard route compatibility (Legacy unrouted dashboard)
   if (path === 'dashboard' || path === '') {
     return {
       view: 'overview',
       level: 1,
       month: (queryMonth && /^\d{4}-\d{2}$/.test(queryMonth)) ? queryMonth : fallbackMonth,
-      projectId: queryProject || undefined
+      projectId: queryProject || undefined,
+      isLegacyDashboard: true
     };
   }
 
@@ -101,9 +102,9 @@ export function parseHash(hashString: string, fallbackMonth: string = new Date()
     rest = segments.slice(1);
   }
 
-  // If no more segments: Level 1 Overview
+  // If no more segments: Canonical Level 1 Overview
   if (rest.length === 0) {
-    return { view: 'overview', level: 1, month };
+    return { view: 'overview', level: 1, month, isLegacyDashboard: false };
   }
 
   // Level 4 month transactions: #/month/:month/transactions

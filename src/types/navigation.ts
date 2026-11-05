@@ -19,6 +19,7 @@ export interface AppRoute {
   categoryId?: string;
   isCategoryTransactions?: boolean;
   projectId?: string;
+  isLegacyDashboard?: boolean;
 }
 
 export interface BreadcrumbItem {

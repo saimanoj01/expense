@@ -35,6 +35,7 @@ export interface Level1MonthOverviewProps {
   onSelectBucket?: (b: 'income' | 'fixed' | 'flexible' | 'non-monthly' | null) => void;
   onOpenReport?: () => void;
   onOpenBackfill?: () => void;
+  isCanonicalOverview?: boolean;
   className?: string;
 }
 
@@ -75,6 +76,7 @@ export const Level1MonthOverview: React.FC<Level1MonthOverviewProps> = ({
   onSelectBucket,
   onOpenReport,
   onOpenBackfill,
+  isCanonicalOverview = false,
   className = ''
 }) => {
   // Prior Month Metrics & MoM Deltas
@@ -307,48 +309,65 @@ export const Level1MonthOverview: React.FC<Level1MonthOverviewProps> = ({
         hasPriorMonthData={hasPriorMonthData}
       />
 
-      {/* Row 3: Narrative & Waterfall Breakdown */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-2.5">
-        <StoryNarrativeCard
-          selectedMonth={selectedMonth}
-          totalIncome={totalIncome}
-          totalExpenses={totalExpenses}
-          fixedExpenses={fixedExpenses}
-          flexibleExpenses={flexibleExpenses}
-          nonMonthlyExpenses={nonMonthlyExpenses}
-          unclassifiedExpenses={unclassifiedExpenses}
-          flexNumber={flexNumber}
-          savingsAmount={savingsAmount}
-          savingsRate={savingsRate}
-        />
+      {/* Row 3: Narrative & Cash Flow */}
+      {isCanonicalOverview ? (
+        <div className="w-full">
+          <StoryNarrativeCard
+            selectedMonth={selectedMonth}
+            totalIncome={totalIncome}
+            totalExpenses={totalExpenses}
+            fixedExpenses={fixedExpenses}
+            flexibleExpenses={flexibleExpenses}
+            nonMonthlyExpenses={nonMonthlyExpenses}
+            unclassifiedExpenses={unclassifiedExpenses}
+            flexNumber={flexNumber}
+            savingsAmount={savingsAmount}
+            savingsRate={savingsRate}
+          />
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-2.5">
+          <StoryNarrativeCard
+            selectedMonth={selectedMonth}
+            totalIncome={totalIncome}
+            totalExpenses={totalExpenses}
+            fixedExpenses={fixedExpenses}
+            flexibleExpenses={flexibleExpenses}
+            nonMonthlyExpenses={nonMonthlyExpenses}
+            unclassifiedExpenses={unclassifiedExpenses}
+            flexNumber={flexNumber}
+            savingsAmount={savingsAmount}
+            savingsRate={savingsRate}
+          />
 
-        {/* Cash Flow Waterfall Chart Card */}
-        <div className="p-3.5 rounded-2xl bg-card border border-border/70 shadow-sm flex flex-col justify-between">
-          <div className="flex items-center justify-between mb-1">
-            <div className="flex items-center gap-2">
-              <div className="p-1 rounded-lg bg-primary/10 text-primary">
-                <BarChart3 className="w-3.5 h-3.5" />
-              </div>
-              <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                Cash Flow Waterfall
-              </h3>
-            </div>
-            <span className="text-[10px] text-muted-foreground font-mono">Inflow to Outflow</span>
-          </div>
-
-          <div className="flex-1 min-h-[140px] flex items-center justify-center">
-            <Suspense
-              fallback={
-                <div className="w-full h-[140px] flex items-center justify-center text-xs text-muted-foreground bg-secondary/30 rounded-xl border border-border/40 animate-pulse">
-                  Loading Waterfall Chart...
+          {/* Cash Flow Waterfall Chart Card */}
+          <div className="p-3.5 rounded-2xl bg-card border border-border/70 shadow-sm flex flex-col justify-between">
+            <div className="flex items-center justify-between mb-1">
+              <div className="flex items-center gap-2">
+                <div className="p-1 rounded-lg bg-primary/10 text-primary">
+                  <BarChart3 className="w-3.5 h-3.5" />
                 </div>
-              }
-            >
-              <WaterfallChart data={waterfallData} />
-            </Suspense>
+                <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                  Cash Flow Waterfall
+                </h3>
+              </div>
+              <span className="text-[10px] text-muted-foreground font-mono">Inflow to Outflow</span>
+            </div>
+
+            <div className="flex-1 min-h-[140px] flex items-center justify-center">
+              <Suspense
+                fallback={
+                  <div className="w-full h-[140px] flex items-center justify-center text-xs text-muted-foreground bg-secondary/30 rounded-xl border border-border/40 animate-pulse">
+                    Loading Waterfall Chart...
+                  </div>
+                }
+              >
+                <WaterfallChart data={waterfallData} />
+              </Suspense>
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };

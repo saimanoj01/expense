@@ -284,6 +284,10 @@ test.describe('Tier 12: v3 Progressive Disclosure Drill-Down Experience', () => 
       // The Level 1 Overview component must fit within the 900px viewport
       expect(box.height).toBeLessThan(900);
     }
+
+    // Strict zero-scroll assertion: the full document must not require vertical scrolling at 1440x900
+    const isZeroScroll = await page.evaluate(() => window.innerHeight >= document.body.scrollHeight);
+    expect(isZeroScroll).toBe(true);
   });
 
   test('11. Level 2 Bucket View renders Hero Bucket Banner, Ranked Categories, and transitions to Level 3', async ({ page }) => {

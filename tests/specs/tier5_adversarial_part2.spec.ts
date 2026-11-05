@@ -255,7 +255,7 @@ test.describe('Tier 5 Part 2: Adversarial Coverage Hardening Audit', () => {
         }
       });
 
-      await page.goto('/#month/2026-07');
+      await page.goto('/#dashboard?month=2026-07');
 
       // Verify budget input is disabled in UI when current month is locked
       await expect(page.getByTestId('budget-input-Food')).toBeDisabled();

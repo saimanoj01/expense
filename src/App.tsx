@@ -300,10 +300,12 @@ function MainRouter({
   }
 
   // Level 1: Month Overview (Default)
+  const isLegacyDashboard = !!currentRoute.isLegacyDashboard;
+
   return (
     <>
       {/* Backfill Banner */}
-      {txnHooks.unclassifiedCount > 0 && (
+      {isLegacyDashboard && txnHooks.unclassifiedCount > 0 && (
         <div className="mb-6 p-4 rounded-2xl bg-gradient-to-r from-primary/10 via-primary/5 to-card border border-primary/20 flex flex-col gap-3 shadow-lg shadow-primary/5" data-testid="backfill-banner">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div className="flex items-center gap-3">
@@ -398,78 +400,83 @@ function MainRouter({
         selectedBucket={txnHooks.selectedBucket}
         onSelectBucket={txnHooks.setSelectedBucket}
         onOpenReport={() => setShowMonthlyReportModal(true)}
+        isCanonicalOverview={!isLegacyDashboard}
       />
 
-      <div className="flex flex-col lg:flex-row items-start gap-6 mb-8">
-        <TrendChart
-          trendDetails={txnHooks.trendDetails}
-          totalBudget={budgetHooks.totalBudget}
-          budgets={budgetHooks.budgets}
-          categories={budgetHooks.categories}
-          transactions={txnHooks.transactions}
-          selectedMonth={txnHooks.selectedMonth}
-          onSelectMonth={txnHooks.setSelectedMonth}
-          onRequestGeminiKey={() => setShowGeminiKeyModal(true)}
-        />
-        <BudgetUtilization
-          categorySummary={budgetHooks.categorySummary}
-          piePaths={budgetHooks.piePaths}
-          budgetErrors={budgetHooks.budgetErrors}
-          handleBudgetInputChange={budgetHooks.handleBudgetInputChange}
-          handleSaveBudgets={budgetHooks.handleSaveBudgets}
-          setShowAddCatModal={() => setShowCategoryManagerModal(true)}
-          selectedMonth={txnHooks.selectedMonth}
-          budgetNotes={budgetHooks.budgetNotes}
-          spendingHistory={budgetHooks.spendingHistory}
-          handleSaveBudgetNote={budgetHooks.handleSaveBudgetNote}
-          handleDeleteBudgetNote={budgetHooks.handleDeleteBudgetNote}
-          isLockedMonth={isCurrentMonthLocked}
-        />
-      </div>
+      {isLegacyDashboard && (
+        <>
+          <div className="flex flex-col lg:flex-row items-start gap-6 mb-8">
+            <TrendChart
+              trendDetails={txnHooks.trendDetails}
+              totalBudget={budgetHooks.totalBudget}
+              budgets={budgetHooks.budgets}
+              categories={budgetHooks.categories}
+              transactions={txnHooks.transactions}
+              selectedMonth={txnHooks.selectedMonth}
+              onSelectMonth={txnHooks.setSelectedMonth}
+              onRequestGeminiKey={() => setShowGeminiKeyModal(true)}
+            />
+            <BudgetUtilization
+              categorySummary={budgetHooks.categorySummary}
+              piePaths={budgetHooks.piePaths}
+              budgetErrors={budgetHooks.budgetErrors}
+              handleBudgetInputChange={budgetHooks.handleBudgetInputChange}
+              handleSaveBudgets={budgetHooks.handleSaveBudgets}
+              setShowAddCatModal={() => setShowCategoryManagerModal(true)}
+              selectedMonth={txnHooks.selectedMonth}
+              budgetNotes={budgetHooks.budgetNotes}
+              spendingHistory={budgetHooks.spendingHistory}
+              handleSaveBudgetNote={budgetHooks.handleSaveBudgetNote}
+              handleDeleteBudgetNote={budgetHooks.handleDeleteBudgetNote}
+              isLockedMonth={isCurrentMonthLocked}
+            />
+          </div>
 
-      <TransactionToolbar
-        selectedMonth={txnHooks.selectedMonth}
-        availableMonths={txnHooks.availableMonths}
-        availableTags={txnHooks.availableTags}
-        selectedTagFilter={txnHooks.selectedTagFilter}
-        selectedBucket={txnHooks.selectedBucket}
-        sortBy={txnHooks.sortBy}
-        isCurrentMonthLocked={isCurrentMonthLocked}
-        setSelectedMonth={txnHooks.setSelectedMonth}
-        setSelectedTagFilter={txnHooks.setSelectedTagFilter}
-        setSelectedBucket={txnHooks.setSelectedBucket}
-        setSortBy={txnHooks.setSortBy}
-        handleOpenAddTxn={handleOpenAddTxn}
-        handleCsvFileUpload={csvHooks.handleCsvFileUpload}
-        setShowShareModal={setShowShareModal}
-        handleLockCurrentMonth={handleLockCurrentMonth}
-        handleUnlockCurrentMonth={handleUnlockCurrentMonth}
-        onOpenMonthlyReport={() => setShowMonthlyReportModal(true)}
-      />
+          <TransactionToolbar
+            selectedMonth={txnHooks.selectedMonth}
+            availableMonths={txnHooks.availableMonths}
+            availableTags={txnHooks.availableTags}
+            selectedTagFilter={txnHooks.selectedTagFilter}
+            selectedBucket={txnHooks.selectedBucket}
+            sortBy={txnHooks.sortBy}
+            isCurrentMonthLocked={isCurrentMonthLocked}
+            setSelectedMonth={txnHooks.setSelectedMonth}
+            setSelectedTagFilter={txnHooks.setSelectedTagFilter}
+            setSelectedBucket={txnHooks.setSelectedBucket}
+            setSortBy={txnHooks.setSortBy}
+            handleOpenAddTxn={handleOpenAddTxn}
+            handleCsvFileUpload={csvHooks.handleCsvFileUpload}
+            setShowShareModal={setShowShareModal}
+            handleLockCurrentMonth={handleLockCurrentMonth}
+            handleUnlockCurrentMonth={handleUnlockCurrentMonth}
+            onOpenMonthlyReport={() => setShowMonthlyReportModal(true)}
+          />
 
-      <TransactionList
-        transactions={txnHooks.filteredTransactions}
-        categories={budgetHooks.categories}
-        availableTags={txnHooks.availableTags}
-        selectedTagFilter={txnHooks.selectedTagFilter}
-        duplicateTxnIds={txnHooks.duplicateTxnIds}
-        isLockedMonth={isCurrentMonthLocked}
-        selectedTxnIds={selectedTxnIds}
-        setSelectedTagFilter={txnHooks.setSelectedTagFilter}
-        toggleSelectTxn={toggleSelectTxn}
-        toggleSelectAllTxns={toggleSelectAllTxns}
-        handleEditTxn={handleEditTxn}
-        handleDeleteTxn={id => txnHooks.handleDeleteTxn(id, () => setSelectedTxnIds(prev => { const n = new Set(prev); n.delete(id); return n; }))}
-        handleCategoryChange={(txn, newCatId, newSubCatId) => txnHooks.executeSaveTransaction({ ...txn, category: newCatId, subCategory: newSubCatId || null }, true)}
-        handleBucketChange={(txn, newBucket) => txnHooks.executeSaveTransaction({ ...txn, spendingBucket: newBucket }, true)}
-        handleExecuteBulkCategoryUpdate={(selectedIds, catId, subCatId) => txnHooks.handleExecuteBulkCategoryUpdate(selectedIds, catId, subCatId, () => setSelectedTxnIds(new Set()))}
-        handleExecuteBulkBucketUpdate={(selectedIds, bucket) => txnHooks.handleExecuteBulkBucketUpdate(selectedIds, bucket, () => setSelectedTxnIds(new Set()))}
-        setShowBulkDeleteConfirmModal={setShowBulkDeleteConfirmModal}
-        handleAddTag={txnHooks.handleAddTagToTxn}
-        handleRemoveTag={txnHooks.handleRemoveTagFromTxn}
-        handleExecuteBulkAddTag={(selectedIds, tags) => txnHooks.handleExecuteBulkAddTag(selectedIds, tags, () => setSelectedTxnIds(new Set()))}
-        handleExecuteBulkRemoveTag={(selectedIds, tag) => txnHooks.handleExecuteBulkRemoveTag(selectedIds, tag, () => setSelectedTxnIds(new Set()))}
-      />
+          <TransactionList
+            transactions={txnHooks.filteredTransactions}
+            categories={budgetHooks.categories}
+            availableTags={txnHooks.availableTags}
+            selectedTagFilter={txnHooks.selectedTagFilter}
+            duplicateTxnIds={txnHooks.duplicateTxnIds}
+            isLockedMonth={isCurrentMonthLocked}
+            selectedTxnIds={selectedTxnIds}
+            setSelectedTagFilter={txnHooks.setSelectedTagFilter}
+            toggleSelectTxn={toggleSelectTxn}
+            toggleSelectAllTxns={toggleSelectAllTxns}
+            handleEditTxn={handleEditTxn}
+            handleDeleteTxn={id => txnHooks.handleDeleteTxn(id, () => setSelectedTxnIds(prev => { const n = new Set(prev); n.delete(id); return n; }))}
+            handleCategoryChange={(txn, newCatId, newSubCatId) => txnHooks.executeSaveTransaction({ ...txn, category: newCatId, subCategory: newSubCatId || null }, true)}
+            handleBucketChange={(txn, newBucket) => txnHooks.executeSaveTransaction({ ...txn, spendingBucket: newBucket }, true)}
+            handleExecuteBulkCategoryUpdate={(selectedIds, catId, subCatId) => txnHooks.handleExecuteBulkCategoryUpdate(selectedIds, catId, subCatId, () => setSelectedTxnIds(new Set()))}
+            handleExecuteBulkBucketUpdate={(selectedIds, bucket) => txnHooks.handleExecuteBulkBucketUpdate(selectedIds, bucket, () => setSelectedTxnIds(new Set()))}
+            setShowBulkDeleteConfirmModal={setShowBulkDeleteConfirmModal}
+            handleAddTag={txnHooks.handleAddTagToTxn}
+            handleRemoveTag={txnHooks.handleRemoveTagFromTxn}
+            handleExecuteBulkAddTag={(selectedIds, tags) => txnHooks.handleExecuteBulkAddTag(selectedIds, tags, () => setSelectedTxnIds(new Set()))}
+            handleExecuteBulkRemoveTag={(selectedIds, tag) => txnHooks.handleExecuteBulkRemoveTag(selectedIds, tag, () => setSelectedTxnIds(new Set()))}
+          />
+        </>
+      )}
     </>
   );
 }
