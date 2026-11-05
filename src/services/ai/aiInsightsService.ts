@@ -77,7 +77,9 @@ export async function generateSpendingInsights({
   }
 
   // Filter transactions for current month vs previous month
-  const currentMonth = selectedMonth === 'all' ? new Date().toISOString().substring(0, 7) : selectedMonth;
+  const now = new Date();
+  const localCurrentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  const currentMonth = selectedMonth === 'all' ? localCurrentMonth : selectedMonth;
   const currentTxns = transactions.filter(t => (t.date || '').startsWith(currentMonth));
   
   // Calculate previous month string (e.g., '2026-07' -> '2026-06')

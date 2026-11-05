@@ -14,7 +14,7 @@ import {
 import { motion } from 'framer-motion';
 import { Project, Transaction, Category } from '../../services/storage';
 import { formatCurrency, formatExpenseCurrency } from '../../utils/formatters';
-import { bucketOf } from '../../utils/categorizer';
+import { computeMonthMetrics } from '../../utils/metrics';
 import { WaterfallItem } from './WaterfallChart';
 
 const WaterfallChart = React.lazy(() => import('./WaterfallChart'));
@@ -71,10 +71,17 @@ function renderMomDeltaBadge(
   testId: string,
   fallbackText: string = 'No prior month data'
 ): React.ReactNode {
-  if (!hasPriorMonthData || prior === undefined || prior <= 0) {
+  if (!hasPriorMonthData || prior === undefined) {
     return (
       <span data-testid={testId} className="text-muted-foreground text-[10px]">
         {fallbackText}
+      </span>
+    );
+  }
+  if (prior <= 0) {
+    return (
+      <span data-testid={testId} className="text-muted-foreground text-[10px]">
+        {Math.abs(current - prior) < 0.01 ? 'No change MoM' : 'New MoM'}
       </span>
     );
   }
@@ -136,25 +143,9 @@ export function MonthlyFinancialStory({
   const hasPriorMonthData = priorTxns.length > 0;
 
   const priorMetrics = useMemo(() => {
-    if (!hasPriorMonthData) return null;
-    const pIncome = priorTxns.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
-    const pFixed = priorTxns.filter(t => t.type === 'expense' && bucketOf(t, categories) === 'fixed').reduce((s, t) => s + t.amount, 0);
-    const pFlexible = priorTxns.filter(t => t.type === 'expense' && bucketOf(t, categories) === 'flexible').reduce((s, t) => s + t.amount, 0);
-    const pNonMonthly = priorTxns.filter(t => t.type === 'expense' && bucketOf(t, categories) === 'non-monthly').reduce((s, t) => s + t.amount, 0);
-    const pExpenses = priorTxns.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
-    const pSavings = pIncome - pExpenses;
-    const pSavingsRate = pIncome > 0 ? (pSavings / pIncome) * 100 : 0;
-
-    return {
-      income: pIncome,
-      fixed: pFixed,
-      flexible: pFlexible,
-      nonMonthly: pNonMonthly,
-      expenses: pExpenses,
-      savings: pSavings,
-      savingsRate: pSavingsRate
-    };
-  }, [priorTxns, hasPriorMonthData, categories]);
+    if (!hasPriorMonthData || !priorMonthKey) return null;
+    return computeMonthMetrics(priorTxns, priorMonthKey, categories);
+  }, [priorTxns, hasPriorMonthData, priorMonthKey, categories]);
 
   // Denominator for progress bars
   const denom = Math.max(totalIncome, totalExpenses, 1);
@@ -343,19 +334,11 @@ export function MonthlyFinancialStory({
       animate="show"
       className="glass-card p-6 rounded-2xl mb-8 border border-border/80 shadow-xl relative overflow-hidden bg-gradient-to-br from-card/95 via-card/85 to-card/95 backdrop-blur-xl"
     >
-      {/* Hidden SR-only nodes for test compatibility */}
-      <div className="sr-only" data-testid="kpi-flex-number">
-        {formatCurrency(flexNumber)}
-      </div>
-      <div className="sr-only" data-testid="monthly-financial-story">
-        {monthTitle}
-      </div>
-
       {/* Header & Badges */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 pb-4 border-b border-border/50">
         <div>
           <div className="flex items-center gap-2">
-            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-primary/15 text-primary border border-primary/20">
+            <span data-testid="monthly-financial-story" className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-primary/15 text-primary border border-primary/20">
               Monthly Financial Story
             </span>
             <span className="text-xs font-semibold text-muted-foreground">{monthTitle}</span>
@@ -367,6 +350,12 @@ export function MonthlyFinancialStory({
 
         {/* Global Pill Stats */}
         <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-card/80 border border-border/60 shadow-sm text-xs font-semibold">
+            <span className="text-muted-foreground">Flex:</span>
+            <span className="font-bold text-foreground" data-testid="kpi-flex-number">
+              {formatCurrency(flexNumber)}
+            </span>
+          </div>
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-card/80 border border-border/60 shadow-sm text-xs font-semibold">
             <span className="text-muted-foreground">Budget:</span>
             <span className="font-bold text-foreground truncate overflow-hidden" data-testid="kpi-total-budget">
@@ -385,7 +374,7 @@ export function MonthlyFinancialStory({
               className={`font-bold ${savingsAmount >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}
               data-testid="kpi-savings-rate"
             >
-              {totalIncome > 0 ? `${savingsRate.toFixed(1)}%` : '—'}
+              {totalIncome > 0 ? `${savingsRate.toFixed(1)}%` : (savingsAmount < 0 ? '-100.0%' : '—')}
             </span>
           </div>
 
@@ -598,7 +587,7 @@ export function MonthlyFinancialStory({
             </div>
             <div className="mt-1 flex items-center justify-between gap-1 text-[11px]">
               <span className="text-muted-foreground font-medium">
-                Rate: {totalIncome > 0 ? `${savingsRate.toFixed(1)}%` : '—'}
+                Rate: {totalIncome > 0 ? `${savingsRate.toFixed(1)}%` : (savingsAmount < 0 ? '-100.0%' : '—')}
               </span>
               {priorMetrics && totalIncome > 0 && priorMetrics.income > 0 && Math.abs(savingsRate - priorMetrics.savingsRate) >= 0.05 && (
                 <span
@@ -699,21 +688,27 @@ export function MonthlyFinancialStory({
               {/* Savings (>= 20%) */}
               <div>
                 <div className="flex items-center justify-between text-xs font-semibold mb-1">
-                  <span className="text-emerald-400">Savings (Net Surplus)</span>
-                  <span className="tabular-nums">
-                    {totalIncome > 0 ? `${benchmarkSavingsPct.toFixed(1)}%` : '—'} / 20%
+                  <span className={savingsAmount < 0 ? 'text-rose-400' : 'text-emerald-400'}>
+                    {savingsAmount < 0 ? 'Savings (Deficit)' : 'Savings (Net Surplus)'}
+                  </span>
+                  <span className={`tabular-nums ${savingsAmount < 0 ? 'text-rose-400 font-bold' : ''}`}>
+                    {totalIncome > 0 ? `${benchmarkSavingsPct.toFixed(1)}%` : (savingsAmount < 0 ? '-100.0%' : '—')} / 20%
                   </span>
                 </div>
                 <div className="h-2 w-full bg-card rounded-full overflow-hidden border border-border/50">
                   <div
-                    style={{ width: `${Math.max(0, Math.min(100, benchmarkSavingsPct))}%` }}
+                    style={{ width: `${savingsAmount < 0 ? 100 : Math.max(0, Math.min(100, benchmarkSavingsPct))}%` }}
                     className={`h-full transition-all duration-500 rounded-full ${
-                      benchmarkSavingsPct >= 20 ? 'bg-emerald-500' : 'bg-amber-500'
+                      savingsAmount < 0 ? 'bg-rose-500' : benchmarkSavingsPct >= 20 ? 'bg-emerald-500' : 'bg-amber-500'
                     }`}
                   />
                 </div>
                 <p className="text-[10px] text-muted-foreground mt-0.5">
-                  {benchmarkSavingsPct >= 20 ? '🎉 Target Met (>= 20%)' : '💡 Aim for 20% savings'}
+                  {savingsAmount < 0
+                    ? '⚠️ Deficit — expenses exceed inflow'
+                    : benchmarkSavingsPct >= 20
+                      ? '🎉 Target Met (>= 20%)'
+                      : '💡 Aim for 20% savings'}
                 </p>
               </div>
             </div>

@@ -4,7 +4,7 @@ import { useApp } from '../context/AppContext';
 export const useHashRouting = (
   selectedMonth?: string,
   setSelectedMonth?: (m: string) => void,
-  isUserSelectedMonth?: boolean
+  _isUserSelectedMonth?: boolean
 ) => {
   const { currentView, activeProject, selectProject, setCurrentView, isLoading } = useApp();
 
@@ -19,13 +19,13 @@ export const useHashRouting = (
         window.location.hash = '#/projects';
       }
     } else if (currentView === 'dashboard' && activeProject) {
-      const monthPart = (isUserSelectedMonth && selectedMonth && selectedMonth !== 'all') ? `&month=${selectedMonth}` : '';
+      const monthPart = (selectedMonth && selectedMonth !== 'all') ? `&month=${selectedMonth}` : '';
       const targetHash = `#/dashboard?project=${activeProject.id}${monthPart}`;
       if (window.location.hash !== targetHash) {
         window.location.hash = targetHash;
       }
     }
-  }, [currentView, activeProject, selectedMonth, isUserSelectedMonth, isLoading]);
+  }, [currentView, activeProject, selectedMonth, isLoading]);
 
   // Sync Hash URL back to state on load or popstate action
   useEffect(() => {
@@ -44,7 +44,7 @@ export const useHashRouting = (
           selectProject(projectId);
         }
         const month = urlParams.get('month');
-        if (month && setSelectedMonth && /^\d{4}-\d{2}$/.test(month) && month !== selectedMonth) {
+        if (month && setSelectedMonth && /^(?:\d{4}-(0[1-9]|1[0-2])|all)$/.test(month) && month !== selectedMonth) {
           setSelectedMonth(month);
         }
       }

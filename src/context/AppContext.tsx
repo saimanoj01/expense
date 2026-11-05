@@ -80,7 +80,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setActiveProject(found);
         setCurrentView('dashboard');
         localStorage.setItem('expense_active_project_id', found.id);
-        const monthSuffix = existingMonth && /^\d{4}-\d{2}$/.test(existingMonth) ? `&month=${existingMonth}` : '';
+        const monthSuffix = existingMonth && /^\d{4}-(0[1-9]|1[0-2])$/.test(existingMonth) ? `&month=${existingMonth}` : '';
         window.location.hash = `#/dashboard?project=${found.id}${monthSuffix}`;
       } else {
         setActiveProject(null);
@@ -123,6 +123,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setActiveProject(found);
       setCurrentView('dashboard');
       localStorage.setItem('expense_active_project_id', projectId);
+      const existingParams = new URLSearchParams(window.location.hash.split('?')[1] || '');
+      const existingMonth = existingParams.get('month');
+      const monthSuffix = existingMonth && /^\d{4}-(0[1-9]|1[0-2])$/.test(existingMonth) ? `&month=${existingMonth}` : '';
+      window.location.hash = `#/dashboard?project=${found.id}${monthSuffix}`;
     } else if (projects.length === 0) {
       localStorage.setItem('expense_active_project_id', projectId);
     } else if (projects.length > 0) {

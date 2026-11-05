@@ -7,7 +7,7 @@ import { useHashRouting } from './hooks/useHashRouting';
 import { Transaction, SpendingBucket, Category, MonthlyLock } from './services/storage';
 import { classifyTransactionsWithLLM } from './services/llmCategorizer';
 import { hasGeminiApiKey } from './services/ai/geminiClient';
-import { suggestSpendingBucket } from './utils/categorizer';
+import { suggestSpendingBucket, bucketSource } from './utils/categorizer';
 import { generateSampleData } from './utils/sampleDataGenerator';
 
 // Layout & UI
@@ -179,8 +179,10 @@ function AppInner() {
 
   const handleOpenAddTxn = () => {
     setEditingTxnId(null);
+    const now = new Date();
+    const localMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     setEditingTxnData({
-      date: `${txnHooks.selectedMonth === 'all' ? new Date().toISOString().substring(0,7) : txnHooks.selectedMonth}-15`
+      date: `${txnHooks.selectedMonth === 'all' ? localMonth : txnHooks.selectedMonth}-15`
     });
     setShowTxnModal(true);
   };
@@ -327,7 +329,9 @@ function AppInner() {
                       if (!activeProject || !storageAdapter) return;
                       setIsBackfilling(true);
                       try {
-                        const unclassified = txnHooks.transactions.filter(t => t.type === 'expense' && !t.spendingBucket);
+                        const unclassified = txnHooks.transactions.filter(
+                          t => t.type === 'expense' && bucketSource(t, budgetHooks.categories) === 'fallback'
+                        );
                         if (unclassified.length === 0) return;
 
                         const classificationMap: Record<string, SpendingBucket> = {};

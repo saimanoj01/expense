@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { parseCsv, standardizeDate, parseCurrencyAmount } from '../utils/csv';
+import { parseCsv, standardizeDate, parseCurrencyAmount, getLocalTodayDate } from '../utils/csv';
 import { computeTxHash } from '../utils/crypto';
 import { Transaction, MonthlyLock, Category, SpendingBucket, Project, StorageAdapter } from '../services/storage';
 import { suggestCategory, detectTransactionType, suggestSpendingBucket } from '../utils/categorizer';
@@ -108,7 +108,7 @@ export function useCsvImport(
 
     for (let idx = 0; idx < csvRawRows.length; idx++) {
       const row = csvRawRows[idx];
-      const rawDate = standardizeDate(row[dateIdx] || new Date().toISOString().substring(0, 10));
+      const rawDate = standardizeDate(row[dateIdx] || getLocalTodayDate());
       const rawDesc = row[descIdx] || 'Imported Transaction';
       const parsedAmt = parseCurrencyAmount(row[amtIdx] || '0');
       let rawAmt = parsedAmt.amount;
@@ -233,13 +233,15 @@ export function useCsvImport(
       await storageAdapter.saveTransactions(activeProject.id, newTxns);
       await refreshProjectData();
 
-      // Auto-switch selectedMonth to the imported month (or 'all' if multi-month) so imported data is immediately visible
-      if (toImport.length > 0 && setSelectedMonth) {
+      // Auto-switch selectedMonth to the imported month (or 'all' if multi-month) and show ledger so imported data is immediately visible
+      if (toImport.length > 0) {
         const importedMonths = Array.from(new Set(toImport.map(i => i.date.substring(0, 7))));
-        if (importedMonths.length === 1) {
-          setSelectedMonth(importedMonths[0]);
-        } else if (importedMonths.length > 1) {
-          setSelectedMonth('all');
+        const targetMonth = importedMonths.length === 1 ? importedMonths[0] : 'all';
+        if (setSelectedMonth) {
+          setSelectedMonth(targetMonth);
+        }
+        if (typeof window !== 'undefined') {
+          window.location.hash = `#/transactions?month=${targetMonth}`;
         }
       }
 

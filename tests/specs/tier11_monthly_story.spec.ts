@@ -352,4 +352,27 @@ test.describe('Tier 11: The Monthly Financial Story & Cash Flow Analytics', () =
     const waterfall = page.getByTestId('cash-flow-waterfall');
     await expect(waterfall).toBeVisible();
   });
+
+  test('15. Zero-Shim Guard: No data-testid element inside main is hidden via sr-only or opacity-0', async ({ page }) => {
+    await appPage.goto();
+    await page.locator('main [data-testid]').first().waitFor({ state: 'visible' });
+
+    const hiddenTestIds = await page.evaluate(() => {
+      const els = Array.from(document.querySelectorAll('main [data-testid]'));
+      return els
+        .filter(el => {
+          const cls = el.className?.toString() || '';
+          const parentCls = el.parentElement?.className?.toString() || '';
+          return (
+            cls.includes('sr-only') ||
+            cls.includes('opacity-0') ||
+            parentCls.includes('sr-only') ||
+            parentCls.includes('opacity-0')
+          );
+        })
+        .map(el => el.getAttribute('data-testid'));
+    });
+
+    expect(hiddenTestIds).toEqual([]);
+  });
 });

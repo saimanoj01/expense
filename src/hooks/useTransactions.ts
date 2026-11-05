@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { Transaction, MonthlyLock, Category, DEFAULT_CATEGORIES, SpendingBucket, Project, StorageAdapter } from '../services/storage';
-import { bucketOf } from '../utils/categorizer';
+import { bucketOf, bucketSource } from '../utils/categorizer';
+import { computeMonthMetrics, isRefundTransaction } from '../utils/metrics';
 
 export interface TrendPoint {
   date: string;
@@ -363,40 +364,23 @@ export function useTransactions(
     return dups;
   }, [transactions]);
 
-  // KPIs
-  const totalExpenses = useMemo(() => monthTransactions
-    .filter(t => t.type === 'expense')
-    .reduce((sum, t) => sum + (typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount || 0)) || 0), 0), [monthTransactions]);
-    
-  const totalIncome = useMemo(() => monthTransactions
-    .filter(t => t.type === 'income')
-    .reduce((sum, t) => sum + (typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount || 0)) || 0), 0), [monthTransactions]);
-
-  const totalTransfers = useMemo(() => monthTransactions
-    .filter(t => t.type === 'transfer')
-    .reduce((sum, t) => sum + (typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount || 0)) || 0), 0), [monthTransactions]);
-
-  const fixedExpenses = useMemo(() => monthTransactions
-    .filter(t => t.type === 'expense' && bucketOf(t, categories) === 'fixed')
-    .reduce((sum, t) => sum + (typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount || 0)) || 0), 0), [monthTransactions, categories]);
-
-  const nonMonthlyExpenses = useMemo(() => monthTransactions
-    .filter(t => t.type === 'expense' && bucketOf(t, categories) === 'non-monthly')
-    .reduce((sum, t) => sum + (typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount || 0)) || 0), 0), [monthTransactions, categories]);
-
-  const flexibleExpenses = useMemo(() => monthTransactions
-    .filter(t => t.type === 'expense' && bucketOf(t, categories) === 'flexible')
-    .reduce((sum, t) => sum + (typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount || 0)) || 0), 0), [monthTransactions, categories]);
-
-  const flexNumber = useMemo(() => totalIncome - fixedExpenses - nonMonthlyExpenses, [totalIncome, fixedExpenses, nonMonthlyExpenses]);
-  const savingsAmount = useMemo(() => totalIncome - totalExpenses, [totalIncome, totalExpenses]);
-  const savingsRate = useMemo(() => totalIncome > 0 ? (savingsAmount / totalIncome) * 100 : 0, [totalIncome, savingsAmount]);
+  // KPIs (netting refunds against expense totals via computeMonthMetrics)
+  const monthMetrics = useMemo(() => computeMonthMetrics(monthTransactions, 'all', categories), [monthTransactions, categories]);
+  const totalExpenses = monthMetrics.expenses;
+  const totalIncome = monthMetrics.income;
+  const totalTransfers = monthMetrics.transfers;
+  const fixedExpenses = monthMetrics.fixed;
+  const nonMonthlyExpenses = monthMetrics.nonMonthly;
+  const flexibleExpenses = monthMetrics.flexible;
+  const flexNumber = monthMetrics.flexNumber;
+  const savingsAmount = monthMetrics.savings;
+  const savingsRate = monthMetrics.savingsRate;
 
   const unclassifiedCount = useMemo(() => monthTransactions
-    .filter(t => t.type === 'expense' && (bucketOf(t, categories) as string) === 'unclassified').length, [monthTransactions, categories]);
+    .filter(t => t.type === 'expense' && bucketSource(t, categories) === 'fallback').length, [monthTransactions, categories]);
 
   const unclassifiedExpenses = useMemo(() => monthTransactions
-    .filter(t => t.type === 'expense' && (bucketOf(t, categories) as string) === 'unclassified')
+    .filter(t => t.type === 'expense' && bucketSource(t, categories) === 'fallback')
     .reduce((sum, t) => sum + (typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount || 0)) || 0), 0), [monthTransactions, categories]);
 
   const availableMonths = useMemo(() => {
@@ -432,10 +416,12 @@ export function useTransactions(
 
   // Enhanced Trend Chart Details
   const trendDetails = useMemo<TrendChartDetails>(() => {
-    const currentMonthStr = selectedMonth === 'all' ? '2026-07' : selectedMonth;
+    const nowFallback = new Date();
+    const defaultLocalMonth = `${nowFallback.getFullYear()}-${String(nowFallback.getMonth() + 1).padStart(2, '0')}`;
+    const currentMonthStr = selectedMonth === 'all' ? (availableMonths[availableMonths.length - 1] || defaultLocalMonth) : selectedMonth;
     const [yearNum, monthNum] = currentMonthStr.split('-').map(n => parseInt(n, 10));
-    const validYear = isNaN(yearNum) ? 2026 : yearNum;
-    const validMonth = isNaN(monthNum) ? 7 : monthNum;
+    const validYear = isNaN(yearNum) ? nowFallback.getFullYear() : yearNum;
+    const validMonth = isNaN(monthNum) ? (nowFallback.getMonth() + 1) : monthNum;
 
     // Days in current month
     const daysInMonth = new Date(validYear, validMonth, 0).getDate();
@@ -629,7 +615,12 @@ export function useTransactions(
       const proratedFlexible = daysElapsed > 0 ? (flexibleExpenses / daysElapsed) * daysInMonth : 0;
       eomProjection = Math.round(fixedExpenses + nonMonthlyExpenses + proratedFlexible);
     }
-    const pacingStatus: 'under_budget' | 'on_track' | 'over_budget' = 'on_track';
+    const pacingStatus: 'under_budget' | 'on_track' | 'over_budget' =
+      totalIncome > 0 && eomProjection > totalIncome
+        ? 'over_budget'
+        : totalIncome > 0 && eomProjection < totalIncome * 0.8
+          ? 'under_budget'
+          : 'on_track';
 
     // 4. Multi-Month Cash Flow Summaries
     const monthGroupMap: Record<string, { income: number; expense: number; fixedExpense: number; flexibleExpense: number; nonMonthlyExpense: number }> = {};
@@ -656,7 +647,19 @@ export function useTransactions(
             monthGroupMap[mKey].flexibleExpense += validAmt;
           }
         } else if (t.type === 'income') {
-          monthGroupMap[mKey].income += validAmt;
+          if (isRefundTransaction(t)) {
+            monthGroupMap[mKey].expense = Math.max(0, monthGroupMap[mKey].expense - validAmt);
+            const b = bucketOf(t, categories);
+            if (b === 'fixed') {
+              monthGroupMap[mKey].fixedExpense = Math.max(0, monthGroupMap[mKey].fixedExpense - validAmt);
+            } else if (b === 'non-monthly') {
+              monthGroupMap[mKey].nonMonthlyExpense = Math.max(0, monthGroupMap[mKey].nonMonthlyExpense - validAmt);
+            } else {
+              monthGroupMap[mKey].flexibleExpense = Math.max(0, monthGroupMap[mKey].flexibleExpense - validAmt);
+            }
+          } else {
+            monthGroupMap[mKey].income += validAmt;
+          }
         }
       }
     });
@@ -743,7 +746,7 @@ export function useTransactions(
       worstCashFlowMonth,
       maxCashFlowValue
     };
-  }, [transactions, selectedMonth, selectedTagFilter, availableMonths, fixedExpenses, nonMonthlyExpenses, flexibleExpenses, totalExpenses, categories, monthTransactions]);
+  }, [transactions, selectedMonth, selectedTagFilter, availableMonths, fixedExpenses, nonMonthlyExpenses, flexibleExpenses, totalExpenses, totalIncome, categories, monthTransactions]);
 
   const trendPathData = trendDetails.pathData;
 

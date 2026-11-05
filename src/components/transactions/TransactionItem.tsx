@@ -260,13 +260,13 @@ export const TransactionItem = forwardRef<HTMLDivElement, TransactionItemProps>(
         })()}
         
         {!isLockedMonth && (
-          <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+          <div className="flex items-center gap-1 transition-opacity">
             <button 
               onClick={() => handleEditTxn(transaction)}
               data-testid={`edit-transaction-btn-${transaction.id}`}
               title="Edit transaction"
               aria-label="Edit transaction"
-              className="p-2 hover:bg-card rounded-lg text-muted-foreground hover:text-foreground transition-colors"
+              className="p-2 hover:bg-card rounded-lg text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
             >
               <Edit2 className="w-4 h-4" />
             </button>
@@ -275,7 +275,7 @@ export const TransactionItem = forwardRef<HTMLDivElement, TransactionItemProps>(
               data-testid={`delete-transaction-btn-${transaction.id}`}
               title="Delete transaction"
               aria-label="Delete transaction"
-              className="p-2 hover:bg-destructive/10 rounded-lg text-muted-foreground hover:text-destructive transition-colors"
+              className="p-2 hover:bg-destructive/10 rounded-lg text-muted-foreground hover:text-destructive transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive"
             >
               <Trash2 className="w-4 h-4" />
             </button>

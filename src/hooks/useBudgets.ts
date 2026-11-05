@@ -47,40 +47,38 @@ export function useBudgets(
     }
   }, [activeProject, storageAdapter]);
 
-  const totalBudget = useMemo(() => {
-    return budgets.reduce((sum, b) => {
-      if (isNonBudgetableCategory(b.category)) return sum;
-      return sum + b.amount;
-    }, 0);
-  }, [budgets]);
-
   const categorySummary = useMemo(() => {
     // Identify top-level parent categories
     const parentCats = [...categories.filter(c => !c.parentId)];
     const existingKeys = new Set(parentCats.flatMap(c => [c.id.toLowerCase(), c.name.toLowerCase()]));
+    const subCatKeys = new Set(
+      categories.filter(c => Boolean(c.parentId)).flatMap(c => [c.id.toLowerCase(), c.name.toLowerCase()])
+    );
     if (existingKeys.has('food & dining')) existingKeys.add('food');
 
     budgets.forEach(b => {
-      if (b.category && !existingKeys.has(b.category.toLowerCase())) {
+      const catKey = (b.category || '').toLowerCase();
+      if (b.category && !existingKeys.has(catKey) && !subCatKeys.has(catKey)) {
         parentCats.push({
           id: b.category,
           name: b.category,
           emoji: '🏷️',
           color: '#845EF7'
         });
-        existingKeys.add(b.category.toLowerCase());
+        existingKeys.add(catKey);
       }
     });
 
     monthTransactions.forEach(t => {
-      if (t.category && !existingKeys.has(t.category.toLowerCase())) {
+      const catKey = (t.category || '').toLowerCase();
+      if (t.category && !existingKeys.has(catKey) && !subCatKeys.has(catKey)) {
         parentCats.push({
           id: t.category,
           name: t.category,
           emoji: '🏷️',
           color: '#4DABF7'
         });
-        existingKeys.add(t.category.toLowerCase());
+        existingKeys.add(catKey);
       }
     });
 
@@ -109,13 +107,18 @@ export function useBudgets(
     parentCats.forEach(pCat => {
       // Find sub-categories for this parent
       const subCats = categories.filter(c => c.parentId === pCat.id);
+      const validSubKeys = new Set(subCats.flatMap(s => [s.id.toLowerCase(), s.name.toLowerCase()]));
 
       const subCategorySummaries = subCats.map(sCat => {
         const bObj = budgets.find(b => b.category === sCat.id || b.category === sCat.name);
-        const subBudget = bObj?.amount || 0;
+        const subBudget = Number(bObj?.amount) || 0;
         const subSpent = monthTransactions
-          .filter(t => t.type === 'expense' && (t.subCategory === sCat.id || (t.category === sCat.id && !t.subCategory)))
-          .reduce((sum, t) => sum + t.amount, 0);
+          .filter(t => t.type === 'expense' && (
+            t.subCategory === sCat.id ||
+            (t.subCategory && t.subCategory.toLowerCase() === sCat.name.toLowerCase()) ||
+            ((t.category === sCat.id || (t.category && t.category.toLowerCase() === sCat.name.toLowerCase())) && !t.subCategory)
+          ))
+          .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
         const subPercent = subBudget > 0 ? Math.round((subSpent / subBudget) * 100) : 0;
         const subBucket = deriveCategoryBucket(sCat.id || sCat.name, sCat);
         return {
@@ -133,29 +136,31 @@ export function useBudgets(
       const isNonBudgetable = isNonBudgetableCategory(pCat.id) || isNonBudgetableCategory(pCat.name);
       const parentBucket = deriveCategoryBucket(pCat.id || pCat.name, pCat);
 
-      // Calculate direct parent spent (transactions assigned to parent without subCategory)
+      // Calculate direct parent spent (transactions assigned to parent without subCategory or with orphaned subCategory)
       const directParentSpent = monthTransactions
-        .filter(t => t.type === 'expense' && (
+        .filter(t => t.type === 'expense' && t.category && (
           t.category === pCat.id || 
           t.category.toLowerCase() === pCat.id.toLowerCase() || 
           t.category.toLowerCase() === pCat.name.toLowerCase() ||
           (pCat.id === 'food' && t.category.toLowerCase() === 'food')
-        ) && !t.subCategory)
-        .reduce((sum, t) => sum + t.amount, 0);
+        ) && (!t.subCategory || !validSubKeys.has(t.subCategory.toLowerCase())))
+        .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
 
       // Roll up total parent spent
       const totalParentSpent = isNonBudgetable ? 0 : (directParentSpent + subCategorySummaries.reduce((sum, s) => sum + s.spent, 0));
 
       // Calculate total parent budget (explicit parent budget or sum of sub-category budgets)
       const parentBObj = budgets.find(b => 
-        b.category === pCat.id || 
-        b.category.toLowerCase() === pCat.id.toLowerCase() || 
-        b.category === pCat.name || 
-        b.category.toLowerCase() === pCat.name.toLowerCase() ||
-        (pCat.id === 'food' && b.category.toLowerCase() === 'food')
+        b.category && (
+          b.category === pCat.id || 
+          b.category.toLowerCase() === pCat.id.toLowerCase() || 
+          b.category === pCat.name || 
+          b.category.toLowerCase() === pCat.name.toLowerCase() ||
+          (pCat.id === 'food' && b.category.toLowerCase() === 'food')
+        )
       );
       const subCategoryBudgetSum = subCategorySummaries.reduce((sum, s) => sum + s.budget, 0);
-      const parentBudget = isNonBudgetable ? 0 : (parentBObj ? parentBObj.amount : subCategoryBudgetSum);
+      const parentBudget = isNonBudgetable ? 0 : (parentBObj ? (Number(parentBObj.amount) || 0) : subCategoryBudgetSum);
 
       const parentPercent = parentBudget > 0 ? Math.round((totalParentSpent / parentBudget) * 100) : 0;
 
@@ -176,6 +181,13 @@ export function useBudgets(
     return items;
   }, [categories, budgets, monthTransactions]);
 
+  const totalBudget = useMemo(() => {
+    return categorySummary.reduce((sum, c) => {
+      if (c.isNonBudgetable) return sum;
+      return sum + (Number(c.budget) || 0);
+    }, 0);
+  }, [categorySummary]);
+
   const piePaths = useMemo(() => {
     const expenseTxns = monthTransactions.filter(t => t.type === 'expense');
     const catMap = new Map<string, { total: number; name: string; color: string; id: string }>();
@@ -184,6 +196,7 @@ export function useBudgets(
 
     expenseTxns.forEach(t => {
       if (!t.category) return;
+      const amt = Number(t.amount) || 0;
       const matched = categories.find(c =>
         c.id.toLowerCase() === t.category.toLowerCase() ||
         c.name.toLowerCase() === t.category.toLowerCase()
@@ -195,9 +208,9 @@ export function useBudgets(
 
       const entry = catMap.get(catId);
       if (entry) {
-        entry.total += t.amount;
+        entry.total += amt;
       } else {
-        catMap.set(catId, { id: catId, name: catName, color: catColor, total: t.amount });
+        catMap.set(catId, { id: catId, name: catName, color: catColor, total: amt });
       }
     });
 
@@ -268,10 +281,11 @@ export function useBudgets(
       const targetCatId = catMap.get(t.subCategory || '') || catMap.get(t.category) || catMap.get((t.category || '').toLowerCase());
       if (!targetCatId) return;
 
+      const amt = Number(t.amount) || 0;
       if (isPrev1) {
-        lastMonthTotals[targetCatId] = (lastMonthTotals[targetCatId] || 0) + t.amount;
+        lastMonthTotals[targetCatId] = (lastMonthTotals[targetCatId] || 0) + amt;
       }
-      total3moTotals[targetCatId] = (total3moTotals[targetCatId] || 0) + t.amount;
+      total3moTotals[targetCatId] = (total3moTotals[targetCatId] || 0) + amt;
     });
 
     const history: Record<string, { lastMonth: number; avg3mo: number }> = {};
