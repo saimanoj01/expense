@@ -125,14 +125,14 @@ export const DailySpendTimeline: React.FC<DailySpendTimelineProps> = ({
           <span className="text-[10px] text-muted-foreground">Velocity & pace across day 1 to {daysInMonth}</span>
         </div>
 
-        <div className="flex items-center gap-3 text-xs font-mono">
+        <div className="flex items-center gap-3 text-xs tabular-nums num">
           <div className="text-right">
-            <span className="text-[10px] text-muted-foreground block">Avg / Day</span>
-            <span className="font-bold text-foreground tabular-nums">{formatCurrency(avgDaily)}</span>
+            <span className="text-xs text-muted-foreground block">Avg / Day</span>
+            <span className="font-semibold text-foreground tabular-nums">{formatCurrency(avgDaily)}</span>
           </div>
           <div className="text-right">
-            <span className="text-[10px] text-muted-foreground block">Total</span>
-            <span className="font-bold text-foreground tabular-nums">{formatCurrency(totalSpend)}</span>
+            <span className="text-xs text-muted-foreground block">Total</span>
+            <span className="font-semibold text-foreground tabular-nums">{formatCurrency(totalSpend)}</span>
           </div>
         </div>
       </div>
@@ -261,7 +261,7 @@ export const DailySpendTimeline: React.FC<DailySpendTimelineProps> = ({
           <text
             x={paddingX}
             y={height - 4}
-            className="text-[9px] fill-muted-foreground/60 font-mono"
+            className="text-xs fill-muted-foreground/60 tabular-nums num"
           >
             Day 1
           </text>
@@ -269,7 +269,7 @@ export const DailySpendTimeline: React.FC<DailySpendTimelineProps> = ({
             x={paddingX + chartWidth / 2}
             y={height - 4}
             textAnchor="middle"
-            className="text-[9px] fill-muted-foreground/60 font-mono"
+            className="text-xs fill-muted-foreground/60 tabular-nums num"
           >
             Day {Math.round(daysInMonth / 2)}
           </text>
@@ -277,7 +277,7 @@ export const DailySpendTimeline: React.FC<DailySpendTimelineProps> = ({
             x={width - paddingX}
             y={height - 4}
             textAnchor="end"
-            className="text-[9px] fill-muted-foreground/60 font-mono"
+            className="text-xs fill-muted-foreground/60 tabular-nums num"
           >
             Day {daysInMonth}
           </text>
@@ -295,18 +295,18 @@ export const DailySpendTimeline: React.FC<DailySpendTimelineProps> = ({
                 left: `${Math.min(Math.max(hoveredDay.x - 60, 8), width - 128)}px`,
                 top: '8px'
               }}
-              className="absolute pointer-events-none p-2 rounded-xl bg-popover/95 border border-border shadow-xl backdrop-blur-md text-[11px] z-20 min-w-[120px]"
+              className="absolute pointer-events-none p-2 rounded-xl bg-popover/95 border border-border shadow-xl backdrop-blur-md text-xs z-20 min-w-[120px]"
             >
-              <div className="font-bold text-foreground flex items-center justify-between">
+              <div className="font-semibold text-foreground flex items-center justify-between">
                 <span>Day {hoveredDay.day}</span>
-                <span className="text-[10px] text-muted-foreground font-mono">
+                <span className="text-xs text-muted-foreground tabular-nums num">
                   {hoveredDay.txnCount} txn{hoveredDay.txnCount !== 1 ? 's' : ''}
                 </span>
               </div>
-              <div className="text-xs font-extrabold font-mono text-primary mt-0.5 tabular-nums">
+              <div className="text-xs font-semibold text-primary mt-0.5 tabular-nums num">
                 {formatCurrency(hoveredDay.amount)}
               </div>
-              <div className="text-[9px] text-muted-foreground mt-0.5 tabular-nums">
+              <div className="text-xs text-muted-foreground mt-0.5 tabular-nums num">
                 Cumulative: {formatCurrency(hoveredDay.cumulative)}
               </div>
             </motion.div>

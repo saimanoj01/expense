@@ -158,10 +158,10 @@ export const IncomeAllocationRing: React.FC<IncomeAllocationRingProps> = ({
                 <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground truncate max-w-[120px]">
                   {activeHover.name}
                 </span>
-                <span className="text-lg font-extrabold font-mono tabular-nums text-foreground">
+                <span className="text-lg font-semibold tabular-nums num text-foreground">
                   {formatCurrency(activeHover.amount)}
                 </span>
-                <span className="text-[10px] font-semibold text-primary">
+                <span className="text-xs font-semibold text-primary">
                   {((activeHover.amount / totalAllocated) * 100).toFixed(1)}% of inflow
                 </span>
               </motion.div>
@@ -174,13 +174,13 @@ export const IncomeAllocationRing: React.FC<IncomeAllocationRingProps> = ({
                 transition={{ duration: 0.12 }}
                 className="flex flex-col items-center"
               >
-                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                   Total Inflow
                 </span>
-                <span className="text-xl font-extrabold font-mono tabular-nums text-foreground">
+                <span className="text-xl font-semibold tabular-nums num text-foreground">
                   {formatCurrency(totalIncome)}
                 </span>
-                <span className="text-[10px] text-muted-foreground/80 mt-0.5">
+                <span className="text-xs text-muted-foreground/80 mt-0.5">
                   100% Cash Flow
                 </span>
               </motion.div>
@@ -211,11 +211,11 @@ export const IncomeAllocationRing: React.FC<IncomeAllocationRingProps> = ({
                   className="w-2.5 h-2.5 rounded-full shrink-0 shadow-sm"
                   style={{ backgroundColor: seg.color }}
                 />
-                <span className="text-[11px] font-medium text-foreground truncate">
+                <span className="text-xs font-medium text-foreground truncate">
                   {seg.name}
                 </span>
               </div>
-              <span className="text-[11px] font-mono font-bold text-muted-foreground tabular-nums shrink-0 ml-1">
+              <span className="text-xs font-semibold text-muted-foreground tabular-nums num shrink-0 ml-1">
                 {pct}%
               </span>
             </button>

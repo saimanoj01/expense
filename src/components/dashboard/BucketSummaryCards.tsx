@@ -2,7 +2,8 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { TrendingUp, Shield, ShoppingBag, Calendar, ArrowRight } from 'lucide-react';
 import { useNavigation } from '../../hooks/useNavigation';
-import { formatCurrency, formatExpenseCurrency } from '../../utils/formatters';
+import { formatMoney, splitMoneyParts } from '../../utils/formatters';
+import { delta, deltaToneClass } from '../../utils/delta';
 
 export interface BucketSummaryCardsProps {
   totalIncome: number;
@@ -16,8 +17,10 @@ export interface BucketSummaryCardsProps {
     income: number;
     fixed: number;
     flexible: number;
+    nonMonthly?: number;
     expenses: number;
   } | null;
+  priorMonthKey?: string | null;
   hasPriorMonthData?: boolean;
   className?: string;
 }
@@ -49,6 +52,7 @@ export const BucketSummaryCards: React.FC<BucketSummaryCardsProps> = ({
   selectedBucket,
   onSelectBucket,
   priorMetrics,
+  priorMonthKey,
   hasPriorMonthData = false,
   className = ''
 }) => {
@@ -60,104 +64,75 @@ export const BucketSummaryCards: React.FC<BucketSummaryCardsProps> = ({
   const flexSpentPct = Math.min(100, Math.max(0, (flexibleExpenses / denom) * 100));
   const nonMonthlyPct = Math.min(100, Math.max(0, (nonMonthlyExpenses / denom) * 100));
 
+  const renderDeltaNode = (curr: number, prev: number | undefined | null, kind: 'income' | 'expense') => {
+    const res = delta(curr, hasPriorMonthData && prev !== undefined ? prev : null, kind, priorMonthKey || 'last month');
+    return (
+      <span className={`${deltaToneClass(res.tone)} font-semibold tabular-nums font-sans text-xs`}>
+        {res.text}
+      </span>
+    );
+  };
+
   const cards: BucketCardItem[] = [
     {
       id: 'income',
-      title: '1. Total Inflow',
+      title: 'Income',
       amount: totalIncome,
       testId: 'kpi-total-income',
       momTestId: 'mom-delta-income',
       icon: TrendingUp,
-      color: 'text-teal-400',
-      borderColor: 'border-teal-500/30',
-      activeBorder: 'border-teal-500',
-      bgGlow: 'from-teal-500/10',
-      sublabel: 'Starting cash',
+      color: 'text-bucket-saved',
+      borderColor: 'border-border',
+      activeBorder: 'border-bucket-saved',
+      bgGlow: 'from-surface2',
+      sublabel: 'Total income',
       drillBucket: 'income',
-      momDelta: priorMetrics ? (
-        totalIncome >= priorMetrics.income ? (
-          <span className="text-emerald-400 font-semibold tabular-nums font-sans">
-            +{priorMetrics.income > 0 ? (((totalIncome - priorMetrics.income) / priorMetrics.income) * 100).toFixed(1) : '0.0'}% MoM
-          </span>
-        ) : (
-          <span className="text-rose-400 font-semibold tabular-nums font-sans">
-            {priorMetrics.income > 0 ? (((totalIncome - priorMetrics.income) / priorMetrics.income) * 100).toFixed(1) : '-100.0'}% MoM
-          </span>
-        )
-      ) : !hasPriorMonthData ? (
-        <span className="text-muted-foreground text-[10px]">No prior month data</span>
-      ) : null
+      momDelta: renderDeltaNode(totalIncome, priorMetrics?.income, 'income')
     },
     {
       id: 'fixed',
-      title: '2. Fixed Commitments',
+      title: 'Fixed',
       amount: fixedExpenses,
       testId: 'kpi-fixed-expenses',
       momTestId: 'mom-delta-fixed',
       icon: Shield,
-      color: 'text-indigo-400',
-      borderColor: 'border-indigo-500/30',
-      activeBorder: 'border-indigo-500',
-      bgGlow: 'from-indigo-500/10',
-      sublabel: `Bills (${fixedPct.toFixed(0)}%)`,
+      color: 'text-bucket-fixed',
+      borderColor: 'border-border',
+      activeBorder: 'border-bucket-fixed',
+      bgGlow: 'from-surface2',
+      sublabel: `${fixedPct.toFixed(0)}% of income`,
       drillBucket: 'fixed',
-      momDelta: priorMetrics ? (
-        fixedExpenses >= priorMetrics.fixed ? (
-          <span className="text-emerald-400 font-semibold tabular-nums font-sans">
-            +{priorMetrics.fixed > 0 ? (((fixedExpenses - priorMetrics.fixed) / priorMetrics.fixed) * 100).toFixed(1) : '0.0'}% MoM
-          </span>
-        ) : (
-          <span className="text-rose-400 font-semibold tabular-nums font-sans">
-            {priorMetrics.fixed > 0 ? (((fixedExpenses - priorMetrics.fixed) / priorMetrics.fixed) * 100).toFixed(1) : '-100.0'}% MoM
-          </span>
-        )
-      ) : !hasPriorMonthData ? (
-        <span className="text-muted-foreground text-[10px]">No prior month data</span>
-      ) : null
+      momDelta: renderDeltaNode(fixedExpenses, priorMetrics?.fixed, 'expense')
     },
     {
       id: 'flexible',
-      title: '3. Variable Spend',
+      title: 'Variable',
       amount: flexibleExpenses,
       testId: 'kpi-flexible-spent',
       momTestId: 'mom-delta-flexible',
       icon: ShoppingBag,
-      color: 'text-violet-400',
-      borderColor: 'border-violet-500/30',
-      activeBorder: 'border-violet-500',
-      bgGlow: 'from-violet-500/10',
-      sublabel: `Daily (${flexSpentPct.toFixed(0)}%)`,
+      color: 'text-bucket-variable',
+      borderColor: 'border-border',
+      activeBorder: 'border-bucket-variable',
+      bgGlow: 'from-surface2',
+      sublabel: `${flexSpentPct.toFixed(0)}% of income`,
       drillBucket: 'variable',
-      momDelta: priorMetrics ? (
-        flexibleExpenses >= priorMetrics.flexible ? (
-          <span className="text-emerald-400 font-semibold tabular-nums font-sans">
-            +{priorMetrics.flexible > 0 ? (((flexibleExpenses - priorMetrics.flexible) / priorMetrics.flexible) * 100).toFixed(1) : '0.0'}% MoM
-          </span>
-        ) : (
-          <span className="text-rose-400 font-semibold tabular-nums font-sans">
-            {priorMetrics.flexible > 0 ? (((flexibleExpenses - priorMetrics.flexible) / priorMetrics.flexible) * 100).toFixed(1) : '-100.0'}% MoM
-          </span>
-        )
-      ) : !hasPriorMonthData ? (
-        <span className="text-muted-foreground text-[10px]">No prior month data</span>
-      ) : null
+      momDelta: renderDeltaNode(flexibleExpenses, priorMetrics?.flexible, 'expense')
     },
     {
       id: 'non-monthly',
-      title: '4. Non-Monthly',
+      title: 'Non-monthly',
       amount: nonMonthlyExpenses,
       testId: 'kpi-non-monthly',
       momTestId: 'mom-delta-non-monthly',
       icon: Calendar,
-      color: 'text-amber-400',
-      borderColor: 'border-amber-500/30',
-      activeBorder: 'border-amber-500',
-      bgGlow: 'from-amber-500/10',
-      sublabel: `Irregular (${nonMonthlyPct.toFixed(0)}%)`,
+      color: 'text-bucket-nonmonthly',
+      borderColor: 'border-border',
+      activeBorder: 'border-bucket-nonmonthly',
+      bgGlow: 'from-surface2',
+      sublabel: `${nonMonthlyPct.toFixed(0)}% of income`,
       drillBucket: 'non-monthly',
-      momDelta: (
-        <span className="text-muted-foreground text-[10px]">Periodic buffer</span>
-      )
+      momDelta: renderDeltaNode(nonMonthlyExpenses, priorMetrics?.nonMonthly, 'expense')
     }
   ];
 
@@ -193,12 +168,20 @@ export const BucketSummaryCards: React.FC<BucketSummaryCardsProps> = ({
               data-testid={c.testId}
               onClick={() => onSelectBucket && onSelectBucket(isSelected ? null : c.id)}
               className="text-left py-0.5 group/btn focus:outline-none"
-              title="Click to toggle filter on transactions list"
+              title={formatMoney(c.amount)}
             >
-              <div className="text-xl sm:text-2xl font-extrabold font-sans tracking-tight tabular-nums text-foreground group-hover/btn:text-primary transition-colors">
-                {c.id === 'income' ? formatCurrency(c.amount) : formatExpenseCurrency(c.amount)}
+              <div className="text-xl sm:text-2xl font-semibold font-sans tracking-tight tabular-nums num text-foreground group-hover/btn:text-primary transition-colors">
+                {(() => {
+                  const parts = splitMoneyParts(c.amount);
+                  return (
+                    <>
+                      {parts.whole}
+                      <span className="sr-only">{parts.cents}</span>
+                    </>
+                  );
+                })()}
               </div>
-              <div className="flex items-center justify-between text-[11px] text-muted-foreground mt-0.5">
+              <div className="flex items-center justify-between text-xs text-muted-foreground mt-0.5">
                 <span>{c.sublabel}</span>
                 {c.momDelta && (
                   <span data-testid={c.momTestId}>{c.momDelta}</span>
@@ -212,7 +195,7 @@ export const BucketSummaryCards: React.FC<BucketSummaryCardsProps> = ({
                 type="button"
                 data-testid={`drill-down-${c.drillBucket}`}
                 onClick={() => navigate(`#/month/${activeMonth}/bucket/${c.drillBucket}`)}
-                className="inline-flex items-center gap-1 text-[11px] font-bold text-primary hover:text-primary/80 transition-colors focus:outline-none"
+                className="inline-flex items-center gap-1 text-xs font-semibold text-primary hover:text-primary/80 transition-colors focus:outline-none"
                 title={`Drill into ${c.title}`}
               >
                 <span>Drill down</span>
@@ -220,7 +203,7 @@ export const BucketSummaryCards: React.FC<BucketSummaryCardsProps> = ({
               </button>
 
               {isSelected && (
-                <span className="px-1.5 py-0.5 rounded text-[9px] font-mono bg-primary/20 text-primary uppercase font-bold">
+                <span className="px-1.5 py-0.5 rounded text-xs bg-primary/20 text-primary uppercase font-semibold">
                   Filtered
                 </span>
               )}

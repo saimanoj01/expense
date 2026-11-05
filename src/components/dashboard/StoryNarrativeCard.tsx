@@ -110,7 +110,7 @@ export const StoryNarrativeCard: React.FC<StoryNarrativeCardProps> = ({
               Financial Story & Benchmarks
             </h3>
           </div>
-          <span className="text-[10px] text-muted-foreground font-mono">{monthTitle}</span>
+          <span className="text-xs text-muted-foreground tabular-nums num">{monthTitle}</span>
         </div>
 
         {/* Narrative Paragraph */}

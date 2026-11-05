@@ -91,6 +91,7 @@ export const Level1MonthOverview: React.FC<Level1MonthOverviewProps> = ({
     const pIncome = priorTxns.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
     const pFixed = priorTxns.filter(t => t.type === 'expense' && bucketOf(t, categories) === 'fixed').reduce((s, t) => s + t.amount, 0);
     const pFlexible = priorTxns.filter(t => t.type === 'expense' && bucketOf(t, categories) === 'flexible').reduce((s, t) => s + t.amount, 0);
+    const pNonMonthly = priorTxns.filter(t => t.type === 'expense' && bucketOf(t, categories) === 'non-monthly').reduce((s, t) => s + t.amount, 0);
     const pExpenses = priorTxns.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
     const pSavings = pIncome - pExpenses;
     const pSavingsRate = pIncome > 0 ? (pSavings / pIncome) * 100 : 0;
@@ -99,6 +100,7 @@ export const Level1MonthOverview: React.FC<Level1MonthOverviewProps> = ({
       income: pIncome,
       fixed: pFixed,
       flexible: pFlexible,
+      nonMonthly: pNonMonthly,
       expenses: pExpenses,
       savings: pSavings,
       savingsRate: pSavingsRate
@@ -263,6 +265,7 @@ export const Level1MonthOverview: React.FC<Level1MonthOverviewProps> = ({
         selectedBucket={selectedBucket}
         onSelectBucket={onSelectBucket}
         priorMetrics={priorMetrics}
+        priorMonthKey={priorMonthKey}
         hasPriorMonthData={hasPriorMonthData}
       />
 
@@ -308,7 +311,7 @@ export const Level1MonthOverview: React.FC<Level1MonthOverviewProps> = ({
                   Cash Flow Waterfall
                 </h3>
               </div>
-              <span className="text-[10px] text-muted-foreground font-mono">Inflow to Outflow</span>
+              <span className="text-[10px] text-muted-foreground">Inflow to Outflow</span>
             </div>
 
             <div className="flex-1 min-h-[140px] flex items-center justify-center">

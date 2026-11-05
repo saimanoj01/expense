@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { Transaction, Category, Budget, SpendingBucket } from '../../services/storage';
 import { useNavigation } from '../../hooks/useNavigation';
-import { formatCurrency, formatExpenseCurrency } from '../../utils/formatters';
+import { formatMoney, splitMoneyParts } from '../../utils/formatters';
 import { suggestSpendingBucket } from '../../utils/categorizer';
 import { DailySpendTimeline } from './DailySpendTimeline';
 import { bucketColor, negativeColor } from '../../theme/buckets';
@@ -190,24 +190,32 @@ export const Level3CategoryView: React.FC<Level3CategoryViewProps> = ({
 
           {/* Right Figures: Spent & Pacing */}
           <div className="flex flex-col md:items-end">
-            <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               Total Spent
             </span>
             <div
               data-testid="category-total-spent"
-              className="text-3xl sm:text-4xl font-extrabold font-mono tracking-tight tabular-nums text-foreground mt-0.5"
+              className="text-3xl sm:text-4xl font-semibold tracking-tight tabular-nums num text-foreground mt-0.5"
             >
-              {formatExpenseCurrency(totalSpent)}
+              {(() => {
+                const parts = splitMoneyParts(totalSpent);
+                return (
+                  <>
+                    {parts.whole}
+                    <span className="sr-only">{parts.cents}</span>
+                  </>
+                );
+              })()}
             </div>
 
             {budget > 0 && (() => {
               const utilColor = getUtilizationColor(utilization);
               return (
                 <div className="flex items-center gap-2 text-xs mt-1">
-                  <span className="text-muted-foreground font-mono">
-                    of {formatCurrency(budget)} budget
+                  <span className="text-muted-foreground tabular-nums num">
+                    of {formatMoney(budget)} budget
                   </span>
-                  <span className={`inline-flex items-center gap-1 font-bold px-2 py-0.5 rounded-full text-[10px] border ${utilColor.bg} ${utilColor.text} ${utilColor.border}`}>
+                  <span className={`inline-flex items-center gap-1 font-semibold px-2 py-0.5 rounded-full text-xs border ${utilColor.bg} ${utilColor.text} ${utilColor.border}`}>
                     {isOverBudget ? <AlertTriangle className="w-3 h-3" /> : <CheckCircle2 className="w-3 h-3" />}
                     <span>{utilization.toFixed(0)}% used</span>
                   </span>
@@ -224,10 +232,10 @@ export const Level3CategoryView: React.FC<Level3CategoryViewProps> = ({
             <div className="mt-5 pt-4 border-t border-border/40 relative z-10">
               <div className="flex items-center justify-between text-xs font-semibold mb-1.5">
                 <span className="text-muted-foreground">Budget Pacing:</span>
-                <span className="font-mono text-foreground">
+                <span className="tabular-nums num text-foreground">
                   {isOverBudget
-                    ? `Over budget by ${formatCurrency(totalSpent - budget)}`
-                    : `${formatCurrency(remainingBudget)} remaining`}
+                    ? `Over budget by ${formatMoney(totalSpent - budget)}`
+                    : `${formatMoney(remainingBudget)} remaining`}
                 </span>
               </div>
               <div className="h-2.5 w-full bg-surface2 rounded-full overflow-hidden border border-border/40 p-0.5">
@@ -266,7 +274,7 @@ export const Level3CategoryView: React.FC<Level3CategoryViewProps> = ({
               Top Payees & Merchants
             </h3>
           </div>
-          <span className="text-[10px] text-muted-foreground font-mono">
+          <span className="text-xs text-muted-foreground tabular-nums num">
             {merchantBreakdown.length} unique payee{merchantBreakdown.length !== 1 ? 's' : ''}
           </span>
         </div>
@@ -283,19 +291,19 @@ export const Level3CategoryView: React.FC<Level3CategoryViewProps> = ({
                 className="p-3 rounded-xl bg-secondary/40 border border-border/50 flex flex-col justify-between"
               >
                 <div className="flex items-center justify-between gap-2 mb-1">
-                  <span className="text-xs font-bold text-foreground truncate max-w-[160px]" title={m.name}>
+                  <span className="text-xs font-semibold text-foreground truncate max-w-[160px]" title={m.name}>
                     {idx + 1}. {m.name}
                   </span>
-                  <span className="text-[10px] text-muted-foreground font-mono">
+                  <span className="text-xs text-muted-foreground tabular-nums num">
                     {m.count} txn{m.count !== 1 ? 's' : ''}
                   </span>
                 </div>
                 <div className="flex items-baseline justify-between mt-1">
-                  <span className="text-sm font-extrabold font-mono tabular-nums text-foreground">
-                    {formatExpenseCurrency(m.amount)}
+                  <span className="text-sm font-semibold tabular-nums num text-foreground">
+                    {formatMoney(m.amount)}
                   </span>
-                  <span className="text-[10px] text-muted-foreground font-mono font-semibold">
-                    {m.pctOfTotal.toFixed(1)}%
+                  <span className="text-xs text-muted-foreground tabular-nums num font-semibold">
+                    {m.pctOfTotal.toFixed(0)}%
                   </span>
                 </div>
               </div>
@@ -377,8 +385,8 @@ export const Level3CategoryView: React.FC<Level3CategoryViewProps> = ({
                 </div>
 
                 <div className="flex items-center gap-3">
-                  <span className="font-mono font-extrabold text-xs sm:text-sm text-foreground tabular-nums">
-                    {formatExpenseCurrency(t.amount)}
+                  <span className="font-semibold text-xs sm:text-sm text-foreground tabular-nums num">
+                    {formatMoney(t.amount, { cents: true, sign: 'auto' })}
                   </span>
 
                   <div className="flex items-center gap-1">

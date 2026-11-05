@@ -14,7 +14,8 @@ import {
 } from 'lucide-react';
 import { Transaction, Category, Budget, SpendingBucket } from '../../services/storage';
 import { useNavigation } from '../../hooks/useNavigation';
-import { formatCurrency, formatExpenseCurrency } from '../../utils/formatters';
+import { formatMoney, splitMoneyParts } from '../../utils/formatters';
+import { delta, deltaToneClass } from '../../utils/delta';
 import { bucketOf } from '../../utils/categorizer';
 import { deriveCategoryBucket } from '../../hooks/useBudgets';
 import { bucketColor, negativeColor } from '../../theme/buckets';
@@ -140,9 +141,10 @@ export const Level2BucketView: React.FC<Level2BucketViewProps> = ({
     return pTxns.reduce((sum, t) => sum + t.amount, 0);
   }, [transactions, priorMonthKey, bucketId, categories]);
 
-  const momDelta = priorSpent !== null
-    ? priorSpent > 0 ? ((totalSpent - priorSpent) / priorSpent) * 100 : 0
-    : null;
+  const momDeltaInfo = useMemo(() => {
+    const kind = bucketId === 'income' ? 'income' : 'expense';
+    return delta(totalSpent, priorSpent, kind, priorMonthKey || 'last month');
+  }, [totalSpent, priorSpent, bucketId, priorMonthKey]);
 
   // Aggregate category breakdowns in this bucket
   const categoryBreakdown = useMemo(() => {
@@ -276,24 +278,30 @@ export const Level2BucketView: React.FC<Level2BucketViewProps> = ({
 
           {/* Right Metrics */}
           <div className="flex flex-col md:items-end">
-            <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
               Total Spent
             </span>
             <div
               data-testid="bucket-total-spent"
-              className="text-3xl sm:text-4xl font-extrabold font-mono tracking-tight tabular-nums text-foreground mt-0.5"
+              className="text-3xl sm:text-4xl font-semibold tracking-tight tabular-nums num text-foreground mt-0.5"
             >
-              {bucketId === 'income' ? formatCurrency(totalSpent) : formatExpenseCurrency(totalSpent)}
+              {(() => {
+                const parts = splitMoneyParts(totalSpent);
+                return (
+                  <>
+                    {parts.whole}
+                    <span className="sr-only">{parts.cents}</span>
+                  </>
+                );
+              })()}
             </div>
             <div className="flex items-center gap-2 text-xs mt-1">
               <span className="text-muted-foreground">
-                {pctOfIncome.toFixed(1)}% of income
+                {pctOfIncome.toFixed(0)}% of income
               </span>
-              {momDelta !== null && (
-                <span className={`font-mono font-bold tabular-nums ${momDelta <= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                  {momDelta >= 0 ? '+' : ''}{momDelta.toFixed(1)}% MoM
-                </span>
-              )}
+              <span className={`font-semibold tabular-nums num ${deltaToneClass(momDeltaInfo.tone)}`}>
+                {momDeltaInfo.text}
+              </span>
             </div>
           </div>
         </div>
@@ -306,20 +314,20 @@ export const Level2BucketView: React.FC<Level2BucketViewProps> = ({
               <div className="flex items-center justify-between text-xs font-semibold mb-1.5">
                 <div className="flex items-center gap-2">
                   <span className="text-muted-foreground">Bucket Target Budget:</span>
-                  <span className="font-mono text-foreground">{formatCurrency(totalBucketBudget)}</span>
+                  <span className="tabular-nums num text-foreground">{formatMoney(totalBucketBudget)}</span>
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <span className={`font-mono tabular-nums font-bold ${utilColor.text}`}>{bucketUtilization.toFixed(1)}% Used</span>
+                  <span className={`tabular-nums num font-semibold ${utilColor.text}`}>{bucketUtilization.toFixed(0)}% Used</span>
                   {bucketUtilization <= 90 ? (
-                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+                    <span className="inline-flex items-center gap-1 text-xs font-semibold text-bucket-saved bg-bucket-saved/10 px-2 py-0.5 rounded-full border border-bucket-saved/20">
                       <CheckCircle2 className="w-3 h-3" /> On Track
                     </span>
                   ) : bucketUtilization <= 100 ? (
-                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20">
+                    <span className="inline-flex items-center gap-1 text-xs font-semibold text-bucket-nonmonthly bg-bucket-nonmonthly/10 px-2 py-0.5 rounded-full border border-bucket-nonmonthly/20">
                       <AlertTriangle className="w-3 h-3" /> Near Limit
                     </span>
                   ) : (
-                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded-full border border-rose-500/20">
+                    <span className="inline-flex items-center gap-1 text-xs font-semibold text-negative bg-negative/10 px-2 py-0.5 rounded-full border border-negative/20">
                       <AlertTriangle className="w-3 h-3" /> Exceeded
                     </span>
                   )}
@@ -341,9 +349,9 @@ export const Level2BucketView: React.FC<Level2BucketViewProps> = ({
       <div className="space-y-3">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
-            <h3 className="text-base font-extrabold text-foreground flex items-center gap-2">
+            <h3 className="text-base font-semibold text-foreground flex items-center gap-2">
               Ranked Categories in this Bucket
-              <span className="px-2 py-0.5 rounded-full text-[10px] bg-secondary text-muted-foreground font-mono font-bold">
+              <span className="px-2 py-0.5 rounded-full text-xs bg-secondary text-muted-foreground tabular-nums num font-semibold">
                 {categoryBreakdown.length}
               </span>
             </h3>
@@ -411,21 +419,21 @@ export const Level2BucketView: React.FC<Level2BucketViewProps> = ({
                         {cat.emoji}
                       </span>
                       <div>
-                        <h4 className="font-bold text-sm text-foreground group-hover:text-primary transition-colors flex items-center gap-2">
+                        <h4 className="font-semibold text-sm text-foreground group-hover:text-primary transition-colors flex items-center gap-2">
                           {cat.name}
-                          <span className="text-[10px] text-muted-foreground font-mono font-normal">
-                            ({cat.pctOfBucket.toFixed(1)}% of bucket)
+                          <span className="text-xs text-muted-foreground tabular-nums num font-normal">
+                            ({cat.pctOfBucket.toFixed(0)}% of bucket)
                           </span>
                         </h4>
                         <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5">
                           <span>{cat.txnCount} txn{cat.txnCount !== 1 ? 's' : ''}</span>
                           {cat.budget > 0 && (
-                            <span>Budget: {formatCurrency(cat.budget)}</span>
+                            <span>Budget: {formatMoney(cat.budget)}</span>
                           )}
                           {cat.budget > 0 && (() => {
                             const catUtilColor = getUtilizationColor(cat.budgetUtilization);
                             return (
-                              <span className={`font-mono font-semibold ${catUtilColor.text}`}>
+                              <span className={`tabular-nums num font-semibold ${catUtilColor.text}`}>
                                 {cat.budgetUtilization.toFixed(0)}% used
                               </span>
                             );
@@ -436,11 +444,11 @@ export const Level2BucketView: React.FC<Level2BucketViewProps> = ({
 
                     <div className="flex items-center gap-4">
                       <div className="text-right">
-                        <div className="text-base sm:text-lg font-extrabold font-mono text-foreground tabular-nums">
-                          {formatExpenseCurrency(cat.spent)}
+                        <div className="text-base sm:text-lg font-semibold text-foreground tabular-nums num">
+                          {formatMoney(cat.spent)}
                         </div>
-                        <span className="text-[10px] text-muted-foreground">
-                          {cat.pctOfBucket.toFixed(1)}% of bucket
+                        <span className="text-xs text-muted-foreground tabular-nums num">
+                          {cat.pctOfBucket.toFixed(0)}% of bucket
                         </span>
                       </div>
 

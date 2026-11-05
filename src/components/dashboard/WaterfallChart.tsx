@@ -96,7 +96,7 @@ export function WaterfallChart({ data }: WaterfallChartProps) {
                   x={paddingLeft - 8}
                   y={y + 3}
                   textAnchor="end"
-                  className="text-[10px] fill-muted-foreground font-mono tabular-nums"
+                  className="text-xs fill-muted-foreground tabular-nums num"
                 >
                   ${tick >= 1000 ? `${(tick / 1000).toFixed(0)}k` : tick.toFixed(0)}
                 </text>
@@ -166,7 +166,7 @@ export function WaterfallChart({ data }: WaterfallChartProps) {
                   x={barX + barWidth / 2}
                   y={topY - 6}
                   textAnchor="middle"
-                  className="text-[10px] font-bold font-mono tabular-nums fill-foreground"
+                  className="text-xs font-semibold tabular-nums num fill-foreground"
                 >
                   ${item.displayValue >= 1000 ? `${(item.displayValue / 1000).toFixed(1)}k` : item.displayValue.toFixed(0)}
                 </text>
