@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigation } from '../../hooks/useNavigation';
 import { formatCurrency } from '../../utils/formatters';
+import { bucketColor } from '../../theme/buckets';
 
 export interface IncomeAllocationRingProps {
   totalIncome: number;
@@ -35,30 +36,30 @@ export const IncomeAllocationRing: React.FC<IncomeAllocationRingProps> = ({
   const segments = [
     {
       id: 'fixed',
-      name: 'Fixed Commitments',
+      name: 'Fixed',
       amount: fixedExpenses,
-      color: '#6366F1', // Indigo 500
+      color: bucketColor('fixed'),
       drillBucket: 'fixed'
     },
     {
       id: 'variable',
-      name: 'Variable Spending',
+      name: 'Variable',
       amount: flexibleExpenses,
-      color: '#8B5CF6', // Violet 500
+      color: bucketColor('flexible'),
       drillBucket: 'variable'
     },
     {
       id: 'non-monthly',
-      name: 'Non-Monthly Irregular',
+      name: 'Non-monthly',
       amount: nonMonthlyExpenses,
-      color: '#F59E0B', // Amber 500
+      color: bucketColor('non-monthly'),
       drillBucket: 'non-monthly'
     },
     {
       id: 'saved',
-      name: 'Net Saved',
+      name: 'Saved',
       amount: savedPositive,
-      color: '#10B981', // Emerald 500
+      color: bucketColor('saved'),
       drillBucket: 'income'
     }
   ];

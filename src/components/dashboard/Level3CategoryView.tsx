@@ -19,6 +19,7 @@ import { useNavigation } from '../../hooks/useNavigation';
 import { formatCurrency, formatExpenseCurrency } from '../../utils/formatters';
 import { suggestSpendingBucket } from '../../utils/categorizer';
 import { DailySpendTimeline } from './DailySpendTimeline';
+import { bucketColor, negativeColor } from '../../theme/buckets';
 
 export interface Level3CategoryViewProps {
   categoryId: string;
@@ -34,12 +35,12 @@ export interface Level3CategoryViewProps {
 
 function getUtilizationColor(pct: number): { text: string; bg: string; border: string; hex: string } {
   if (pct > 100) {
-    return { text: 'text-rose-400', bg: 'bg-rose-500/10', border: 'border-rose-500/20', hex: '#F43F5E' };
+    return { text: 'text-negative', bg: 'bg-negative/10', border: 'border-negative/20', hex: negativeColor() };
   }
   if (pct >= 90) {
-    return { text: 'text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/20', hex: '#F59E0B' };
+    return { text: 'text-bucket-nonmonthly', bg: 'bg-bucket-nonmonthly/10', border: 'border-bucket-nonmonthly/20', hex: bucketColor('non-monthly') };
   }
-  return { text: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/20', hex: '#10B981' };
+  return { text: 'text-bucket-saved', bg: 'bg-bucket-saved/10', border: 'border-bucket-saved/20', hex: bucketColor('saved') };
 }
 
 export const Level3CategoryView: React.FC<Level3CategoryViewProps> = ({
@@ -68,7 +69,7 @@ export const Level3CategoryView: React.FC<Level3CategoryViewProps> = ({
       id: categoryId,
       name: categoryId.charAt(0).toUpperCase() + categoryId.slice(1),
       emoji: '🏷️',
-      color: '#6366F1'
+      color: bucketColor('fixed')
     };
   }, [categories, categoryId]);
 
@@ -229,7 +230,7 @@ export const Level3CategoryView: React.FC<Level3CategoryViewProps> = ({
                     : `${formatCurrency(remainingBudget)} remaining`}
                 </span>
               </div>
-              <div className="h-2.5 w-full bg-secondary/80 rounded-full overflow-hidden border border-border/40 p-0.5">
+              <div className="h-2.5 w-full bg-surface2 rounded-full overflow-hidden border border-border/40 p-0.5">
                 <div
                   style={{
                     width: `${Math.min(100, utilization)}%`,
@@ -248,7 +249,7 @@ export const Level3CategoryView: React.FC<Level3CategoryViewProps> = ({
         month={month}
         transactions={categoryTransactions}
         budget={budget}
-        color={category.color || '#6366F1'}
+        color={category.color || bucketColor('fixed')}
       />
 
       {/* Row 3: Top Payees / Merchants Breakdown */}

@@ -6,6 +6,7 @@ import { Category, Budget, Transaction } from '../../services/storage';
 import { BarChart3, TrendingUp } from 'lucide-react';
 import { formatMonthLabel } from '../../utils/navigation';
 import { bucketOf } from '../../utils/categorizer';
+import { bucketColor, negativeColor } from '../../theme/buckets';
 import { WaterfallItem } from '../dashboard/WaterfallChart';
 
 const WaterfallChart = lazy(() => import('../dashboard/WaterfallChart'));
@@ -58,7 +59,7 @@ export function TrendsView({
       placeholder: 0,
       value: Math.max(0, totalIncome),
       displayValue: totalIncome,
-      color: '#10B981',
+      color: bucketColor('saved'),
       stepType: 'inflow'
     });
 
@@ -70,7 +71,7 @@ export function TrendsView({
       placeholder: Math.max(0, running),
       value: fixedExpenses,
       displayValue: fixedExpenses,
-      color: '#6366F1',
+      color: bucketColor('fixed'),
       stepType: 'outflow'
     });
 
@@ -81,7 +82,7 @@ export function TrendsView({
       placeholder: Math.max(0, running),
       value: flexibleExpenses,
       displayValue: flexibleExpenses,
-      color: '#8B5CF6',
+      color: bucketColor('flexible'),
       stepType: 'outflow'
     });
 
@@ -92,7 +93,7 @@ export function TrendsView({
       placeholder: Math.max(0, running),
       value: nonMonthlyExpenses,
       displayValue: nonMonthlyExpenses,
-      color: '#F59E0B',
+      color: bucketColor('non-monthly'),
       stepType: 'outflow'
     });
 
@@ -102,7 +103,7 @@ export function TrendsView({
       placeholder: 0,
       value: Math.max(0, Math.abs(savingsAmount)),
       displayValue: savingsAmount,
-      color: savingsAmount >= 0 ? '#10B981' : '#F43F5E',
+      color: savingsAmount >= 0 ? bucketColor('saved') : negativeColor(),
       stepType: 'total'
     });
 

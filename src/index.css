@@ -3,104 +3,80 @@
 @tailwind utilities;
 
 @layer base {
-  :root {
-    /* Obsidian Dark Theme */
-    --background: 223 39% 7%; /* #0B0F19 */
-    --foreground: 210 40% 98%;
-    --card: 222 47% 11%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222 47% 11%;
-    --popover-foreground: 210 40% 98%;
-    
-    /* Elegant Accents: Teal / Indigo */
-    --primary: 173 80% 40%;
-    --primary-foreground: 222.2 47.4% 1.2%;
-    --secondary: 234 89% 74%; 
-    --secondary-foreground: 210 40% 98%;
-    
-    /* Muted & Borders */
-    --muted: 217 33% 17%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217 33% 17%;
-    --accent-foreground: 210 40% 98%;
-    
-    /* Semantic Colors (Softer red/green) */
-    --destructive: 350 89% 60%; /* Softer rose */
-    --destructive-foreground: 210 40% 98%;
-    
-    /* Semantic Category & Flow Tokens */
-    --color-income: #10B981;
-    --color-fixed: #3B82F6;
-    --color-variable: #8B5CF6;
-    --color-nonmonthly: #F59E0B;
-    --color-savings: #A855F7;
-    --color-deficit: #F43F5E;
-    
-    --border: 217 33% 17%;
-    --input: 217 33% 17%;
-    --ring: 173 80% 40%;
-    --radius: 1rem;
+  :root, .dark {
+    /* surfaces */
+    --background: 228 12% 5%;      /* #0B0C0F */
+    --card: 228 10% 8%;            /* #131418  surface-1 */
+    --card-foreground: 220 14% 94%;
+    --surface-2: 228 9% 11%;       /* #1A1B20  hover / inset */
+    --popover: 228 10% 10%;
+    --popover-foreground: 220 14% 94%;
+    --border: 228 8% 16%;          /* hairline ≈ rgba(255,255,255,.07) */
+    --input: 228 8% 18%;
+    /* text */
+    --foreground: 220 14% 94%;     /* #EDEEF1 text-1 */
+    --muted-foreground: 222 7% 63%;/* #9DA0A8 text-2 (AA on bg) */
+    --faint: 222 6% 44%;           /* #6C6F77 text-3, only ≥14px */
+    /* interactive = monochrome */
+    --primary: 220 14% 94%;        /* primary buttons are light-on-dark */
+    --primary-foreground: 228 12% 6%;
+    --secondary: 228 9% 13%;       /* NEUTRAL now (was vivid indigo) */
+    --secondary-foreground: 220 14% 94%;
+    --muted: 228 9% 13%;
+    --accent: 228 9% 13%;
+    --accent-foreground: 220 14% 94%;
+    --destructive: 357 85% 64%;
+    --destructive-foreground: 220 14% 94%;
+    --ring: 220 14% 94%;
+    /* data colors */
+    --c-fixed: 221 83% 66%;        /* #5B8DEF */
+    --c-variable: 258 90% 76%;     /* #A78BFA */
+    --c-nonmonthly: 38 92% 62%;    /* #F5B544 */
+    --c-saved: 152 62% 52%;        /* #3DD68C */
+    --c-negative: 357 85% 64%;     /* #F2555A, overspend/deficit only */
+    --radius: 14px;
+  }
+  .light {
+    --background: 60 9% 98%;       /* #FAFAF9 */
+    --card: 0 0% 100%;
+    --card-foreground: 228 12% 6%;
+    --surface-2: 240 5% 96%;       /* #F4F4F5 */
+    --popover: 0 0% 100%;
+    --popover-foreground: 228 12% 6%;
+    --border: 240 6% 91%;          /* ≈ rgba(0,0,0,.07) */
+    --input: 240 6% 88%;
+    --foreground: 228 12% 6%;      /* #0D0E11 */
+    --muted-foreground: 222 6% 38%;/* #5A5E66 */
+    --faint: 222 5% 56%;           /* #8A8E96 */
+    --primary: 228 12% 8%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 240 5% 95%;
+    --secondary-foreground: 228 12% 8%;
+    --muted: 240 5% 95%;
+    --accent: 240 5% 95%;
+    --accent-foreground: 228 12% 8%;
+    --destructive: 357 70% 54%;
+    --destructive-foreground: 0 0% 100%;
+    --ring: 228 12% 8%;
+    --c-fixed: 221 70% 52%;        /* #3A6FE0 */
+    --c-variable: 262 72% 58%;     /* #8457E8 */
+    --c-nonmonthly: 36 84% 43%;    /* #C98712 */
+    --c-saved: 156 80% 36%;        /* #12A26A */
+    --c-negative: 357 70% 54%;     /* #DC3B41 */
   }
 
-  .light {
-    /* Elegant Light Theme */
-    --background: 210 40% 98%;
-    --foreground: 222.2 84% 4.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    
-    --primary: 173 80% 35%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 234 89% 65%;
-    --secondary-foreground: 210 40% 98%;
-    
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    
-    --destructive: 350 89% 50%;
-    --destructive-foreground: 210 40% 98%;
-    
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 173 80% 35%;
+  body {
+    font-feature-settings: 'cv11', 'ss01';
   }
 }
 
+.num {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum', 'cv11', 'ss01';
+  letter-spacing: -0.01em;
+}
+
 @layer utilities {
-  /* Premium Glassmorphism */
-  .glass-panel {
-    background: rgba(17, 24, 39, 0.6);
-    backdrop-filter: blur(20px) saturate(150%);
-    -webkit-backdrop-filter: blur(20px) saturate(150%);
-    border: 1px solid rgba(255, 255, 255, 0.05);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 8px 32px -4px rgba(0, 0, 0, 0.3);
-  }
-
-  .light .glass-panel {
-    background: rgba(255, 255, 255, 0.85);
-    border: 1px solid rgba(0, 0, 0, 0.08);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6), 0 8px 32px -4px rgba(0, 0, 0, 0.08);
-  }
-
-  .glass-card {
-    background: rgba(30, 41, 59, 0.4);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    box-shadow: 0 4px 24px -2px rgba(0, 0, 0, 0.2);
-    transition: all 0.3s ease;
-  }
-
-  .light .glass-card {
-    background: rgba(255, 255, 255, 0.75);
-    border: 1px solid rgba(0, 0, 0, 0.08);
-    box-shadow: 0 4px 24px -2px rgba(0, 0, 0, 0.06);
-  }
-
   /* Sleek Scrollbar */
   .custom-scrollbar {
     scrollbar-width: thin;

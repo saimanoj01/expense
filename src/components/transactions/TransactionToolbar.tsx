@@ -81,38 +81,42 @@ export function TransactionToolbar({
               <button
                 onClick={() => setSelectedBucket(selectedBucket === 'income' ? null : 'income')}
                 data-testid="filter-bucket-income"
-                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${
-                  selectedBucket === 'income' ? 'bg-emerald-500 text-white shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
+                  selectedBucket === 'income' ? 'bg-bucket-saved text-white shadow-sm' : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
-                🟢 Income
+                <span className={`w-2 h-2 rounded-full ${selectedBucket === 'income' ? 'bg-white' : 'bg-bucket-saved'}`} />
+                Income
               </button>
               <button
                 onClick={() => setSelectedBucket(selectedBucket === 'fixed' ? null : 'fixed')}
                 data-testid="filter-bucket-fixed"
-                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${
-                  selectedBucket === 'fixed' ? 'bg-blue-500 text-white shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
+                  selectedBucket === 'fixed' ? 'bg-bucket-fixed text-white shadow-sm' : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
-                🔵 Fixed
+                <span className={`w-2 h-2 rounded-full ${selectedBucket === 'fixed' ? 'bg-white' : 'bg-bucket-fixed'}`} />
+                Fixed
               </button>
               <button
                 onClick={() => setSelectedBucket(selectedBucket === 'flexible' ? null : 'flexible')}
                 data-testid="filter-bucket-flexible"
-                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${
-                  selectedBucket === 'flexible' ? 'bg-rose-500 text-white shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
+                  selectedBucket === 'flexible' ? 'bg-bucket-variable text-white shadow-sm' : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
-                🔴 Flexible
+                <span className={`w-2 h-2 rounded-full ${selectedBucket === 'flexible' ? 'bg-white' : 'bg-bucket-variable'}`} />
+                Variable
               </button>
               <button
                 onClick={() => setSelectedBucket(selectedBucket === 'non-monthly' ? null : 'non-monthly')}
                 data-testid="filter-bucket-non-monthly"
-                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${
-                  selectedBucket === 'non-monthly' ? 'bg-amber-500 text-white shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
+                  selectedBucket === 'non-monthly' ? 'bg-bucket-nonmonthly text-white shadow-sm' : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
-                🟠 Non-Monthly
+                <span className={`w-2 h-2 rounded-full ${selectedBucket === 'non-monthly' ? 'bg-white' : 'bg-bucket-nonmonthly'}`} />
+                Non-monthly
               </button>
             </div>
           )}

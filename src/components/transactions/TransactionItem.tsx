@@ -141,39 +141,39 @@ export const TransactionItem = forwardRef<HTMLDivElement, TransactionItemProps>(
                 >
                   <button
                     type="button"
-                    title="Fixed Commitment"
+                    title="Fixed"
                     aria-label="Set Fixed"
                     onClick={(e) => {
                       e.stopPropagation();
                       handleBucketChange(transaction, 'fixed');
                     }}
-                    className={`px-1.5 py-0.5 rounded transition-colors ${transaction.spendingBucket === 'fixed' ? 'bg-blue-500 text-white shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                    className={`px-1.5 py-0.5 rounded transition-colors ${transaction.spendingBucket === 'fixed' ? 'bg-bucket-fixed text-white shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
                   >
                     Fixed
                   </button>
                   <button
                     type="button"
-                    title="Variable / Flexible Spend"
+                    title="Variable"
                     aria-label="Set Variable"
                     onClick={(e) => {
                       e.stopPropagation();
                       handleBucketChange(transaction, 'flexible');
                     }}
-                    className={`px-1.5 py-0.5 rounded transition-colors ${transaction.spendingBucket === 'flexible' ? 'bg-violet-500 text-white shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                    className={`px-1.5 py-0.5 rounded transition-colors ${transaction.spendingBucket === 'flexible' ? 'bg-bucket-variable text-white shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
                   >
                     Variable
                   </button>
                   <button
                     type="button"
-                    title="Non-Monthly Expense"
+                    title="Non-monthly"
                     aria-label="Set Non-Monthly"
                     onClick={(e) => {
                       e.stopPropagation();
                       handleBucketChange(transaction, 'non-monthly');
                     }}
-                    className={`px-1.5 py-0.5 rounded transition-colors ${transaction.spendingBucket === 'non-monthly' ? 'bg-amber-500 text-white shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                    className={`px-1.5 py-0.5 rounded transition-colors ${transaction.spendingBucket === 'non-monthly' ? 'bg-bucket-nonmonthly text-white shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
                   >
-                    Non-Monthly
+                    Non-monthly
                   </button>
                 </div>
               </>
@@ -240,8 +240,8 @@ export const TransactionItem = forwardRef<HTMLDivElement, TransactionItemProps>(
         {(() => {
           const { formattedAmount, colorClass } = formatTransactionAmount(transaction.amount, transaction.type);
           const bucket = transaction.spendingBucket;
-          const dotColor = bucket === 'fixed' ? 'bg-blue-500' : bucket === 'non-monthly' ? 'bg-amber-500' : bucket === 'flexible' ? 'bg-emerald-500' : null;
-          const bucketLabel = bucket === 'fixed' ? 'Fixed Expense' : bucket === 'non-monthly' ? 'Non-Monthly Expense' : bucket === 'flexible' ? 'Flexible Expense' : null;
+          const dotColor = bucket === 'fixed' ? 'bg-bucket-fixed' : bucket === 'non-monthly' ? 'bg-bucket-nonmonthly' : bucket === 'flexible' ? 'bg-bucket-variable' : null;
+          const bucketLabel = bucket === 'fixed' ? 'Fixed' : bucket === 'non-monthly' ? 'Non-monthly' : bucket === 'flexible' ? 'Variable' : null;
 
           return (
             <div className="flex items-center gap-2">

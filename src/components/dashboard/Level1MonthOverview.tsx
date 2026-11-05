@@ -3,6 +3,7 @@ import { Printer, BarChart3, AlertTriangle } from 'lucide-react';
 import { Project, Transaction, Category } from '../../services/storage';
 import { formatCurrency } from '../../utils/formatters';
 import { bucketOf } from '../../utils/categorizer';
+import { bucketColor, negativeColor } from '../../theme/buckets';
 import { MonthSwitcher } from './MonthSwitcher';
 import { HeroSavingsCard } from './HeroSavingsCard';
 import { IncomeAllocationRing } from './IncomeAllocationRing';
@@ -114,7 +115,7 @@ export const Level1MonthOverview: React.FC<Level1MonthOverviewProps> = ({
       placeholder: 0,
       value: Math.max(0, totalIncome),
       displayValue: totalIncome,
-      color: '#10B981', // Emerald
+      color: bucketColor('saved'),
       stepType: 'inflow'
     });
 
@@ -126,7 +127,7 @@ export const Level1MonthOverview: React.FC<Level1MonthOverviewProps> = ({
       placeholder: Math.max(0, running),
       value: fixedExpenses,
       displayValue: fixedExpenses,
-      color: '#6366F1', // Indigo
+      color: bucketColor('fixed'),
       stepType: 'outflow'
     });
 
@@ -137,7 +138,7 @@ export const Level1MonthOverview: React.FC<Level1MonthOverviewProps> = ({
       placeholder: Math.max(0, running),
       value: flexibleExpenses,
       displayValue: flexibleExpenses,
-      color: '#8B5CF6', // Violet
+      color: bucketColor('flexible'),
       stepType: 'outflow'
     });
 
@@ -148,7 +149,7 @@ export const Level1MonthOverview: React.FC<Level1MonthOverviewProps> = ({
       placeholder: Math.max(0, running),
       value: nonMonthlyExpenses,
       displayValue: nonMonthlyExpenses,
-      color: '#F59E0B', // Amber
+      color: bucketColor('non-monthly'),
       stepType: 'outflow'
     });
 
@@ -160,7 +161,7 @@ export const Level1MonthOverview: React.FC<Level1MonthOverviewProps> = ({
         placeholder: Math.max(0, running),
         value: unclassifiedExpenses,
         displayValue: unclassifiedExpenses,
-        color: '#6B7280', // Gray
+        color: 'hsl(var(--faint))',
         stepType: 'outflow'
       });
     }
@@ -171,7 +172,7 @@ export const Level1MonthOverview: React.FC<Level1MonthOverviewProps> = ({
       placeholder: 0,
       value: Math.max(0, Math.abs(savingsAmount)),
       displayValue: savingsAmount,
-      color: savingsAmount >= 0 ? '#10B981' : '#F43F5E', // Emerald or Crimson Rose
+      color: savingsAmount >= 0 ? bucketColor('saved') : negativeColor(),
       stepType: 'total'
     });
 

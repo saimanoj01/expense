@@ -1,5 +1,6 @@
 import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 import { MonthlyCashFlow } from '../../hooks/useTransactions';
+import { bucketColor } from '../../theme/buckets';
 
 interface CashFlowBarChartProps {
   monthlyCashFlows: MonthlyCashFlow[];
@@ -84,11 +85,11 @@ export function CashFlowBarChart({
           />
           <Tooltip content={<CustomTooltip />} />
           {/* Group 1: Inflow */}
-          <Bar dataKey="income" name="Inflow" fill="#10B981" radius={[4, 4, 0, 0]} maxBarSize={28} />
+          <Bar dataKey="income" name="Inflow" fill={bucketColor('saved')} radius={[4, 4, 0, 0]} maxBarSize={28} />
           {/* Group 2: Stacked Outflows */}
-          <Bar dataKey="fixedExpense" stackId="outflow" name="Fixed" fill="#3B82F6" radius={[0, 0, 0, 0]} maxBarSize={28} />
-          <Bar dataKey="flexibleExpense" stackId="outflow" name="Variable" fill="#8B5CF6" radius={[0, 0, 0, 0]} maxBarSize={28} />
-          <Bar dataKey="nonMonthlyExpense" stackId="outflow" name="Non-Monthly" fill="#F59E0B" radius={[4, 4, 0, 0]} maxBarSize={28} />
+          <Bar dataKey="fixedExpense" stackId="outflow" name="Fixed" fill={bucketColor('fixed')} radius={[0, 0, 0, 0]} maxBarSize={28} />
+          <Bar dataKey="flexibleExpense" stackId="outflow" name="Variable" fill={bucketColor('flexible')} radius={[0, 0, 0, 0]} maxBarSize={28} />
+          <Bar dataKey="nonMonthlyExpense" stackId="outflow" name="Non-Monthly" fill={bucketColor('non-monthly')} radius={[4, 4, 0, 0]} maxBarSize={28} />
         </BarChart>
       </ResponsiveContainer>
     </div>

@@ -125,7 +125,7 @@ export function PacingChart({
               type="monotone"
               dataKey="previous"
               name="Previous Month"
-              stroke="#F59E0B"
+              stroke="hsl(var(--c-nonmonthly))"
               strokeWidth={2}
               strokeDasharray="6 4"
               dot={false}

@@ -17,6 +17,7 @@ import { useNavigation } from '../../hooks/useNavigation';
 import { formatCurrency, formatExpenseCurrency } from '../../utils/formatters';
 import { bucketOf } from '../../utils/categorizer';
 import { deriveCategoryBucket } from '../../hooks/useBudgets';
+import { bucketColor, negativeColor } from '../../theme/buckets';
 
 export interface Level2BucketViewProps {
   bucketId: SpendingBucket | 'income';
@@ -31,12 +32,12 @@ export interface Level2BucketViewProps {
 
 function getUtilizationColor(pct: number): { text: string; bg: string; border: string; hex: string } {
   if (pct > 100) {
-    return { text: 'text-rose-400', bg: 'bg-rose-500/10', border: 'border-rose-500/20', hex: '#F43F5E' };
+    return { text: 'text-negative', bg: 'bg-negative/10', border: 'border-negative/20', hex: negativeColor() };
   }
   if (pct >= 90) {
-    return { text: 'text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/20', hex: '#F59E0B' };
+    return { text: 'text-bucket-nonmonthly', bg: 'bg-bucket-nonmonthly/10', border: 'border-bucket-nonmonthly/20', hex: bucketColor('non-monthly') };
   }
-  return { text: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/20', hex: '#10B981' };
+  return { text: 'text-bucket-saved', bg: 'bg-bucket-saved/10', border: 'border-bucket-saved/20', hex: bucketColor('saved') };
 }
 
 export const Level2BucketView: React.FC<Level2BucketViewProps> = ({
@@ -57,48 +58,48 @@ export const Level2BucketView: React.FC<Level2BucketViewProps> = ({
     switch (bucketId) {
       case 'fixed':
         return {
-          title: 'Fixed Commitments',
-          subtitle: 'Essential recurring obligations, bills, housing, and utilities',
+          title: 'Fixed',
+          subtitle: 'Fixed bills',
           icon: Shield,
-          color: 'text-indigo-400',
-          borderColor: 'border-indigo-500/30',
-          bgGradient: 'from-indigo-500/15 via-card to-card',
-          badgeBg: 'bg-indigo-500/20 text-indigo-400 border-indigo-500/30',
-          accentColor: '#6366F1'
+          color: 'text-bucket-fixed',
+          borderColor: 'border-border',
+          bgGradient: 'from-card via-card to-card',
+          badgeBg: 'bg-surface2 text-bucket-fixed border-border',
+          accentColor: bucketColor('fixed')
         };
       case 'flexible':
         return {
-          title: 'Variable Spending',
-          subtitle: 'Day-to-day discretionary spending, groceries, dining, and lifestyle',
+          title: 'Variable',
+          subtitle: 'Day-to-day spending',
           icon: ShoppingBag,
-          color: 'text-violet-400',
-          borderColor: 'border-violet-500/30',
-          bgGradient: 'from-violet-500/15 via-card to-card',
-          badgeBg: 'bg-violet-500/20 text-violet-400 border-violet-500/30',
-          accentColor: '#8B5CF6'
+          color: 'text-bucket-variable',
+          borderColor: 'border-border',
+          bgGradient: 'from-card via-card to-card',
+          badgeBg: 'bg-surface2 text-bucket-variable border-border',
+          accentColor: bucketColor('flexible')
         };
       case 'non-monthly':
         return {
-          title: 'Non-Monthly Irregular',
-          subtitle: 'Periodic taxes, insurance, annual renewals, and irregular buffers',
+          title: 'Non-monthly',
+          subtitle: 'Occasional & annual',
           icon: Calendar,
-          color: 'text-amber-400',
-          borderColor: 'border-amber-500/30',
-          bgGradient: 'from-amber-500/15 via-card to-card',
-          badgeBg: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
-          accentColor: '#F59E0B'
+          color: 'text-bucket-nonmonthly',
+          borderColor: 'border-border',
+          bgGradient: 'from-card via-card to-card',
+          badgeBg: 'bg-surface2 text-bucket-nonmonthly border-border',
+          accentColor: bucketColor('non-monthly')
         };
       case 'income':
       default:
         return {
-          title: 'Total Inflow',
-          subtitle: 'Monthly earned income streams, salary, dividends, and cash inflows',
+          title: 'Income',
+          subtitle: 'Monthly income & saved',
           icon: TrendingUp,
-          color: 'text-teal-400',
-          borderColor: 'border-teal-500/30',
-          bgGradient: 'from-teal-500/15 via-card to-card',
-          badgeBg: 'bg-teal-500/20 text-teal-400 border-teal-500/30',
-          accentColor: '#10B981'
+          color: 'text-bucket-saved',
+          borderColor: 'border-border',
+          bgGradient: 'from-card via-card to-card',
+          badgeBg: 'bg-surface2 text-bucket-saved border-border',
+          accentColor: bucketColor('saved')
         };
     }
   }, [bucketId]);
@@ -325,7 +326,7 @@ export const Level2BucketView: React.FC<Level2BucketViewProps> = ({
                 </div>
               </div>
 
-              <div className="h-2.5 w-full bg-secondary/80 rounded-full overflow-hidden border border-border/40 p-0.5">
+              <div className="h-2.5 w-full bg-surface2 rounded-full overflow-hidden border border-border/40 p-0.5">
                 <div
                   style={{ width: `${Math.min(100, bucketUtilization)}%`, backgroundColor: utilColor.hex }}
                   className="h-full rounded-full transition-all duration-500"
@@ -454,7 +455,7 @@ export const Level2BucketView: React.FC<Level2BucketViewProps> = ({
                     const catUtilColor = getUtilizationColor(cat.budgetUtilization);
                     return (
                       <div className="mt-3 pt-2 border-t border-border/30">
-                        <div className="h-1.5 w-full bg-secondary rounded-full overflow-hidden">
+                        <div className="h-1.5 w-full bg-surface2 rounded-full overflow-hidden">
                           <div
                             style={{
                               width: `${Math.min(100, cat.budgetUtilization)}%`,

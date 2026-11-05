@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, lazy, Suspense } from 'react';
-import { AnimatePresence } from 'framer-motion';
+import { AnimatePresence, MotionConfig } from 'framer-motion';
 import { Loader2 } from 'lucide-react';
+import { dur, ease } from './theme/motion';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { AppProvider, useApp } from './context/AppContext';
 import { useNavigation } from './hooks/useNavigation';
@@ -887,7 +888,9 @@ function App() {
   return (
     <AuthProvider>
       <AppProvider>
-        <AppInner />
+        <MotionConfig reducedMotion="user" transition={{ duration: dur.small, ease }}>
+          <AppInner />
+        </MotionConfig>
       </AppProvider>
     </AuthProvider>
   );

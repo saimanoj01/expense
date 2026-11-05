@@ -16,7 +16,7 @@ export const DailySpendTimeline: React.FC<DailySpendTimelineProps> = ({
   month,
   transactions,
   budget = 0,
-  color = '#6366F1', // Indigo primary
+  color = 'hsl(var(--c-fixed))',
   height = 140,
   className = ''
 }) => {
@@ -233,7 +233,7 @@ export const DailySpendTimeline: React.FC<DailySpendTimelineProps> = ({
                     cx={pt.x}
                     cy={pt.y}
                     r={isHovered ? 5.5 : isHighSpike ? 4 : 3}
-                    fill={isHighSpike ? '#F59E0B' : color}
+                    fill={isHighSpike ? 'hsl(var(--c-nonmonthly))' : color}
                     stroke="#ffffff"
                     strokeWidth="1.5"
                     className="transition-all duration-150"
