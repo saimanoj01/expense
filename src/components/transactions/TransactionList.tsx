@@ -1,7 +1,8 @@
 import { useState, useMemo } from 'react';
-import { Search, Filter, Trash2, X, Tag } from 'lucide-react';
+import { Search, Trash2, X, Tag } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Transaction, Category, DEFAULT_CATEGORIES, SpendingBucket } from '../../services/storage';
+import { formatMoney } from '../../utils/formatters';
 import { TransactionItem } from './TransactionItem';
 import { TagInputPopover } from '../common/TagInputPopover';
 
@@ -13,6 +14,7 @@ interface TransactionListProps {
   duplicateTxnIds: Set<string>;
   isLockedMonth: boolean;
   selectedTxnIds: Set<string>;
+  sortBy?: string;
   setSelectedTagFilter: (tag: string | null) => void;
   toggleSelectTxn: (id: string) => void;
   toggleSelectAllTxns: () => void;
@@ -29,14 +31,28 @@ interface TransactionListProps {
   handleExecuteBulkRemoveTag?: (selectedTxnIds: Set<string>, tag: string) => void;
 }
 
+function formatDayHeader(dateStr: string): string {
+  if (!dateStr || !/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return dateStr || 'RECENT';
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  return dt
+    .toLocaleDateString('en-US', {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      timeZone: 'UTC',
+    })
+    .toUpperCase();
+}
+
 export function TransactionList({
   transactions,
   categories,
   availableTags = [],
-  selectedTagFilter,
   duplicateTxnIds,
   isLockedMonth,
   selectedTxnIds,
+  sortBy = 'date-desc',
   setSelectedTagFilter,
   toggleSelectTxn,
   toggleSelectAllTxns,
@@ -50,11 +66,12 @@ export function TransactionList({
   handleAddTag,
   handleRemoveTag,
   handleExecuteBulkAddTag,
-  handleExecuteBulkRemoveTag
+  handleExecuteBulkRemoveTag,
 }: TransactionListProps) {
   const [showBulkAddPopover, setShowBulkAddPopover] = useState(false);
 
-  const isAllSelected = transactions.length > 0 && transactions.every(t => selectedTxnIds.has(t.id));
+  const isAllSelected =
+    transactions.length > 0 && transactions.every(t => selectedTxnIds.has(t.id));
 
   const allCategories = useMemo(() => {
     const map = new Map<string, Category>();
@@ -65,7 +82,6 @@ export function TransactionList({
 
   const parentCats = useMemo(() => allCategories.filter(c => !c.parentId), [allCategories]);
 
-  // Extract unique tags across currently selected transactions
   const selectedTxnTags = useMemo(() => {
     const tagsSet = new Set<string>();
     transactions.forEach(t => {
@@ -78,189 +94,246 @@ export function TransactionList({
     return Array.from(tagsSet).sort();
   }, [transactions, selectedTxnIds]);
 
+  const isDateSorted = !sortBy || sortBy === 'date-desc' || sortBy === 'date-asc';
+
+  const dayGroups = useMemo(() => {
+    if (!isDateSorted) return null;
+    const groups: { date: string; txns: Transaction[]; netTotal: number }[] = [];
+    transactions.forEach(t => {
+      const d = t.date || '';
+      const last = groups[groups.length - 1];
+      // Exclude transfers from day-group totals per §3.12
+      const deltaAmt =
+        t.type === 'income' ? t.amount : t.type === 'expense' ? -t.amount : 0;
+      if (!last || last.date !== d) {
+        groups.push({ date: d, txns: [t], netTotal: deltaAmt });
+      } else {
+        last.txns.push(t);
+        last.netTotal += deltaAmt;
+      }
+    });
+    return groups;
+  }, [transactions, isDateSorted]);
+
   return (
-    <div className="glass-card rounded-2xl flex flex-col min-h-[350px] max-h-[600px] h-[55vh]">
-      <div className="p-4 border-b border-border/50 flex flex-wrap items-center justify-between gap-3 bg-card/30 rounded-t-2xl">
-        <div className="flex items-center gap-3">
-          <h2 className="font-bold text-lg">Transactions</h2>
-          <span className="px-2 py-0.5 rounded-full bg-card border border-border text-xs font-bold tabular-nums">
-            {transactions.length}
-          </span>
-          {selectedTagFilter && (
-            <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-secondary/10 border border-secondary/20 text-secondary text-xs font-bold">
-              <Filter className="w-3 h-3" />
-              <span className="uppercase tracking-wider">{selectedTagFilter}</span>
-              <button onClick={() => setSelectedTagFilter(null)} className="ml-1 hover:text-foreground transition-colors">
-                <X className="w-3 h-3" />
-              </button>
-            </div>
-          )}
+    <div className="relative flex flex-col">
+      {!isLockedMonth && transactions.length > 0 && (
+        <div className="flex items-center justify-end pb-1">
+          <label className="inline-flex items-center gap-2 text-label text-muted-foreground hover:text-foreground cursor-pointer transition-colors">
+            <input
+              type="checkbox"
+              checked={isAllSelected}
+              onChange={toggleSelectAllTxns}
+              className="w-4 h-4 rounded bg-background border-border text-primary focus:ring-primary"
+            />
+            <span>Select All</span>
+          </label>
         </div>
-        
-        <div className="flex items-center gap-3 flex-wrap">
-          {selectedTxnIds.size > 0 && (
-            <div className="flex items-center gap-2 flex-wrap">
-              {handleExecuteBulkCategoryUpdate && (
-                <div className="relative flex items-center">
-                  <select
-                    defaultValue=""
-                    onChange={(e) => {
-                      if (e.target.value) {
-                        const [catId, subId] = e.target.value.split('|');
-                        handleExecuteBulkCategoryUpdate(selectedTxnIds, catId, subId || null);
-                        e.target.value = '';
-                      }
-                    }}
-                    className="px-3 py-1.5 bg-card/80 border border-border text-foreground hover:bg-card rounded-lg text-xs sm:text-sm font-bold transition-colors cursor-pointer outline-none shadow-sm"
-                  >
-                    <option value="" disabled className="bg-card text-card-foreground">Set Category ({selectedTxnIds.size})...</option>
-                    {parentCats.map(p => {
-                      const subs = allCategories.filter(c => c.parentId === p.id);
-                      return (
-                        <optgroup key={p.id} label={`${p.emoji} ${p.name}`} className="bg-card font-bold text-muted-foreground">
-                          <option value={`${p.id}|`} className="bg-card text-card-foreground font-semibold">
-                            {p.emoji} {p.name} (General)
-                          </option>
-                          {subs.map(s => (
-                            <option key={s.id} value={`${p.id}|${s.id}`} className="bg-card text-card-foreground">
-                              {s.emoji} {s.name === 'Electricity' ? 'Electric Power' : s.name}
-                            </option>
-                          ))}
-                        </optgroup>
-                      );
-                    })}
-                  </select>
-                </div>
-              )}
+      )}
 
-              {/* Bulk Bucket Assignment */}
-              {handleExecuteBulkBucketUpdate && (
-                <div className="relative flex items-center">
-                  <select
-                    data-testid="bulk-bucket-select"
-                    defaultValue=""
-                    onChange={(e) => {
-                      if (e.target.value) {
-                        handleExecuteBulkBucketUpdate(selectedTxnIds, e.target.value as SpendingBucket);
-                        e.target.value = '';
-                      }
-                    }}
-                    className="px-3 py-1.5 bg-card/80 border border-border text-foreground hover:bg-card rounded-lg text-xs sm:text-sm font-bold transition-colors cursor-pointer outline-none shadow-sm"
-                  >
-                    <option value="" disabled className="bg-card text-card-foreground">Set Bucket ({selectedTxnIds.size})...</option>
-                    <option value="fixed" className="bg-card text-card-foreground">Fixed Commitment</option>
-                    <option value="flexible" className="bg-card text-card-foreground">Variable (Flexible)</option>
-                    <option value="non-monthly" className="bg-card text-card-foreground">Non-Monthly</option>
-                  </select>
-                </div>
-              )}
-
-              {/* Bulk Add Tag */}
-              {handleExecuteBulkAddTag && (
-                <div className="relative inline-block">
-                  <button
-                    type="button"
-                    data-testid="bulk-add-tag-btn"
-                    onClick={() => setShowBulkAddPopover(prev => !prev)}
-                    className="flex items-center gap-1 px-3 py-1.5 bg-secondary/10 text-secondary border border-secondary/20 hover:bg-secondary/20 rounded-lg text-xs sm:text-sm font-bold transition-colors"
-                  >
-                    <Tag className="w-3.5 h-3.5" /> + Tag ({selectedTxnIds.size})
-                  </button>
-                  {showBulkAddPopover && (
-                    <TagInputPopover
-                      availableTags={availableTags}
-                      onAddTag={(tags) => {
-                        handleExecuteBulkAddTag(selectedTxnIds, tags);
-                        setShowBulkAddPopover(false);
-                      }}
-                      onClose={() => setShowBulkAddPopover(false)}
-                      align="right"
-                    />
-                  )}
-                </div>
-              )}
-
-              {/* Bulk Remove Tag */}
-              {handleExecuteBulkRemoveTag && selectedTxnTags.length > 0 && (
-                <select
-                  defaultValue=""
-                  data-testid="bulk-remove-tag-select"
-                  onChange={(e) => {
-                    if (e.target.value) {
-                      handleExecuteBulkRemoveTag(selectedTxnIds, e.target.value);
-                      e.target.value = '';
-                    }
-                  }}
-                  className="px-3 py-1.5 bg-card/80 border border-border text-foreground hover:bg-card rounded-lg text-xs sm:text-sm font-bold transition-colors cursor-pointer outline-none shadow-sm"
-                >
-                  <option value="" disabled className="bg-card text-card-foreground">Remove Tag ({selectedTxnIds.size})...</option>
-                  {selectedTxnTags.map(tag => (
-                    <option key={tag} value={tag} className="bg-card text-card-foreground">#{tag}</option>
-                  ))}
-                </select>
-              )}
-
-              <motion.button
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                onClick={() => setShowBulkDeleteConfirmModal(true)}
-                className="flex items-center gap-2 px-3 py-1.5 bg-destructive/10 text-destructive border border-destructive/20 hover:bg-destructive/20 rounded-lg text-sm font-bold transition-colors"
-              >
-                <Trash2 className="w-4 h-4" /> Delete ({selectedTxnIds.size})
-              </motion.button>
-            </div>
-          )}
-
-          {!isLockedMonth && transactions.length > 0 && (
-            <label className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground cursor-pointer transition-colors">
-              <input
-                type="checkbox"
-                checked={isAllSelected}
-                onChange={toggleSelectAllTxns}
-                className="w-4 h-4 rounded bg-background border-border text-primary focus:ring-primary focus:ring-offset-background"
-              />
-              Select All
-            </label>
-          )}
+      {transactions.length === 0 ? (
+        <div className="flex flex-col items-center justify-center text-muted-foreground gap-3 py-12 border-t border-border">
+          <div className="w-12 h-12 rounded-full bg-surface2 flex items-center justify-center">
+            <Search className="w-5 h-5 text-muted-foreground" />
+          </div>
+          <p className="text-body">No transactions found.</p>
         </div>
-      </div>
-
-      <div className="flex-1 overflow-y-auto custom-scrollbar p-2">
-        <AnimatePresence mode="popLayout">
-          {transactions.length === 0 ? (
-            <motion.div 
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              className="flex flex-col items-center justify-center h-full text-muted-foreground gap-4 py-12"
-            >
-              <div className="w-16 h-16 rounded-full bg-card flex items-center justify-center">
-                <Search className="w-8 h-8 opacity-20" />
+      ) : dayGroups ? (
+        <div className="divide-y divide-border border-t border-border">
+          {dayGroups.map(group => (
+            <div key={group.date} className="py-2">
+              <div className="sticky top-14 z-10 bg-background/90 backdrop-blur-sm flex items-center justify-between py-1.5 text-label font-semibold text-muted-foreground tabular-nums num">
+                <span>{formatDayHeader(group.date)}</span>
+                <span>{formatMoney(group.netTotal, { cents: true, sign: 'auto' })}</span>
               </div>
-              <p>No transactions found.</p>
-            </motion.div>
-          ) : (
-            transactions.map(txn => (
-              <TransactionItem
-                key={txn.id}
-                transaction={txn}
-                categories={categories}
-                availableTags={availableTags}
-                isLockedMonth={isLockedMonth}
-                isSelected={selectedTxnIds.has(txn.id)}
-                isDuplicate={duplicateTxnIds.has(txn.id)}
-                toggleSelectTxn={toggleSelectTxn}
-                handleEditTxn={handleEditTxn}
-                handleDeleteTxn={handleDeleteTxn}
-                handleCategoryChange={handleCategoryChange}
-                handleBucketChange={handleBucketChange}
-                setSelectedTagFilter={setSelectedTagFilter}
-                handleAddTag={handleAddTag}
-                handleRemoveTag={handleRemoveTag}
-              />
-            ))
-          )}
-        </AnimatePresence>
-      </div>
+              <div className="space-y-0.5">
+                {group.txns.map(txn => (
+                  <TransactionItem
+                    key={txn.id}
+                    transaction={txn}
+                    categories={categories}
+                    availableTags={availableTags}
+                    isLockedMonth={isLockedMonth}
+                    isSelected={selectedTxnIds.has(txn.id)}
+                    isDuplicate={duplicateTxnIds.has(txn.id)}
+                    toggleSelectTxn={toggleSelectTxn}
+                    handleEditTxn={handleEditTxn}
+                    handleDeleteTxn={handleDeleteTxn}
+                    handleCategoryChange={handleCategoryChange}
+                    handleBucketChange={handleBucketChange}
+                    setSelectedTagFilter={setSelectedTagFilter}
+                    handleAddTag={handleAddTag}
+                    handleRemoveTag={handleRemoveTag}
+                  />
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="divide-y divide-border/50 border-t border-border py-1">
+          {transactions.map(txn => (
+            <TransactionItem
+              key={txn.id}
+              transaction={txn}
+              categories={categories}
+              availableTags={availableTags}
+              isLockedMonth={isLockedMonth}
+              isSelected={selectedTxnIds.has(txn.id)}
+              isDuplicate={duplicateTxnIds.has(txn.id)}
+              toggleSelectTxn={toggleSelectTxn}
+              handleEditTxn={handleEditTxn}
+              handleDeleteTxn={handleDeleteTxn}
+              handleCategoryChange={handleCategoryChange}
+              handleBucketChange={handleBucketChange}
+              setSelectedTagFilter={setSelectedTagFilter}
+              handleAddTag={handleAddTag}
+              handleRemoveTag={handleRemoveTag}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Floating Bulk Action Bar (springs from y: 24 when >= 1 selected) */}
+      <AnimatePresence>
+        {selectedTxnIds.size > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 24 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 24 }}
+            transition={{ type: 'spring', stiffness: 360, damping: 32 }}
+            className="fixed bottom-16 md:bottom-6 left-1/2 -translate-x-1/2 z-40 rounded-[14px] bg-popover border border-border shadow-xl px-4 py-2.5 flex flex-wrap items-center gap-2.5"
+          >
+            <span className="text-body font-medium text-foreground tabular-nums num">
+              {selectedTxnIds.size} selected
+            </span>
+
+            <span className="text-faint">·</span>
+
+            {handleExecuteBulkCategoryUpdate && (
+              <select
+                defaultValue=""
+                onChange={e => {
+                  if (e.target.value) {
+                    const [catId, subId] = e.target.value.split('|');
+                    handleExecuteBulkCategoryUpdate(selectedTxnIds, catId, subId || null);
+                    e.target.value = '';
+                  }
+                }}
+                className="px-2.5 py-1 bg-surface2 border border-border text-foreground hover:bg-secondary rounded-[8px] text-label font-medium transition-colors cursor-pointer outline-none"
+              >
+                <option value="" disabled>
+                  Set Category ({selectedTxnIds.size})...
+                </option>
+                {parentCats.map(p => {
+                  const subs = allCategories.filter(c => c.parentId === p.id);
+                  return (
+                    <optgroup key={p.id} label={`${p.emoji} ${p.name}`}>
+                      <option value={`${p.id}|`}>
+                        {p.emoji} {p.name} (General)
+                      </option>
+                      {subs.map(s => (
+                        <option key={s.id} value={`${p.id}|${s.id}`}>
+                          {s.emoji} {s.name === 'Electricity' ? 'Electric Power' : s.name}
+                        </option>
+                      ))}
+                    </optgroup>
+                  );
+                })}
+              </select>
+            )}
+
+            {handleExecuteBulkBucketUpdate && (
+              <select
+                data-testid="bulk-bucket-select"
+                defaultValue=""
+                onChange={e => {
+                  if (e.target.value) {
+                    handleExecuteBulkBucketUpdate(
+                      selectedTxnIds,
+                      e.target.value as SpendingBucket
+                    );
+                    e.target.value = '';
+                  }
+                }}
+                className="px-2.5 py-1 bg-surface2 border border-border text-foreground hover:bg-secondary rounded-[8px] text-label font-medium transition-colors cursor-pointer outline-none"
+              >
+                <option value="" disabled>
+                  Set Bucket ({selectedTxnIds.size})...
+                </option>
+                <option value="fixed">Fixed Commitment</option>
+                <option value="flexible">Variable (Flexible)</option>
+                <option value="non-monthly">Non-Monthly</option>
+              </select>
+            )}
+
+            {handleExecuteBulkAddTag && (
+              <div className="relative inline-block">
+                <button
+                  type="button"
+                  data-testid="bulk-add-tag-btn"
+                  onClick={() => setShowBulkAddPopover(prev => !prev)}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 bg-surface2 hover:bg-secondary text-foreground border border-border rounded-[8px] text-label font-medium transition-colors"
+                >
+                  <Tag className="w-3.5 h-3.5" /> + Tag ({selectedTxnIds.size})
+                </button>
+                {showBulkAddPopover && (
+                  <TagInputPopover
+                    availableTags={availableTags}
+                    onAddTag={tags => {
+                      handleExecuteBulkAddTag(selectedTxnIds, tags);
+                      setShowBulkAddPopover(false);
+                    }}
+                    onClose={() => setShowBulkAddPopover(false)}
+                    align="right"
+                  />
+                )}
+              </div>
+            )}
+
+            {handleExecuteBulkRemoveTag && selectedTxnTags.length > 0 && (
+              <select
+                defaultValue=""
+                data-testid="bulk-remove-tag-select"
+                onChange={e => {
+                  if (e.target.value) {
+                    handleExecuteBulkRemoveTag(selectedTxnIds, e.target.value);
+                    e.target.value = '';
+                  }
+                }}
+                className="px-2.5 py-1 bg-surface2 border border-border text-foreground hover:bg-secondary rounded-[8px] text-label font-medium transition-colors cursor-pointer outline-none"
+              >
+                <option value="" disabled>
+                  Remove Tag ({selectedTxnIds.size})...
+                </option>
+                {selectedTxnTags.map(tag => (
+                  <option key={tag} value={tag}>
+                    #{tag}
+                  </option>
+                ))}
+              </select>
+            )}
+
+            <button
+              type="button"
+              onClick={() => setShowBulkDeleteConfirmModal(true)}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-negative/10 text-negative border border-negative/25 hover:bg-negative/20 rounded-[8px] text-label font-medium transition-colors"
+            >
+              <Trash2 className="w-3.5 h-3.5" /> Delete ({selectedTxnIds.size})
+            </button>
+
+            <button
+              type="button"
+              onClick={toggleSelectAllTxns}
+              title="Clear selection"
+              aria-label="Clear selection"
+              className="p-1 text-muted-foreground hover:text-foreground rounded-[8px] transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

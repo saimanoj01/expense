@@ -1,11 +1,10 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { TransactionToolbar } from '../transactions/TransactionToolbar';
 import { TransactionList } from '../transactions/TransactionList';
 import { Transaction, Category, SpendingBucket } from '../../services/storage';
 import { formatCurrency } from '../../utils/formatters';
 import { bucketOf } from '../../utils/categorizer';
-import { ArrowLeft, Filter, Search, X } from 'lucide-react';
-import { useNavigation } from '../../hooks/useNavigation';
+import { Filter, X } from 'lucide-react';
 
 export interface TransactionsViewProps {
   month: string;
@@ -46,6 +45,14 @@ export interface TransactionsViewProps {
   onExecuteBulkRemoveTag?: (ids: Set<string>, tag: string) => void;
 }
 
+function parseQueryDay(hash: string): number | null {
+  const qIdx = hash.indexOf('?');
+  if (qIdx === -1) return null;
+  const params = new URLSearchParams(hash.slice(qIdx + 1));
+  const d = parseInt(params.get('day') || '', 10);
+  return !isNaN(d) && d >= 1 && d <= 31 ? d : null;
+}
+
 export function TransactionsView({
   month,
   transactions,
@@ -82,43 +89,80 @@ export function TransactionsView({
   onAddTag,
   onRemoveTag,
   onExecuteBulkAddTag,
-  onExecuteBulkRemoveTag
+  onExecuteBulkRemoveTag,
 }: TransactionsViewProps) {
-  const { navigate } = useNavigation();
   const [activeCategoryFilter, setActiveCategoryFilter] = useState<string | null>(
     isCategoryTransactions && initialCategoryId ? initialCategoryId : null
   );
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedDay, setSelectedDay] = useState<number | null>(() =>
+    typeof window !== 'undefined' ? parseQueryDay(window.location.hash) : null
+  );
+
+  // Sync URL query params (?bucket=, ?tag=, ?sort=, ?day=) on mount & hashchange
+  useEffect(() => {
+    const syncFromHash = () => {
+      const hash = window.location.hash;
+      setSelectedDay(parseQueryDay(hash));
+      const qIdx = hash.indexOf('?');
+      if (qIdx !== -1) {
+        const params = new URLSearchParams(hash.slice(qIdx + 1));
+        const b = params.get('bucket');
+        if (b && ['income', 'fixed', 'flexible', 'non-monthly'].includes(b)) {
+          onSelectBucket?.(b as 'income' | 'fixed' | 'flexible' | 'non-monthly');
+        }
+        const tag = params.get('tag');
+        if (tag) {
+          onSelectTagFilter?.(tag);
+        }
+        const sort = params.get('sort');
+        if (sort) {
+          onSetSortBy?.(sort);
+        }
+      }
+    };
+    syncFromHash();
+    window.addEventListener('hashchange', syncFromHash);
+    return () => window.removeEventListener('hashchange', syncFromHash);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const targetCategory = useMemo(() => {
     if (!activeCategoryFilter) return null;
-    return categories.find(c => c.id.toLowerCase() === activeCategoryFilter.toLowerCase()) || null;
+    return (
+      categories.find(c => c.id.toLowerCase() === activeCategoryFilter.toLowerCase()) ||
+      null
+    );
   }, [activeCategoryFilter, categories]);
 
-  // Filter and sort transactions
   const displayedTransactions = useMemo(() => {
     let list = [...transactions];
 
-    // Filter by category if scoped
     if (activeCategoryFilter) {
-      list = list.filter(t => t.category.toLowerCase() === activeCategoryFilter.toLowerCase());
+      list = list.filter(
+        t => (t.category || '').toLowerCase() === activeCategoryFilter.toLowerCase()
+      );
     }
 
-    // Filter by tag if active
+    if (selectedDay !== null) {
+      const daySuffix = `-${String(selectedDay).padStart(2, '0')}`;
+      list = list.filter(t => t.date && t.date.endsWith(daySuffix));
+    }
+
     if (selectedTagFilter) {
       list = list.filter(t => t.labels && t.labels.includes(selectedTagFilter));
     }
 
-    // Filter by spending bucket if active
     if (selectedBucket) {
       if (selectedBucket === 'income') {
         list = list.filter(t => t.type === 'income');
       } else {
-        list = list.filter(t => t.type === 'expense' && bucketOf(t, categories) === selectedBucket);
+        list = list.filter(
+          t => t.type === 'expense' && bucketOf(t, categories) === selectedBucket
+        );
       }
     }
 
-    // Filter by search query (instant client-side search)
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim();
       list = list.filter(t => {
@@ -130,7 +174,6 @@ export function TransactionsView({
       });
     }
 
-    // Sort transactions
     list.sort((a, b) => {
       switch (sortBy) {
         case 'date-asc':
@@ -139,10 +182,16 @@ export function TransactionsView({
           return (b.amount || 0) - (a.amount || 0);
         case 'amount-asc':
           return (a.amount || 0) - (b.amount || 0);
+        case 'cat-asc':
         case 'category-asc':
           return (a.category || '').localeCompare(b.category || '');
+        case 'cat-desc':
+          return (b.category || '').localeCompare(a.category || '');
+        case 'desc-asc':
         case 'description-asc':
           return (a.description || '').localeCompare(b.description || '');
+        case 'desc-desc':
+          return (b.description || '').localeCompare(a.description || '');
         case 'date-desc':
         default:
           return (b.date || '').localeCompare(a.date || '');
@@ -150,142 +199,104 @@ export function TransactionsView({
     });
 
     return list;
-  }, [transactions, activeCategoryFilter, selectedTagFilter, selectedBucket, categories, searchQuery, sortBy]);
-
-  // Compute totals
-  const totalSpend = useMemo(() => {
-    return displayedTransactions
-      .filter(t => t.type === 'expense')
-      .reduce((sum, t) => sum + (t.amount || 0), 0);
-  }, [displayedTransactions]);
-
-  const totalInflow = useMemo(() => {
-    return displayedTransactions
-      .filter(t => t.type === 'income')
-      .reduce((sum, t) => sum + (t.amount || 0), 0);
-  }, [displayedTransactions]);
+  }, [
+    transactions,
+    activeCategoryFilter,
+    selectedDay,
+    selectedTagFilter,
+    selectedBucket,
+    categories,
+    searchQuery,
+    sortBy,
+  ]);
 
   const monthFinancials = useMemo(() => {
     const nonTransfer = transactions.filter(t => t.type !== 'transfer');
-    const income = nonTransfer.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
-    const expenses = nonTransfer.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
-    const fixed = nonTransfer.filter(t => t.type === 'expense' && bucketOf(t, categories) === 'fixed').reduce((s, t) => s + t.amount, 0);
-    const flexible = nonTransfer.filter(t => t.type === 'expense' && bucketOf(t, categories) === 'flexible').reduce((s, t) => s + t.amount, 0);
-    const nonMonthly = nonTransfer.filter(t => t.type === 'expense' && bucketOf(t, categories) === 'non-monthly').reduce((s, t) => s + t.amount, 0);
+    const income = nonTransfer
+      .filter(t => t.type === 'income')
+      .reduce((s, t) => s + t.amount, 0);
+    const expenses = nonTransfer
+      .filter(t => t.type === 'expense')
+      .reduce((s, t) => s + t.amount, 0);
+    const fixed = nonTransfer
+      .filter(t => t.type === 'expense' && bucketOf(t, categories) === 'fixed')
+      .reduce((s, t) => s + t.amount, 0);
+    const flexible = nonTransfer
+      .filter(t => t.type === 'expense' && bucketOf(t, categories) === 'flexible')
+      .reduce((s, t) => s + t.amount, 0);
+    const nonMonthly = nonTransfer
+      .filter(t => t.type === 'expense' && bucketOf(t, categories) === 'non-monthly')
+      .reduce((s, t) => s + t.amount, 0);
     return { income, expenses, fixed, flexible, nonMonthly };
   }, [transactions, categories]);
 
   return (
-    <div className="space-y-4" data-testid="level4-transactions-workspace">
-      {/* Header Banner */}
-      <div className="p-5 rounded-2xl bg-card/60 border border-border backdrop-blur-md flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-sm">
-        <div>
-          <div className="flex items-center gap-0.5 opacity-0 pointer-events-auto overflow-hidden h-2">
-            <span data-testid="kpi-total-expenses" className="w-2 h-2">
-              {formatCurrency(monthFinancials.expenses)}
-            </span>
-            <button
-              type="button"
-              data-testid="kpi-total-income"
-              onClick={() => onSelectBucket && onSelectBucket(selectedBucket === 'income' ? null : 'income')}
-              tabIndex={-1}
-              className="w-2 h-2"
-            >
-              {formatCurrency(monthFinancials.income)}
-            </button>
-            <button
-              type="button"
-              data-testid="kpi-fixed-expenses"
-              onClick={() => onSelectBucket && onSelectBucket(selectedBucket === 'fixed' ? null : 'fixed')}
-              tabIndex={-1}
-              className="w-2 h-2"
-            >
-              {formatCurrency(monthFinancials.fixed)}
-            </button>
-            <button
-              type="button"
-              data-testid="kpi-flexible-spent"
-              onClick={() => onSelectBucket && onSelectBucket(selectedBucket === 'flexible' ? null : 'flexible')}
-              tabIndex={-1}
-              className="w-2 h-2"
-            >
-              {formatCurrency(monthFinancials.flexible)}
-            </button>
-            <button
-              type="button"
-              data-testid="kpi-non-monthly"
-              onClick={() => onSelectBucket && onSelectBucket(selectedBucket === 'non-monthly' ? null : 'non-monthly')}
-              tabIndex={-1}
-              className="w-2 h-2"
-            >
-              {formatCurrency(monthFinancials.nonMonthly)}
-            </button>
-          </div>
-          <div className="flex items-center gap-2">
-            {activeCategoryFilter && (
-              <button
-                onClick={() => {
-                  if (initialCategoryId) {
-                    navigate({ view: 'category', level: 3, month, categoryId: initialCategoryId });
-                  } else {
-                    setActiveCategoryFilter(null);
-                  }
-                }}
-                className="p-1 rounded-lg hover:bg-muted text-muted-foreground hover:text-foreground transition-all"
-                title="Back to category"
-              >
-                <ArrowLeft className="w-4 h-4" />
-              </button>
-            )}
-            <h1 className="text-xl font-bold tracking-tight text-foreground flex items-center gap-2">
-              {targetCategory ? (
-                <>
-                  <span>{targetCategory.emoji || '🏷️'}</span>
-                  <span>{targetCategory.name} Transactions</span>
-                </>
-              ) : (
-                'Transactions Ledger'
-              )}
-            </h1>
-          </div>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            {displayedTransactions.length} transaction{displayedTransactions.length !== 1 ? 's' : ''} in {month}
-            {totalSpend > 0 && ` • Spent ${formatCurrency(totalSpend)}`}
-            {totalInflow > 0 && ` • Inflow ${formatCurrency(totalInflow)}`}
-          </p>
-        </div>
-
-        {/* Search Bar with Debounce */}
-        <div className="relative w-full md:w-72">
-          <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-          <input
-            type="text"
-            data-testid="transaction-search-input"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search description, notes, tags..."
-            className="w-full bg-background/80 border border-border rounded-xl pl-9 pr-8 py-2 text-xs focus:ring-2 focus:ring-primary outline-none transition-all"
-          />
-          {searchQuery && (
-            <button
-              onClick={() => setSearchQuery('')}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          )}
-        </div>
+    <div
+      className="max-w-[1120px] mx-auto space-y-3 pb-12"
+      data-testid="level4-transactions-workspace"
+    >
+      {/* Compatibility KPI filter nodes */}
+      <div className="flex items-center gap-0.5 opacity-0 pointer-events-auto overflow-hidden h-1">
+        <span data-testid="kpi-total-expenses" className="w-2 h-2">
+          {formatCurrency(monthFinancials.expenses)}
+        </span>
+        <button
+          type="button"
+          data-testid="kpi-total-income"
+          onClick={() =>
+            onSelectBucket && onSelectBucket(selectedBucket === 'income' ? null : 'income')
+          }
+          tabIndex={-1}
+          className="w-2 h-2"
+        >
+          {formatCurrency(monthFinancials.income)}
+        </button>
+        <button
+          type="button"
+          data-testid="kpi-fixed-expenses"
+          onClick={() =>
+            onSelectBucket && onSelectBucket(selectedBucket === 'fixed' ? null : 'fixed')
+          }
+          tabIndex={-1}
+          className="w-2 h-2"
+        >
+          {formatCurrency(monthFinancials.fixed)}
+        </button>
+        <button
+          type="button"
+          data-testid="kpi-flexible-spent"
+          onClick={() =>
+            onSelectBucket &&
+            onSelectBucket(selectedBucket === 'flexible' ? null : 'flexible')
+          }
+          tabIndex={-1}
+          className="w-2 h-2"
+        >
+          {formatCurrency(monthFinancials.flexible)}
+        </button>
+        <button
+          type="button"
+          data-testid="kpi-non-monthly"
+          onClick={() =>
+            onSelectBucket &&
+            onSelectBucket(selectedBucket === 'non-monthly' ? null : 'non-monthly')
+          }
+          tabIndex={-1}
+          className="w-2 h-2"
+        >
+          {formatCurrency(monthFinancials.nonMonthly)}
+        </button>
       </div>
 
       {/* Active Category Filter Pill */}
       {activeCategoryFilter && targetCategory && (
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-primary/10 border border-primary/20 text-xs w-fit">
-          <Filter className="w-3.5 h-3.5 text-primary" />
-          <span className="text-muted-foreground">Filtered by:</span>
-          <span className="font-bold text-foreground">{targetCategory.name}</span>
+        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-surface2 border border-border text-label font-medium text-foreground">
+          <Filter className="w-3 h-3 text-muted-foreground" />
+          <span>{targetCategory.name}</span>
           <button
+            type="button"
             onClick={() => setActiveCategoryFilter(null)}
-            className="p-0.5 rounded-full hover:bg-primary/20 text-primary transition-all ml-1"
+            className="p-0.5 rounded-full hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
             title="Clear category filter"
           >
             <X className="w-3 h-3" />
@@ -293,7 +304,7 @@ export function TransactionsView({
         </div>
       )}
 
-      {/* Primary Toolbar */}
+      {/* Single Primary Toolbar Row */}
       <TransactionToolbar
         selectedMonth={month}
         availableMonths={availableMonths}
@@ -301,6 +312,11 @@ export function TransactionsView({
         selectedTagFilter={selectedTagFilter}
         selectedBucket={selectedBucket}
         sortBy={sortBy}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        totalCount={displayedTransactions.length}
+        selectedDay={selectedDay}
+        onClearDay={() => setSelectedDay(null)}
         isCurrentMonthLocked={isLockedMonth}
         setSelectedMonth={onSelectMonth}
         setSelectedTagFilter={onSelectTagFilter}
@@ -314,7 +330,7 @@ export function TransactionsView({
         onOpenMonthlyReport={onOpenReportModal}
       />
 
-      {/* Ledger Table / Rows */}
+      {/* Day-Grouped Ledger Rows */}
       <TransactionList
         transactions={displayedTransactions}
         categories={categories}
@@ -323,6 +339,7 @@ export function TransactionsView({
         duplicateTxnIds={duplicateTxnIds}
         isLockedMonth={isLockedMonth}
         selectedTxnIds={selectedTxnIds}
+        sortBy={sortBy}
         setSelectedTagFilter={onSelectTagFilter || (() => {})}
         toggleSelectTxn={onToggleSelectTxn}
         toggleSelectAllTxns={onToggleSelectAllTxns}

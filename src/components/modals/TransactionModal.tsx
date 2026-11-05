@@ -147,8 +147,9 @@ export function TransactionModal({
       isOpen={showTxnModal}
       onClose={() => setShowTxnModal(false)}
       title={editingTxnId ? 'Edit Record' : 'Add Record'}
+      variant={editingTxnId ? 'sheet' : 'dialog'}
       maxWidth="max-w-md"
-      className="max-h-[90vh] overflow-y-auto custom-scrollbar p-6"
+      className="max-h-[90vh] sm:max-h-screen overflow-y-auto custom-scrollbar p-6"
     >
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-2xl font-bold">{editingTxnId ? 'Edit Record' : 'Add Record'}</h2>
@@ -198,10 +199,10 @@ export function TransactionModal({
                   </span>
                 )}
               </div>
-              <div className="flex gap-1.5 p-1 bg-card/50 rounded-xl border border-border/50" data-testid="transaction-bucket-toggle">
+              <div className="flex gap-1.5 p-1 bg-surface2 rounded-[10px] border border-border" data-testid="transaction-bucket-toggle">
                 <button
                   type="button"
-                  className={`flex-1 py-1.5 px-2 rounded-lg font-bold text-xs flex items-center justify-center gap-1 transition-all ${txnBucket === 'fixed' ? 'bg-blue-500 text-white shadow-md' : 'text-muted-foreground hover:text-foreground'}`}
+                  className={`flex-1 py-1.5 px-2 rounded-[8px] font-semibold text-xs flex items-center justify-center gap-1 transition-all ${txnBucket === 'fixed' ? 'bg-bucket-fixed text-white shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
                   onClick={() => {
                     setTxnBucket('fixed');
                     setUserManuallySelectedBucket(true);
@@ -211,17 +212,17 @@ export function TransactionModal({
                 </button>
                 <button
                   type="button"
-                  className={`flex-1 py-1.5 px-2 rounded-lg font-bold text-xs flex items-center justify-center gap-1 transition-all ${txnBucket === 'flexible' ? 'bg-emerald-500 text-white shadow-md' : 'text-muted-foreground hover:text-foreground'}`}
+                  className={`flex-1 py-1.5 px-2 rounded-[8px] font-semibold text-xs flex items-center justify-center gap-1 transition-all ${txnBucket === 'flexible' ? 'bg-bucket-variable text-white shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
                   onClick={() => {
                     setTxnBucket('flexible');
                     setUserManuallySelectedBucket(true);
                   }}
                 >
-                  <ShoppingBag className="w-3.5 h-3.5" /> Flexible
+                  <ShoppingBag className="w-3.5 h-3.5" /> Variable
                 </button>
                 <button
                   type="button"
-                  className={`flex-1 py-1.5 px-2 rounded-lg font-bold text-xs flex items-center justify-center gap-1 transition-all ${txnBucket === 'non-monthly' ? 'bg-amber-500 text-white shadow-md' : 'text-muted-foreground hover:text-foreground'}`}
+                  className={`flex-1 py-1.5 px-2 rounded-[8px] font-semibold text-xs flex items-center justify-center gap-1 transition-all ${txnBucket === 'non-monthly' ? 'bg-bucket-nonmonthly text-white shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
                   onClick={() => {
                     setTxnBucket('non-monthly');
                     setUserManuallySelectedBucket(true);

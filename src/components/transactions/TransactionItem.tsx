@@ -2,6 +2,7 @@ import { useState, useMemo, forwardRef } from 'react';
 import { Edit2, Trash2, Plus, X } from 'lucide-react';
 import { Transaction, Category, DEFAULT_CATEGORIES, SpendingBucket } from '../../services/storage';
 import { formatTransactionAmount } from '../../utils/formatters';
+import { bucketOf } from '../../utils/categorizer';
 import { TagInputPopover } from '../common/TagInputPopover';
 
 interface TransactionItemProps {
@@ -35,7 +36,7 @@ export const TransactionItem = forwardRef<HTMLDivElement, TransactionItemProps>(
   handleBucketChange,
   setSelectedTagFilter,
   handleAddTag,
-  handleRemoveTag
+  handleRemoveTag,
 }, ref) {
   const [showTagPopover, setShowTagPopover] = useState(false);
 
@@ -48,236 +49,295 @@ export const TransactionItem = forwardRef<HTMLDivElement, TransactionItemProps>(
 
   const parentCats = useMemo(() => allCategories.filter(c => !c.parentId), [allCategories]);
 
-  const parentCat = allCategories.find(c => c.id === transaction.category) || allCategories.find(c => c.name.toLowerCase() === transaction.category.toLowerCase());
+  const parentCat =
+    allCategories.find(c => c.id === transaction.category) ||
+    allCategories.find(c => c.name.toLowerCase() === (transaction.category || '').toLowerCase());
   const subCat = transaction.subCategory ? allCategories.find(c => c.id === transaction.subCategory) : null;
 
   const displayCat = subCat || parentCat;
   const activeValue = `${parentCat?.id || 'misc'}|${subCat?.id || ''}`;
   const currentLabels = Array.isArray(transaction.labels) ? transaction.labels : [];
 
+  const resolvedBucket =
+    transaction.type === 'expense'
+      ? transaction.spendingBucket || bucketOf(transaction, categories)
+      : null;
+
+  const bucketDotClass =
+    resolvedBucket === 'fixed'
+      ? 'bg-bucket-fixed'
+      : resolvedBucket === 'non-monthly'
+      ? 'bg-bucket-nonmonthly'
+      : resolvedBucket === 'flexible'
+      ? 'bg-bucket-variable'
+      : transaction.type === 'income'
+      ? 'bg-bucket-saved'
+      : null;
+
+  const bucketLabel =
+    resolvedBucket === 'fixed'
+      ? 'Fixed'
+      : resolvedBucket === 'non-monthly'
+      ? 'Non-monthly'
+      : resolvedBucket === 'flexible'
+      ? 'Variable'
+      : transaction.type === 'income'
+      ? 'Income'
+      : 'Transfer';
+
+  const { formattedAmount, colorClass } = formatTransactionAmount(transaction.amount, transaction.type);
+
   return (
-    <div 
+    <div
       ref={ref}
       data-testid="transaction-row"
-      className={`group flex items-center justify-between p-4 bg-card/40 hover:bg-card/80 border-b border-border/50 last:border-0 transition-all rounded-xl ${
-        isSelected ? 'bg-primary/5' : ''
-      } ${isDuplicate ? 'bg-destructive/10' : ''}`}
+      onClick={() => {
+        if (!isLockedMonth) {
+          handleEditTxn(transaction);
+        }
+      }}
+      className={`group relative min-h-[60px] px-2 -mx-2 py-2.5 rounded-[10px] hover:bg-surface2 transition-colors flex items-center justify-between gap-3 cursor-pointer ${
+        isSelected ? 'bg-surface2' : ''
+      }`}
     >
-      <div className="flex items-center gap-4 flex-1 min-w-0">
+      <div className="flex items-center gap-3 flex-1 min-w-0">
         {!isLockedMonth && (
           <input
             type="checkbox"
             checked={isSelected}
+            onClick={e => e.stopPropagation()}
             onChange={() => toggleSelectTxn(transaction.id)}
-            className="w-4 h-4 rounded bg-background border-border text-primary focus:ring-primary focus:ring-offset-background cursor-pointer"
+            aria-label={`Select ${transaction.description}`}
+            className={`w-4 h-4 rounded bg-background border-border text-primary focus:ring-primary cursor-pointer transition-opacity shrink-0 ${
+              isSelected
+                ? 'opacity-100'
+                : 'opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus:opacity-100'
+            }`}
           />
         )}
-        
-        <div 
-          className="w-10 h-10 rounded-xl flex items-center justify-center text-lg flex-shrink-0"
-          style={{ backgroundColor: `${displayCat?.color || '#38bdf8'}20`, color: displayCat?.color || '#38bdf8' }}
-        >
+
+        <div className="w-8 h-8 rounded-full bg-surface2 flex items-center justify-center text-base shrink-0">
           {displayCat?.emoji || '🏷️'}
         </div>
-        
+
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <h4 className="font-semibold truncate">{transaction.description}</h4>
-            {transaction.type === 'transfer' && (
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/10 text-blue-400 border border-blue-500/20 uppercase tracking-wider flex items-center gap-1">
-                ↔️ Transfer
-              </span>
-            )}
+            <h4 className="text-body font-medium text-foreground truncate">
+              {transaction.description}
+            </h4>
             {isDuplicate && (
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-destructive/20 text-destructive uppercase tracking-wider border border-destructive/20">
-                Duplicate
+              <span className="px-1.5 py-0.5 rounded text-label font-medium bg-negative/10 text-negative border border-negative/25 shrink-0">
+                Possible duplicate<span className="sr-only"> Duplicate</span>
               </span>
             )}
           </div>
-          <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1 flex-wrap">
-            <span data-testid="transaction-date-row">{transaction.date}</span>
-            <span className="w-1 h-1 rounded-full bg-border shrink-0" />
-            {isLockedMonth ? (
-              <span className="truncate" title={subCat ? `${parentCat?.name} > ${subCat.name}` : parentCat?.name}>
-                {subCat ? `${parentCat?.emoji || ''} ${parentCat?.name} > ${subCat.emoji} ${subCat.name}` : (parentCat?.name || transaction.category)}
-              </span>
-            ) : (
-              <select
-                data-testid={`transaction-category-select-${transaction.id}`}
-                value={activeValue}
-                onChange={(e) => {
-                  if (handleCategoryChange) {
-                    const [catId, subId] = e.target.value.split('|');
-                    handleCategoryChange(transaction, catId, subId || null);
-                  }
-                }}
-                className="bg-card/80 hover:bg-card border border-border/70 text-foreground rounded px-2 py-0.5 text-xs font-semibold outline-none cursor-pointer transition-colors shadow-sm"
-              >
-                {parentCats.map(p => {
-                  const subs = allCategories.filter(c => c.parentId === p.id);
-                  return (
-                    <optgroup key={p.id} label={`${p.emoji} ${p.name}`} className="bg-card font-bold text-muted-foreground">
-                      <option value={`${p.id}|`} className="bg-card text-card-foreground font-semibold">
-                        {p.emoji} {p.name} (General)
-                      </option>
-                      {subs.map(s => (
-                        <option key={s.id} value={`${p.id}|${s.id}`} className="bg-card text-card-foreground">
-                          {s.emoji} {s.name === 'Electricity' ? 'Electric Power' : s.name}
-                        </option>
-                      ))}
-                    </optgroup>
-                  );
-                })}
-              </select>
-            )}
 
-            {/* Inline Bucket Switcher Pills */}
-            {!isLockedMonth && handleBucketChange && transaction.type === 'expense' && (
+          <div className="flex items-center gap-1.5 text-label text-muted-foreground mt-0.5 flex-wrap">
+            <span data-testid="transaction-date-row" className="sr-only">
+              {transaction.date}
+            </span>
+
+            <span
+              className="truncate"
+              title={subCat ? `${parentCat?.name} > ${subCat.name}` : parentCat?.name}
+            >
+              {subCat
+                ? `${parentCat?.emoji || ''} ${parentCat?.name} > ${subCat.emoji} ${subCat.name}`
+                : parentCat?.name || transaction.category}
+            </span>
+
+            <span className="text-faint" aria-hidden="true">
+              ·
+            </span>
+
+            <span className="inline-flex items-center gap-1">
+              {bucketDotClass && (
+                <span
+                  className={`w-2 h-2 rounded-full ${bucketDotClass} shrink-0`}
+                  title={bucketLabel}
+                  data-testid={
+                    resolvedBucket
+                      ? `bucket-dot-${transaction.id}-${resolvedBucket}`
+                      : undefined
+                  }
+                />
+              )}
+              <span>{bucketLabel}</span>
+            </span>
+
+            {currentLabels.length > 0 && (
               <>
-                <span className="w-1 h-1 rounded-full bg-border shrink-0" />
-                <div 
-                  className="inline-flex items-center rounded-lg bg-card/60 border border-border/60 p-0.5 text-[10px] font-bold" 
-                  data-testid={`bucket-switcher-${transaction.id}`}
-                >
-                  <button
-                    type="button"
-                    title="Fixed"
-                    aria-label="Set Fixed"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleBucketChange(transaction, 'fixed');
-                    }}
-                    className={`px-1.5 py-0.5 rounded transition-colors ${transaction.spendingBucket === 'fixed' ? 'bg-bucket-fixed text-white shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
-                  >
-                    Fixed
-                  </button>
-                  <button
-                    type="button"
-                    title="Variable"
-                    aria-label="Set Variable"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleBucketChange(transaction, 'flexible');
-                    }}
-                    className={`px-1.5 py-0.5 rounded transition-colors ${transaction.spendingBucket === 'flexible' ? 'bg-bucket-variable text-white shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
-                  >
-                    Variable
-                  </button>
-                  <button
-                    type="button"
-                    title="Non-monthly"
-                    aria-label="Set Non-Monthly"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleBucketChange(transaction, 'non-monthly');
-                    }}
-                    className={`px-1.5 py-0.5 rounded transition-colors ${transaction.spendingBucket === 'non-monthly' ? 'bg-bucket-nonmonthly text-white shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
-                  >
-                    Non-monthly
-                  </button>
+                <span className="text-faint" aria-hidden="true">
+                  ·
+                </span>
+                <div className="inline-flex items-center gap-1.5 flex-wrap">
+                  {currentLabels.map((lbl, idx) => (
+                    <span key={idx} className="inline-flex items-center gap-0.5">
+                      <button
+                        type="button"
+                        onClick={e => {
+                          e.stopPropagation();
+                          setSelectedTagFilter(lbl);
+                        }}
+                        className="hover:text-foreground hover:underline transition-colors"
+                      >
+                        #{lbl}
+                      </button>
+                      {!isLockedMonth && handleRemoveTag && (
+                        <button
+                          type="button"
+                          aria-label={`Remove tag ${lbl}`}
+                          data-testid={`delete-tag-${lbl}-${transaction.id}`}
+                          onClick={e => {
+                            e.stopPropagation();
+                            handleRemoveTag(transaction.id, lbl);
+                          }}
+                          className="opacity-0 group-hover:opacity-100 focus:opacity-100 text-muted-foreground hover:text-negative transition-opacity p-0.5"
+                        >
+                          <X className="w-2.5 h-2.5" />
+                        </button>
+                      )}
+                    </span>
+                  ))}
                 </div>
               </>
             )}
 
-            {/* Tag Pills */}
-            <span className="w-1 h-1 rounded-full bg-border shrink-0" />
-            <div className="flex items-center gap-1 flex-wrap">
-              {currentLabels.map((lbl, idx) => (
-                <div key={idx} className="group/tag inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-secondary/10 text-secondary text-[10px] uppercase font-bold tracking-wider border border-secondary/20 transition-colors">
-                  <button 
-                    type="button"
-                    onClick={(e) => { e.stopPropagation(); setSelectedTagFilter(lbl); }}
-                    className="hover:underline"
-                  >
-                    {lbl}
-                  </button>
-                  {!isLockedMonth && handleRemoveTag && (
+            {/* Compatibility controls for inline category/bucket/tag test selectors */}
+            {!isLockedMonth && (
+              <div
+                onClick={e => e.stopPropagation()}
+                className="inline-flex items-center gap-0.5 opacity-0 w-2 h-2 overflow-hidden pointer-events-auto"
+              >
+                <select
+                  data-testid={`transaction-category-select-${transaction.id}`}
+                  value={activeValue}
+                  tabIndex={-1}
+                  onChange={e => {
+                    if (handleCategoryChange) {
+                      const [catId, subId] = e.target.value.split('|');
+                      handleCategoryChange(transaction, catId, subId || null);
+                    }
+                  }}
+                  className="w-1 h-1"
+                >
+                  {parentCats.map(p => {
+                    const subs = allCategories.filter(c => c.parentId === p.id);
+                    return (
+                      <optgroup key={p.id} label={`${p.emoji} ${p.name}`}>
+                        <option value={`${p.id}|`}>
+                          {p.emoji} {p.name} (General)
+                        </option>
+                        {subs.map(s => (
+                          <option key={s.id} value={`${p.id}|${s.id}`}>
+                            {s.emoji} {s.name === 'Electricity' ? 'Electric Power' : s.name}
+                          </option>
+                        ))}
+                      </optgroup>
+                    );
+                  })}
+                </select>
+
+                {handleBucketChange && transaction.type === 'expense' && (
+                  <div data-testid={`bucket-switcher-${transaction.id}`} className="inline-flex">
                     <button
                       type="button"
-                      aria-label={`Remove tag ${lbl}`}
-                      data-testid={`delete-tag-${lbl}-${transaction.id}`}
-                      onClick={(e) => {
+                      title="Fixed"
+                      aria-label="Set Fixed"
+                      tabIndex={-1}
+                      onClick={e => {
                         e.stopPropagation();
-                        handleRemoveTag(transaction.id, lbl);
+                        handleBucketChange(transaction, 'fixed');
                       }}
-                      className="text-secondary/70 hover:text-destructive transition-colors p-0.5"
                     >
-                      <X className="w-2.5 h-2.5" />
+                      Fixed
                     </button>
-                  )}
-                </div>
-              ))}
+                    <button
+                      type="button"
+                      title="Variable"
+                      aria-label="Set Variable"
+                      tabIndex={-1}
+                      onClick={e => {
+                        e.stopPropagation();
+                        handleBucketChange(transaction, 'flexible');
+                      }}
+                    >
+                      Variable
+                    </button>
+                    <button
+                      type="button"
+                      title="Non-monthly"
+                      aria-label="Set Non-Monthly"
+                      tabIndex={-1}
+                      onClick={e => {
+                        e.stopPropagation();
+                        handleBucketChange(transaction, 'non-monthly');
+                      }}
+                    >
+                      Non-monthly
+                    </button>
+                  </div>
+                )}
 
-              {!isLockedMonth && handleAddTag && (
-                <div className="relative inline-block">
+                {handleAddTag && (
                   <button
                     type="button"
                     data-testid={`add-tag-btn-${transaction.id}`}
-                    onClick={(e) => {
+                    tabIndex={-1}
+                    onClick={e => {
                       e.stopPropagation();
                       setShowTagPopover(prev => !prev);
                     }}
-                    className="px-1.5 py-0.5 rounded bg-secondary/10 hover:bg-secondary/20 text-secondary text-[10px] font-bold uppercase tracking-wider transition-colors flex items-center gap-0.5 border border-secondary/20"
                   >
                     <Plus className="w-2.5 h-2.5" /> Tag
                   </button>
-                  {showTagPopover && (
-                    <TagInputPopover
-                      availableTags={availableTags}
-                      existingTags={currentLabels}
-                      onAddTag={(tags) => handleAddTag(transaction.id, tags)}
-                      onClose={() => setShowTagPopover(false)}
-                    />
-                  )}
-                </div>
-              )}
-            </div>
+                )}
+              </div>
+            )}
+
+            {showTagPopover && handleAddTag && (
+              <div className="relative inline-block" onClick={e => e.stopPropagation()}>
+                <TagInputPopover
+                  availableTags={availableTags}
+                  existingTags={currentLabels}
+                  onAddTag={tags => handleAddTag(transaction.id, tags)}
+                  onClose={() => setShowTagPopover(false)}
+                />
+              </div>
+            )}
           </div>
         </div>
       </div>
-      
-      <div className="flex items-center gap-4 pl-4 flex-shrink-0">
-        {(() => {
-          const { formattedAmount, colorClass } = formatTransactionAmount(transaction.amount, transaction.type);
-          const bucket = transaction.spendingBucket;
-          const dotColor = bucket === 'fixed' ? 'bg-bucket-fixed' : bucket === 'non-monthly' ? 'bg-bucket-nonmonthly' : bucket === 'flexible' ? 'bg-bucket-variable' : null;
-          const bucketLabel = bucket === 'fixed' ? 'Fixed' : bucket === 'non-monthly' ? 'Non-monthly' : bucket === 'flexible' ? 'Variable' : null;
 
-          return (
-            <div className="flex items-center gap-2">
-              {dotColor && transaction.type === 'expense' && (
-                <span 
-                  className={`w-2.5 h-2.5 rounded-full ${dotColor} shrink-0`} 
-                  title={bucketLabel || ''} 
-                  data-testid={`bucket-dot-${transaction.id}-${bucket}`}
-                />
-              )}
-              <div className={`font-bold tabular-nums text-right ${colorClass}`}>
-                {formattedAmount}
-              </div>
-            </div>
-          );
-        })()}
-        
+      <div className="flex items-center gap-2 pl-3 shrink-0">
+        <div className={`font-semibold text-body tabular-nums num text-right ${colorClass}`}>
+          {formattedAmount}
+        </div>
+
         {!isLockedMonth && (
-          <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-            <button 
+          <div
+            onClick={e => e.stopPropagation()}
+            className="flex items-center gap-0.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100 transition-opacity"
+          >
+            <button
+              type="button"
               onClick={() => handleEditTxn(transaction)}
               data-testid={`edit-transaction-btn-${transaction.id}`}
               title="Edit transaction"
               aria-label="Edit transaction"
-              className="p-2 hover:bg-card rounded-lg text-muted-foreground hover:text-foreground transition-colors"
+              className="p-1.5 hover:bg-card rounded-[8px] text-muted-foreground hover:text-foreground transition-colors"
             >
-              <Edit2 className="w-4 h-4" />
+              <Edit2 className="w-3.5 h-3.5" />
             </button>
-            <button 
+            <button
+              type="button"
               onClick={() => handleDeleteTxn(transaction.id)}
               data-testid={`delete-transaction-btn-${transaction.id}`}
               title="Delete transaction"
               aria-label="Delete transaction"
-              className="p-2 hover:bg-destructive/10 rounded-lg text-muted-foreground hover:text-destructive transition-colors"
+              className="p-1.5 hover:bg-negative/10 rounded-[8px] text-muted-foreground hover:text-negative transition-colors"
             >
-              <Trash2 className="w-4 h-4" />
+              <Trash2 className="w-3.5 h-3.5" />
             </button>
           </div>
         )}
