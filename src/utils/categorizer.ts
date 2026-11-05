@@ -194,4 +194,73 @@ export function bucketOf(
   return 'flexible';
 }
 
+export type BucketSource = 'explicit' | 'label' | 'category' | 'fallback';
+
+export function bucketSource(
+  transaction: { spendingBucket?: SpendingBucket; labels?: string[]; category?: string; subCategory?: string | null },
+  categoryDefaults?: Category[] | Record<string, string>
+): BucketSource {
+  if (
+    transaction.spendingBucket === 'fixed' ||
+    transaction.spendingBucket === 'flexible' ||
+    transaction.spendingBucket === 'non-monthly'
+  ) {
+    return 'explicit';
+  }
+  if (Array.isArray(transaction.labels)) {
+    if (
+      transaction.labels.includes('fixed') ||
+      transaction.labels.includes('non-monthly') ||
+      transaction.labels.includes('flexible')
+    ) {
+      return 'label';
+    }
+  }
+  if (categoryDefaults) {
+    if (Array.isArray(categoryDefaults)) {
+      if (transaction.subCategory) {
+        const subCat = categoryDefaults.find(
+          c => c.id.toLowerCase() === transaction.subCategory?.toLowerCase()
+        );
+        if (subCat?.defaultBucket) return 'category';
+      }
+      if (transaction.category) {
+        const parentCat = categoryDefaults.find(
+          c =>
+            c.id.toLowerCase() === transaction.category?.toLowerCase() ||
+            c.name.toLowerCase() === transaction.category?.toLowerCase()
+        );
+        if (parentCat) return 'category';
+      }
+    } else {
+      if (transaction.subCategory && categoryDefaults[transaction.subCategory]) {
+        return 'category';
+      }
+      if (transaction.category && categoryDefaults[transaction.category]) {
+        return 'category';
+      }
+    }
+  }
+
+  const catLower = (transaction.category || '').toLowerCase();
+  if (
+    catLower === 'housing' ||
+    catLower === 'rent' ||
+    catLower === 'utilities' ||
+    catLower === 'food' ||
+    catLower === 'groceries' ||
+    catLower === 'shopping' ||
+    catLower === 'dining' ||
+    catLower === 'entertainment' ||
+    catLower === 'transport' ||
+    catLower === 'transportation' ||
+    catLower === 'health' ||
+    catLower === 'travel'
+  ) {
+    return 'category';
+  }
+
+  return 'fallback';
+}
+
 

@@ -1,5 +1,5 @@
 import { Transaction, Category, Budget } from '../services/storage';
-import { bucketOf } from './categorizer';
+import { bucketOf, bucketSource } from './categorizer';
 import { formatMoney } from './formatters';
 import { BucketKey } from '../theme/buckets';
 
@@ -160,7 +160,24 @@ export function generateInsights(
     });
   }
 
-  // 4. Fallback: largest fixed bill or savings rate
+  // 4. Auto-sorted fallback transactions into Variable (§3.6)
+  const autoSortedTxns = currentTxns.filter(
+    t => t.type === 'expense' && bucketSource(t, categories) === 'fallback'
+  );
+  if (autoSortedTxns.length > 0) {
+    const autoTotal = autoSortedTxns.reduce((s, t) => s + t.amount, 0);
+    candidates.push({
+      id: 'auto-sorted',
+      bucket: 'flexible',
+      text: `${autoSortedTxns.length} transaction${
+        autoSortedTxns.length === 1 ? ' was' : 's were'
+      } auto-sorted into Variable. Review`,
+      href: `#/transactions?month=${selectedMonth}&auto=1`,
+      impact: Math.max(autoTotal, 100),
+    });
+  }
+
+  // 5. Fallback: largest fixed bill or savings rate
   const fixedTxns = currentTxns
     .filter(t => t.type === 'expense' && bucketOf(t, categories) === 'fixed')
     .sort((a, b) => b.amount - a.amount);

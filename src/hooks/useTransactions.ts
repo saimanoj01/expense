@@ -561,9 +561,10 @@ export function useTransactions(
     const scaleMax = Math.max(currentMaxCumulative, prevMaxCumulative, 100);
     const range = scaleMax * 1.1;
 
-    // Build SVG points for Current Month Cumulative
+    // Build SVG points for Current Month Cumulative (strictly stops at today/daysElapsed for current month)
     const cumulativePoints: CumulativePacingPoint[] = [];
-    for (let d = 1; d <= daysInMonth; d++) {
+    const maxActualDay = Math.min(daysInMonth, Math.max(1, daysElapsed));
+    for (let d = 1; d <= maxActualDay; d++) {
       const dailyAmt = currentMonthDailyExpenses[d - 1];
       const cumAmt = currentCumulative[d - 1];
       const dateStr = `${currentMonthStr}-${String(d).padStart(2, '0')}`;
@@ -618,15 +619,43 @@ export function useTransactions(
 
     const idealPacingPathData = '';
 
-    // EOM Projection (smart proration: fixed & non-monthly obligations are one-time/scheduled, only flexible spend prorates)
+    // EOM Projection (§3.9: hide before day 7 of current month; use trailing 3-month variable average + max(actualFixed, priorMonthFixed))
     let eomProjection = 0;
-    if (totalExpenses === 0) {
+    if (totalExpenses === 0 || (isCurrentCalendarMonth && daysElapsed < 7)) {
       eomProjection = 0;
     } else if (daysElapsed >= daysInMonth) {
       eomProjection = Math.round(totalExpenses);
     } else {
-      const proratedFlexible = daysElapsed > 0 ? (flexibleExpenses / daysElapsed) * daysInMonth : 0;
-      eomProjection = Math.round(fixedExpenses + nonMonthlyExpenses + proratedFlexible);
+      const daysRemaining = Math.max(0, daysInMonth - daysElapsed);
+      // Compute prior-month fixed and trailing 3-month daily variable average
+      const [cy, cm] = currentMonthStr.split('-').map(Number);
+      const priorKeys: string[] = [];
+      for (let i = 1; i <= 3; i++) {
+        const pd = new Date(Date.UTC(cy, cm - 1 - i, 1));
+        priorKeys.push(`${pd.getUTCFullYear()}-${String(pd.getUTCMonth() + 1).padStart(2, '0')}`);
+      }
+      const prior1Key = priorKeys[0];
+      const priorFixed = transactions
+        .filter(t => t.type === 'expense' && t.date && t.date.startsWith(prior1Key) && bucketOf(t, categories) === 'fixed')
+        .reduce((s, t) => s + (typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount || 0)) || 0), 0);
+
+      const priorMonthsWithVar = priorKeys.filter(pk =>
+        transactions.some(t => t.type === 'expense' && t.date && t.date.startsWith(pk))
+      );
+      let avgDailyVar = daysElapsed > 0 ? flexibleExpenses / daysElapsed : 0;
+      if (priorMonthsWithVar.length > 0) {
+        const totalPriorVar = priorMonthsWithVar.reduce((sum, pk) => {
+          const mVar = transactions
+            .filter(t => t.type === 'expense' && t.date && t.date.startsWith(pk) && bucketOf(t, categories) === 'flexible')
+            .reduce((s, t) => s + (typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount || 0)) || 0), 0);
+          return sum + mVar;
+        }, 0);
+        avgDailyVar = totalPriorVar / (priorMonthsWithVar.length * 30);
+      }
+
+      const projectedFixed = Math.max(fixedExpenses, priorFixed);
+      const projectedVariable = flexibleExpenses + avgDailyVar * daysRemaining;
+      eomProjection = Math.round(projectedFixed + nonMonthlyExpenses + projectedVariable);
     }
     const pacingStatus: 'under_budget' | 'on_track' | 'over_budget' = 'on_track';
 

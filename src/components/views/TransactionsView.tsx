@@ -3,7 +3,7 @@ import { TransactionToolbar } from '../transactions/TransactionToolbar';
 import { TransactionList } from '../transactions/TransactionList';
 import { Transaction, Category, SpendingBucket } from '../../services/storage';
 import { formatCurrency } from '../../utils/formatters';
-import { bucketOf } from '../../utils/categorizer';
+import { bucketOf, bucketSource } from '../../utils/categorizer';
 import { Filter, X } from 'lucide-react';
 
 export interface TransactionsViewProps {
@@ -98,8 +98,14 @@ export function TransactionsView({
   const [selectedDay, setSelectedDay] = useState<number | null>(() =>
     typeof window !== 'undefined' ? parseQueryDay(window.location.hash) : null
   );
+  const [autoFilter, setAutoFilter] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    const qIdx = window.location.hash.indexOf('?');
+    if (qIdx === -1) return false;
+    return new URLSearchParams(window.location.hash.slice(qIdx + 1)).get('auto') === '1';
+  });
 
-  // Sync URL query params (?bucket=, ?tag=, ?sort=, ?day=) on mount & hashchange
+  // Sync URL query params (?bucket=, ?tag=, ?sort=, ?day=, ?auto=) on mount & hashchange
   useEffect(() => {
     const syncFromHash = () => {
       const hash = window.location.hash;
@@ -107,6 +113,7 @@ export function TransactionsView({
       const qIdx = hash.indexOf('?');
       if (qIdx !== -1) {
         const params = new URLSearchParams(hash.slice(qIdx + 1));
+        setAutoFilter(params.get('auto') === '1');
         const b = params.get('bucket');
         if (b && ['income', 'fixed', 'flexible', 'non-monthly'].includes(b)) {
           onSelectBucket?.(b as 'income' | 'fixed' | 'flexible' | 'non-monthly');
@@ -119,6 +126,8 @@ export function TransactionsView({
         if (sort) {
           onSetSortBy?.(sort);
         }
+      } else {
+        setAutoFilter(false);
       }
     };
     syncFromHash();
@@ -147,6 +156,12 @@ export function TransactionsView({
     if (selectedDay !== null) {
       const daySuffix = `-${String(selectedDay).padStart(2, '0')}`;
       list = list.filter(t => t.date && t.date.endsWith(daySuffix));
+    }
+
+    if (autoFilter) {
+      list = list.filter(
+        t => t.type === 'expense' && bucketSource(t, categories) === 'fallback'
+      );
     }
 
     if (selectedTagFilter) {
@@ -203,6 +218,7 @@ export function TransactionsView({
     transactions,
     activeCategoryFilter,
     selectedDay,
+    autoFilter,
     selectedTagFilter,
     selectedBucket,
     categories,
@@ -298,6 +314,21 @@ export function TransactionsView({
             onClick={() => setActiveCategoryFilter(null)}
             className="p-0.5 rounded-full hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
             title="Clear category filter"
+          >
+            <X className="w-3 h-3" />
+          </button>
+        </div>
+      )}
+
+      {autoFilter && (
+        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-surface2 border border-border text-label font-medium text-foreground">
+          <Filter className="w-3 h-3 text-muted-foreground" />
+          <span>Auto-sorted into Variable</span>
+          <button
+            type="button"
+            onClick={() => setAutoFilter(false)}
+            className="p-0.5 rounded-full hover:bg-secondary text-muted-foreground hover:text-foreground transition-colors"
+            title="Clear auto-sorted filter"
           >
             <X className="w-3 h-3" />
           </button>
