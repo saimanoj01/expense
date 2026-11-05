@@ -1,6 +1,24 @@
 import { useState, useMemo, useCallback } from 'react';
 import { Budget, Category, Transaction, BudgetNote } from '../services/storage';
 
+export function deriveCategoryBucket(catIdOrName: string, catObj?: Category): 'fixed' | 'flexible' | 'non-monthly' {
+  if (catObj?.defaultBucket) {
+    if (catObj.defaultBucket === 'fixed') return 'fixed';
+    if (catObj.defaultBucket === 'non-monthly') return 'non-monthly';
+    return 'flexible';
+  }
+  const lower = (catIdOrName || '').toLowerCase();
+  if (lower === 'housing' || lower === 'rent' || lower === 'utilities') return 'fixed';
+  if (lower === 'travel' || lower === 'insurance' || lower === 'taxes') return 'non-monthly';
+  return 'flexible';
+}
+
+export function isNonBudgetableCategory(catIdOrName?: string): boolean {
+  if (!catIdOrName) return false;
+  const lower = catIdOrName.toLowerCase();
+  return lower === 'income' || lower === 'transfers' || lower === 'transfer' || lower === 'salary';
+}
+
 export function useBudgets(
   storageAdapter: any,
   activeProject: any,
@@ -29,7 +47,12 @@ export function useBudgets(
     }
   }, [activeProject, storageAdapter]);
 
-  const totalBudget = useMemo(() => budgets.reduce((sum, b) => sum + b.amount, 0), [budgets]);
+  const totalBudget = useMemo(() => {
+    return budgets.reduce((sum, b) => {
+      if (isNonBudgetableCategory(b.category)) return sum;
+      return sum + b.amount;
+    }, 0);
+  }, [budgets]);
 
   const categorySummary = useMemo(() => {
     // Identify top-level parent categories
@@ -69,6 +92,8 @@ export function useBudgets(
       budget: number;
       spent: number;
       percent: number;
+      bucket: 'fixed' | 'flexible' | 'non-monthly';
+      isNonBudgetable?: boolean;
       subCategories: Array<{
         id: string;
         name: string;
@@ -77,6 +102,7 @@ export function useBudgets(
         budget: number;
         spent: number;
         percent: number;
+        bucket: 'fixed' | 'flexible' | 'non-monthly';
       }>;
     }> = [];
 
@@ -91,6 +117,7 @@ export function useBudgets(
           .filter(t => t.type === 'expense' && (t.subCategory === sCat.id || (t.category === sCat.id && !t.subCategory)))
           .reduce((sum, t) => sum + t.amount, 0);
         const subPercent = subBudget > 0 ? Math.round((subSpent / subBudget) * 100) : 0;
+        const subBucket = deriveCategoryBucket(sCat.id || sCat.name, sCat);
         return {
           id: sCat.id,
           name: sCat.name,
@@ -98,9 +125,13 @@ export function useBudgets(
           color: sCat.color,
           budget: subBudget,
           spent: subSpent,
-          percent: subPercent
+          percent: subPercent,
+          bucket: subBucket
         };
       });
+
+      const isNonBudgetable = isNonBudgetableCategory(pCat.id) || isNonBudgetableCategory(pCat.name);
+      const parentBucket = deriveCategoryBucket(pCat.id || pCat.name, pCat);
 
       // Calculate direct parent spent (transactions assigned to parent without subCategory)
       const directParentSpent = monthTransactions
@@ -113,7 +144,7 @@ export function useBudgets(
         .reduce((sum, t) => sum + t.amount, 0);
 
       // Roll up total parent spent
-      const totalParentSpent = directParentSpent + subCategorySummaries.reduce((sum, s) => sum + s.spent, 0);
+      const totalParentSpent = isNonBudgetable ? 0 : (directParentSpent + subCategorySummaries.reduce((sum, s) => sum + s.spent, 0));
 
       // Calculate total parent budget (explicit parent budget or sum of sub-category budgets)
       const parentBObj = budgets.find(b => 
@@ -124,7 +155,7 @@ export function useBudgets(
         (pCat.id === 'food' && b.category.toLowerCase() === 'food')
       );
       const subCategoryBudgetSum = subCategorySummaries.reduce((sum, s) => sum + s.budget, 0);
-      const parentBudget = parentBObj ? parentBObj.amount : subCategoryBudgetSum;
+      const parentBudget = isNonBudgetable ? 0 : (parentBObj ? parentBObj.amount : subCategoryBudgetSum);
 
       const parentPercent = parentBudget > 0 ? Math.round((totalParentSpent / parentBudget) * 100) : 0;
 
@@ -136,6 +167,8 @@ export function useBudgets(
         budget: parentBudget,
         spent: totalParentSpent,
         percent: parentPercent,
+        bucket: parentBucket,
+        isNonBudgetable,
         subCategories: subCategorySummaries
       });
     });

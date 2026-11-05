@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Target, Plus, Save, ChevronDown, ChevronRight, FileText, Edit2, Trash2, Check, Sparkles, Calendar } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { Target, Plus, Save, ChevronDown, ChevronRight, FileText, Edit2, Trash2, Check, Sparkles, Calendar, Edit3, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { BudgetNote } from '../../services/storage';
 
@@ -11,6 +11,7 @@ export interface SubCategorySummary {
   budget: number;
   spent: number;
   percent: number;
+  bucket?: 'fixed' | 'flexible' | 'non-monthly';
 }
 
 export interface CategorySummary {
@@ -21,6 +22,8 @@ export interface CategorySummary {
   budget: number;
   spent: number;
   percent: number;
+  bucket?: 'fixed' | 'flexible' | 'non-monthly';
+  isNonBudgetable?: boolean;
   subCategories?: SubCategorySummary[];
 }
 
@@ -127,7 +130,20 @@ export function BudgetUtilization({
   const overallKey = `${selectedMonth}:__overall__`;
   const overallNote = isSpecificMonth ? budgetNotes[overallKey] : undefined;
 
-  const [activeBucketTab, setActiveBucketTab] = useState<'flexible' | 'fixed' | 'non-monthly' | 'all'>('flexible');
+  const [activeBucketTab, setActiveBucketTab] = useState<'flexible' | 'fixed' | 'non-monthly' | 'all'>('all');
+  const [showEditDrawer, setShowEditDrawer] = useState(false);
+
+  const budgetableSummary = useMemo(() => {
+    return categorySummary.filter(c => !c.isNonBudgetable);
+  }, [categorySummary]);
+
+  const displayedCategories = useMemo(() => {
+    if (activeBucketTab === 'all') return categorySummary;
+    return categorySummary.filter(item => {
+      if (item.isNonBudgetable) return false;
+      return item.bucket === activeBucketTab;
+    });
+  }, [categorySummary, activeBucketTab]);
 
   return (
     <motion.div 
@@ -159,6 +175,15 @@ export function BudgetUtilization({
             </button>
           )}
 
+          <button
+            onClick={() => setShowEditDrawer(prev => !prev)}
+            data-testid="toggle-budget-drawer-btn"
+            className="flex items-center gap-1 text-xs font-bold px-3 py-1.5 rounded-lg bg-card/60 hover:bg-card border border-border transition-colors text-foreground"
+          >
+            <Edit3 className="w-3.5 h-3.5" />
+            <span>{showEditDrawer ? 'Close Targets' : 'Quick Targets'}</span>
+          </button>
+
           {handleSaveBudgets && (
             <button
               onClick={handleSaveBudgets}
@@ -175,24 +200,28 @@ export function BudgetUtilization({
       <div className="flex items-center gap-1.5 mb-4 p-1 bg-card/50 rounded-xl border border-border/50" data-testid="budget-bucket-tabs">
         <button
           onClick={() => setActiveBucketTab('flexible')}
-          className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all ${activeBucketTab === 'flexible' ? 'bg-emerald-500 text-white shadow-md' : 'text-muted-foreground hover:text-foreground'}`}
+          aria-label="Flexible / Variable"
+          className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all ${activeBucketTab === 'flexible' ? 'bg-violet-500 text-white shadow-md' : 'text-muted-foreground hover:text-foreground'}`}
         >
-          🟢 Flexible
+          🟣 Flexible
         </button>
         <button
           onClick={() => setActiveBucketTab('fixed')}
+          aria-label="Fixed"
           className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all ${activeBucketTab === 'fixed' ? 'bg-blue-500 text-white shadow-md' : 'text-muted-foreground hover:text-foreground'}`}
         >
           🔵 Fixed
         </button>
         <button
           onClick={() => setActiveBucketTab('non-monthly')}
+          aria-label="Non-Monthly"
           className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-bold transition-all ${activeBucketTab === 'non-monthly' ? 'bg-amber-500 text-white shadow-md' : 'text-muted-foreground hover:text-foreground'}`}
         >
           🟠 Non-Monthly
         </button>
         <button
           onClick={() => setActiveBucketTab('all')}
+          aria-label="All"
           className={`py-1.5 px-3 rounded-lg text-xs font-bold transition-all ${activeBucketTab === 'all' ? 'bg-primary text-primary-foreground shadow-md' : 'text-muted-foreground hover:text-foreground'}`}
         >
           All
@@ -334,7 +363,7 @@ export function BudgetUtilization({
           <svg className="w-full h-40" data-testid="chart-svg-budget" viewBox="0 0 360 180">
             <rect width="100%" height="100%" fill="rgba(255,255,255,0.02)" rx="8" />
             <g className="budget-bar">
-              {categorySummary.map((eb, idx) => {
+              {budgetableSummary.map((eb, idx) => {
                 const x = 20 + idx * 45;
                 const maxVal = Math.max(eb.budget, eb.spent, 1);
                 const budgetHeight = eb.budget === 0 ? 10 : Math.max(Math.min((eb.budget / maxVal) * 90, 95), 10);
@@ -354,7 +383,7 @@ export function BudgetUtilization({
               })}
             </g>
             <g className="actual-bar">
-              {categorySummary.map((eb, idx) => {
+              {budgetableSummary.map((eb, idx) => {
                 const x = 20 + idx * 45;
                 const maxVal = Math.max(eb.budget, eb.spent, 1);
                 const spentHeight = eb.spent === 0 ? 5 : Math.max(Math.min((eb.spent / maxVal) * 90, 95), 5);
@@ -373,7 +402,7 @@ export function BudgetUtilization({
                 );
               })}
             </g>
-            {categorySummary.map((eb, idx) => {
+            {budgetableSummary.map((eb, idx) => {
               const x = 20 + idx * 45;
               return (
                 <text key={`t-${eb.id}`} x={x + 13} y="150" textAnchor="middle" fontSize="11" fill="currentColor">
@@ -386,10 +415,95 @@ export function BudgetUtilization({
         </div>
       </div>
 
+      {/* Target Policy Label & Quick Drawer (C10 & U8) */}
+      <div className="flex items-center justify-between text-xs text-muted-foreground px-1 mb-2">
+        <span className="font-semibold text-foreground/90">
+          Monthly Budget Target <span className="text-[11px] font-normal text-muted-foreground">(applies across months)</span>
+        </span>
+        <span className="text-[11px]">
+          {displayedCategories.length} {displayedCategories.length === 1 ? 'category' : 'categories'}
+        </span>
+      </div>
+
+      {/* Quick Target Drawer (U8) */}
+      <AnimatePresence>
+        {showEditDrawer && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="mb-4 p-3.5 bg-card/60 border border-border/60 rounded-xl space-y-3 overflow-hidden"
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                <Edit3 className="w-3.5 h-3.5 text-primary" />
+                <span>Quick Target Editor</span>
+              </span>
+              <button
+                onClick={() => setShowEditDrawer(false)}
+                className="p-1 rounded hover:bg-card text-muted-foreground"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto pr-1">
+              {budgetableSummary.map(item => (
+                <div key={`drawer-${item.id}`} className="flex items-center justify-between gap-2 p-2 rounded-lg bg-card/40 border border-border/40 text-xs">
+                  <span className="truncate flex items-center gap-1.5 font-medium">
+                    <span>{item.emoji}</span>
+                    <span className="truncate">{item.name}</span>
+                  </span>
+                  <div className="flex items-center gap-1 bg-card border border-border/80 rounded px-2 py-0.5 shrink-0">
+                    <span className="text-[10px] text-muted-foreground">$</span>
+                    <input
+                      disabled={isLockedMonth}
+                      type="number"
+                      min="0"
+                      value={item.budget === 0 ? '0' : (item.budget || '')}
+                      onChange={e => handleBudgetInputChange?.(item.id, e.target.value)}
+                      className="w-14 bg-transparent text-xs font-bold text-right outline-none"
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+            {handleSaveBudgets && (
+              <div className="flex justify-end pt-1 border-t border-border/30">
+                <button
+                  onClick={handleSaveBudgets}
+                  className="px-3 py-1 text-xs font-bold bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 flex items-center gap-1"
+                >
+                  <Save className="w-3 h-3" /> Save All Targets
+                </button>
+              </div>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Categories List */}
       <div className="w-full space-y-3 flex-1 overflow-y-auto max-h-[800px]" data-testid="budget-grid-container">
-        {categorySummary.length > 0 ? (
-          categorySummary.map(item => {
+        {displayedCategories.length > 0 ? (
+          displayedCategories.map(item => {
+            if (item.isNonBudgetable) {
+              return (
+                <div key={item.id} className="glass-card p-4 rounded-xl border border-border/50 space-y-2 bg-card/25">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="font-semibold flex items-center gap-2.5 text-base truncate min-w-0">
+                      <span className="text-base leading-none shrink-0">{item.emoji}</span>
+                      <span className="truncate" data-testid={`budget-label-${item.id === 'food' ? 'Food' : item.name}`}>{item.name}</span>
+                    </div>
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-secondary/15 text-secondary border border-secondary/30 shrink-0">
+                      {item.name.toLowerCase().includes('income') || item.id.toLowerCase().includes('income') ? 'Inflow (Non-budgetable)' : 'Transfer (Non-budgetable)'}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-muted-foreground/80 italic">
+                    Tracked in cash flow waterfall — excluded from expense budget limits.
+                  </p>
+                </div>
+              );
+            }
+
             const hasSubCats = item.subCategories && item.subCategories.length > 0;
             const isExpanded = expandedParents.has(item.id);
             const isOver = item.spent > item.budget && item.budget > 0;
@@ -477,7 +591,7 @@ export function BudgetUtilization({
                           disabled={isLockedMonth}
                           type="number"
                           min="0"
-                          data-testid={`budget-input-${item.id === 'food' ? 'Food' : item.id}`}
+                          data-testid={`budget-input-${item.id === 'food' ? 'Food' : item.name}`}
                           value={item.budget === 0 ? '0' : (item.budget || '')}
                           placeholder="0"
                           onChange={e => handleBudgetInputChange(item.id, e.target.value)}
@@ -491,7 +605,7 @@ export function BudgetUtilization({
                 </div>
 
                 {budgetErrors[item.id] && (
-                  <p className={`text-[10px] text-destructive font-bold budget-error-${item.id === 'food' ? 'Food' : item.id}`} data-testid="budget-error">
+                  <p className={`text-[10px] text-destructive font-bold budget-error-${item.id === 'food' ? 'Food' : (item.name || item.id)}`} data-testid="budget-error">
                     {budgetErrors[item.id]}
                   </p>
                 )}

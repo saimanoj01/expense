@@ -15,6 +15,7 @@ export default defineConfig({
   webServer: {
     command: 'npx vite --port 5173',
     port: 5173,
+    cwd: '..',
     reuseExistingServer: !process.env.CI,
   },
   projects: [

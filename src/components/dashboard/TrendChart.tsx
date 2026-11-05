@@ -1,11 +1,13 @@
-import { useState, useEffect } from 'react';
-import { TrendingDown, Calendar, DollarSign, Info, Sparkles, BarChart3, LineChart, AlertTriangle, ArrowUpRight, ArrowDownRight, RefreshCw, Key } from 'lucide-react';
+import { useState, useEffect, useMemo, lazy, Suspense } from 'react';
+import { TrendingDown, Calendar, DollarSign, Sparkles, BarChart3, LineChart, AlertTriangle, ArrowUpRight, ArrowDownRight, RefreshCw, Key, Layers } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { TrendChartDetails, CumulativePacingPoint, MonthlyCashFlow } from '../../hooks/useTransactions';
+import { TrendChartDetails, CumulativePacingPoint } from '../../hooks/useTransactions';
 import { generateSpendingInsights, AiInsightsResult } from '../../services/ai/aiInsightsService';
 import { hasGeminiApiKey } from '../../services/ai/geminiClient';
 import { Category, Budget, Transaction } from '../../services/storage';
-import { useMemo } from 'react';
+
+const PacingChart = lazy(() => import('./PacingChart'));
+const CashFlowBarChart = lazy(() => import('./CashFlowBarChart'));
 
 interface TrendChartProps {
   trendDetails?: TrendChartDetails;
@@ -31,8 +33,8 @@ export function TrendChart({
   onRequestGeminiKey
 }: TrendChartProps) {
   const [activeTab, setActiveTab] = useState<ViewTab>('pacing');
+  const [pacingEngine, setPacingEngine] = useState<'svg' | 'recharts'>('svg');
   const [hoveredCumulativePoint, setHoveredCumulativePoint] = useState<CumulativePacingPoint | null>(null);
-  const [hoveredCashFlowMonth, setHoveredCashFlowMonth] = useState<MonthlyCashFlow | null>(null);
 
   // AI Insights State
   const [aiResult, setAiResult] = useState<AiInsightsResult | null>(null);
@@ -105,6 +107,8 @@ export function TrendChart({
     return 'on_track' as const;
   }, [trendDetails, eomProjection, totalBudget]);
 
+  const hasData = trendDetails && transactions.some(t => t.type === 'expense' && (selectedMonth === 'all' || (t.date || '').startsWith(selectedMonth)));
+
   if (!trendDetails) {
     return (
       <motion.div 
@@ -121,10 +125,12 @@ export function TrendChart({
             <p className="text-xs text-muted-foreground">Financial analytics dashboard</p>
           </div>
         </div>
-        <div className="flex-1 flex flex-col items-center justify-center text-center p-8 border border-dashed border-border/50 rounded-xl">
-          <Info className="w-8 h-8 text-muted-foreground mb-2 opacity-50" />
-          <p className="text-sm font-medium text-muted-foreground">No expense data available for this view.</p>
-          <p className="text-xs text-muted-foreground/70 mt-1">Add transactions or change filters to view spending trends.</p>
+        <div className="flex-1 min-h-[220px] relative w-full flex items-center justify-center select-none">
+          <svg viewBox="0 0 500 200" data-testid="chart-svg-trend" className="w-full h-full overflow-visible">
+            <text x="50%" y="50%" textAnchor="middle" fill="currentColor" className="no-data-text text-muted-foreground text-xs">
+              No data available
+            </text>
+          </svg>
         </div>
       </motion.div>
     );
@@ -142,7 +148,6 @@ export function TrendChart({
     avgMonthlySavings,
     overallSavingsRate,
     bestCashFlowMonth,
-    maxCashFlowValue,
     yTicks
   } = trendDetails;
 
@@ -242,11 +247,29 @@ export function TrendChart({
                   </span>
                 )}
               </div>
+              <button
+                onClick={() => setPacingEngine(prev => prev === 'svg' ? 'recharts' : 'svg')}
+                className="px-2.5 py-1.5 rounded-lg bg-card/60 hover:bg-card border border-border/60 flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-all"
+                title="Toggle Chart Rendering Engine"
+              >
+                <Layers className="w-3.5 h-3.5 text-primary" />
+                <span>{pacingEngine === 'svg' ? 'Interactive' : 'Classic SVG'}</span>
+              </button>
             </div>
           </div>
 
-          {/* SVG Pacing Chart Frame */}
+          {/* SVG / Recharts Pacing Chart Frame */}
           <div className="flex-1 min-h-[220px] relative w-full flex items-center justify-center select-none">
+            {pacingEngine === 'recharts' && hasData ? (
+              <Suspense fallback={<div className="h-48 w-full animate-pulse bg-card/20 rounded-xl" />}>
+                <PacingChart 
+                  cumulativePoints={cumulativePoints}
+                  daysInMonth={daysInMonth}
+                  totalBudget={totalBudget}
+                  prevMonthCumulativePoints={prevMonthCumulativePoints}
+                />
+              </Suspense>
+            ) : (
             <svg 
               viewBox="0 0 500 200" 
               data-testid="chart-svg-trend" 
@@ -259,106 +282,112 @@ export function TrendChart({
                 </linearGradient>
               </defs>
 
-              {/* Y Grid Lines */}
-              {yTicks.map((tick, idx) => (
-                <g key={`y-tick-${idx}`}>
-                  <line 
-                    x1="55" 
-                    y1={tick.y} 
-                    x2="475" 
-                    y2={tick.y} 
-                    stroke="currentColor" 
-                    className="text-border/30" 
-                    strokeWidth="1" 
-                    strokeDasharray="4 4" 
-                  />
-                  <text 
-                    x="45" 
-                    y={tick.y + 4} 
-                    textAnchor="end" 
-                    className="text-[11px] fill-muted-foreground font-medium"
-                  >
-                    {tick.label}
-                  </text>
-                </g>
-              ))}
+              {!hasData ? (
+                <text x="50%" y="50%" textAnchor="middle" fill="currentColor" className="no-data-text text-muted-foreground text-xs">
+                  No data available
+                </text>
+              ) : (
+                <>
+                  {/* Y Grid Lines */}
+                  {yTicks.map((tick, idx) => (
+                    <g key={`y-tick-${idx}`}>
+                      <line 
+                        x1="55" 
+                        y1={tick.y} 
+                        x2="475" 
+                        y2={tick.y} 
+                        stroke="currentColor" 
+                        className="text-border/30" 
+                        strokeWidth="1" 
+                        strokeDasharray="4 4" 
+                      />
+                      <text 
+                        x="45" 
+                        y={tick.y + 4} 
+                        textAnchor="end" 
+                        className="text-[11px] fill-muted-foreground font-medium"
+                      >
+                        {tick.label}
+                      </text>
+                    </g>
+                  ))}
 
-              {/* X Axis Labels */}
-              <text x="55" y="188" textAnchor="start" className="text-[11px] fill-muted-foreground font-medium">Day 1</text>
-              <text x="265" y="188" textAnchor="middle" className="text-[11px] fill-muted-foreground font-medium">Day {Math.round(daysInMonth / 2)}</text>
-              <text x="475" y="188" textAnchor="end" className="text-[11px] fill-muted-foreground font-medium">Day {daysInMonth}</text>
+                  {/* X Axis Labels */}
+                  <text x="55" y="188" textAnchor="start" className="text-[11px] fill-muted-foreground font-medium">Day 1</text>
+                  <text x="265" y="188" textAnchor="middle" className="text-[11px] fill-muted-foreground font-medium">Day {Math.round(daysInMonth / 2)}</text>
+                  <text x="475" y="188" textAnchor="end" className="text-[11px] fill-muted-foreground font-medium">Day {daysInMonth}</text>
 
-              {/* Ideal Pacing Reference Line (Dotted Gray) */}
-              {idealPacingPathData && (
-                <polyline
-                  points={idealPacingPathData.replace(/M\s+/, '').replace(/\s+L\s+/g, ' ')}
-                  fill="none"
-                  stroke="rgba(156, 163, 175, 0.5)"
-                  strokeWidth="2"
-                  strokeDasharray="3 3"
-                />
-              )}
-
-              {/* Previous Month Trajectory Line (Dashed Amber) */}
-              {prevMonthPathData && prevMonthCumulativePoints.length > 0 && (
-                <polyline
-                  points={prevMonthCumulativePoints.map(p => `${p.x},${p.y}`).join(' ')}
-                  fill="none"
-                  stroke="rgba(245, 158, 11, 0.6)"
-                  strokeWidth="2"
-                  strokeDasharray="6 4"
-                />
-              )}
-
-              {/* Gradient Area under Cumulative Path */}
-              {cumulativeAreaPathData && cumulativePoints.length > 0 && (
-                <motion.polygon
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ duration: 0.8 }}
-                  points={`55,165 ${cumulativePoints.map(p => `${p.x},${p.y}`).join(' ')} 475,165`}
-                  fill="url(#cumulativeGradient)"
-                />
-              )}
-
-              {/* Current Month Cumulative Path (Solid Teal) */}
-              {cumulativePathData && (
-                <motion.path
-                  key={cumulativePathData}
-                  initial={{ pathLength: 0 }}
-                  animate={{ pathLength: 1 }}
-                  transition={{ duration: 1, ease: "easeInOut" }}
-                  d={cumulativePathData}
-                  fill="none"
-                  stroke="currentColor"
-                  className="text-primary drop-shadow-[0_0_8px_rgba(20,184,166,0.6)]"
-                  strokeWidth="3.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              )}
-
-              {/* Interactive Data Nodes */}
-              {cumulativePoints.map((pt, idx) => {
-                const isHovered = hoveredCumulativePoint?.day === pt.day;
-                // Highlight nodes every 5 days or hovered
-                if (pt.day % 5 !== 0 && !isHovered && pt.day !== daysInMonth) return null;
-
-                return (
-                  <g key={`cum-point-${idx}`}>
-                    <circle
-                      cx={pt.x}
-                      cy={pt.y}
-                      r={isHovered ? "6.5" : "4"}
-                      className="fill-background stroke-primary transition-all cursor-pointer"
-                      strokeWidth={isHovered ? "3" : "2"}
-                      onMouseEnter={() => setHoveredCumulativePoint(pt)}
-                      onMouseLeave={() => setHoveredCumulativePoint(null)}
+                  {/* Ideal Pacing Reference Line (Dotted Gray) */}
+                  {idealPacingPathData && (
+                    <polyline
+                      points={idealPacingPathData.replace(/M\s+/, '').replace(/\s+L\s+/g, ' ')}
+                      fill="none"
+                      stroke="rgba(156, 163, 175, 0.5)"
+                      strokeWidth="2"
+                      strokeDasharray="3 3"
                     />
-                  </g>
-                );
-              })}
+                  )}
+
+                  {/* Previous Month Trajectory Line (Dashed Amber) */}
+                  {prevMonthPathData && prevMonthCumulativePoints.length > 0 && (
+                    <polyline
+                      points={prevMonthCumulativePoints.map(p => `${p.x},${p.y}`).join(' ')}
+                      fill="none"
+                      stroke="rgba(245, 158, 11, 0.6)"
+                      strokeWidth="2"
+                      strokeDasharray="6 4"
+                    />
+                  )}
+
+                  {/* Gradient Area under Cumulative Path */}
+                  {cumulativeAreaPathData && cumulativePoints.length > 0 && (
+                    <motion.polygon
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      transition={{ duration: 0.8 }}
+                      points={`55,165 ${cumulativePoints.map(p => `${p.x},${p.y}`).join(' ')} 475,165`}
+                      fill="url(#cumulativeGradient)"
+                    />
+                  )}
+
+                  {/* Current Month Cumulative Path (Solid Teal) */}
+                  {cumulativePathData && (
+                    <path
+                      key={cumulativePathData}
+                      d={cumulativePathData}
+                      fill="none"
+                      stroke="currentColor"
+                      className="text-primary drop-shadow-[0_0_8px_rgba(20,184,166,0.6)]"
+                      strokeWidth="3.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  )}
+
+                  {/* Interactive Data Nodes */}
+                  {cumulativePoints.map((pt, idx) => {
+                    const isHovered = hoveredCumulativePoint?.day === pt.day;
+                    // Highlight nodes every 5 days or hovered
+                    if (pt.day % 5 !== 0 && !isHovered && pt.day !== daysInMonth) return null;
+
+                    return (
+                      <g key={`cum-point-${idx}`}>
+                        <circle
+                          cx={pt.x}
+                          cy={pt.y}
+                          r={isHovered ? "6.5" : "4"}
+                          className="fill-background stroke-primary transition-all cursor-pointer"
+                          strokeWidth={isHovered ? "3" : "2"}
+                          onMouseEnter={() => setHoveredCumulativePoint(pt)}
+                          onMouseLeave={() => setHoveredCumulativePoint(null)}
+                        />
+                      </g>
+                    );
+                  })}
+                </>
+              )}
             </svg>
+            )}
 
             {/* Hover Tooltip */}
             <AnimatePresence>
@@ -433,175 +462,37 @@ export function TrendChart({
             )}
           </div>
 
-          {/* Multi-Month SVG Grouped Bar Chart */}
+          {/* Multi-Month Cash Flow View (Recharts) */}
           <div className="flex-1 min-h-[220px] relative w-full flex items-center justify-center select-none">
             {monthlyCashFlows.length === 0 ? (
               <div className="text-center text-muted-foreground text-sm">No multi-month cash flow data available.</div>
             ) : (
-              <svg viewBox="0 0 500 200" className="w-full h-full overflow-visible">
-                {/* Horizontal Baseline */}
-                <line x1="40" y1="165" x2="480" y2="165" stroke="currentColor" className="text-border" strokeWidth="1" />
-
-                {/* Render Monthly Grouped Bars */}
-                {monthlyCashFlows.map((cf, idx) => {
-                  const groupWidth = 440 / monthlyCashFlows.length;
-                  const groupX = 45 + idx * groupWidth;
-                  const barW = Math.min(18, groupWidth * 0.35);
-
-                  const maxScale = Math.max(maxCashFlowValue, 1);
-                  const incomeH = (cf.income / maxScale) * 130;
-                  const expenseH = (cf.expense / maxScale) * 130;
-
-                  const incomeY = 165 - incomeH;
-                  const expenseY = 165 - expenseH;
-
-                  const isHovered = hoveredCashFlowMonth?.month === cf.month;
-
-                  return (
-                    <g 
-                      key={cf.month} 
-                      className="cursor-pointer group"
-                      onClick={() => {
-                        if (onSelectMonth) onSelectMonth(cf.month);
-                        setActiveTab('pacing');
-                      }}
-                      onMouseEnter={() => setHoveredCashFlowMonth(cf)}
-                      onMouseLeave={() => setHoveredCashFlowMonth(null)}
-                    >
-                      {/* Income Bar (Emerald) */}
-                      <rect
-                        x={groupX + groupWidth / 2 - barW - 2}
-                        y={incomeY}
-                        width={barW}
-                        height={Math.max(2, incomeH)}
-                        rx="3"
-                        className="fill-emerald-500/80 group-hover:fill-emerald-400 transition-colors"
-                      />
-
-                      {/* Stacked Expense Bar (Fixed / Flexible / Non-Monthly) */}
-                      {(() => {
-                        const expX = groupX + groupWidth / 2 + 2;
-                        const fixedH = ((cf.fixedExpense || 0) / maxScale) * 130;
-                        const flexH = ((cf.flexibleExpense || 0) / maxScale) * 130;
-                        const nonMonthH = ((cf.nonMonthlyExpense || 0) / maxScale) * 130;
-
-                        if (fixedH > 0 || flexH > 0 || nonMonthH > 0) {
-                          const currentY = 165;
-                          return (
-                            <g>
-                              {/* Fixed Segment (Blue) */}
-                              {fixedH > 0 && (
-                                <rect
-                                  x={expX}
-                                  y={currentY - fixedH}
-                                  width={barW}
-                                  height={fixedH}
-                                  rx="2"
-                                  className="fill-blue-500/90 group-hover:fill-blue-400 transition-colors"
-                                />
-                              )}
-                              {/* Flexible Segment (Emerald) */}
-                              {flexH > 0 && (
-                                <rect
-                                  x={expX}
-                                  y={currentY - fixedH - flexH}
-                                  width={barW}
-                                  height={flexH}
-                                  rx="2"
-                                  className="fill-emerald-500/90 group-hover:fill-emerald-400 transition-colors"
-                                />
-                              )}
-                              {/* Non-Monthly Segment (Amber) */}
-                              {nonMonthH > 0 && (
-                                <rect
-                                  x={expX}
-                                  y={currentY - fixedH - flexH - nonMonthH}
-                                  width={barW}
-                                  height={nonMonthH}
-                                  rx="2"
-                                  className="fill-amber-500/90 group-hover:fill-amber-400 transition-colors"
-                                />
-                              )}
-                            </g>
-                          );
-                        }
-
-                        // Fallback single bar if bucket details unavailable
-                        return (
-                          <rect
-                            x={expX}
-                            y={expenseY}
-                            width={barW}
-                            height={Math.max(2, expenseH)}
-                            rx="3"
-                            className="fill-rose-500/80 group-hover:fill-rose-400 transition-colors"
-                          />
-                        );
-                      })()}
-
-                      {/* Month Label */}
-                      <text
-                        x={groupX + groupWidth / 2}
-                        y="185"
-                        textAnchor="middle"
-                        className={`text-[11px] font-semibold transition-colors ${isHovered ? 'fill-primary font-bold' : 'fill-muted-foreground'}`}
-                      >
-                        {cf.formattedMonth}
-                      </text>
-                    </g>
-                  );
-                })}
-              </svg>
+              <Suspense fallback={<div className="h-48 w-full animate-pulse bg-card/20 rounded-xl" />}>
+                <CashFlowBarChart 
+                  monthlyCashFlows={monthlyCashFlows} 
+                  onSelectMonth={(m) => {
+                    if (onSelectMonth) onSelectMonth(m);
+                    setActiveTab('pacing');
+                  }} 
+                  selectedMonth={selectedMonth} 
+                />
+              </Suspense>
             )}
-
-            {/* Hover Tooltip for Bar Chart */}
-            <AnimatePresence>
-              {hoveredCashFlowMonth && (
-                <motion.div
-                  initial={{ opacity: 0, y: 5, scale: 0.95 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.95 }}
-                  className="absolute z-30 pointer-events-none bg-popover/95 border border-border text-popover-foreground px-4 py-3 rounded-xl shadow-xl backdrop-blur-md"
-                  style={{
-                    left: '50%',
-                    bottom: '3rem',
-                    transform: 'translateX(-50%)'
-                  }}
-                >
-                  <p className="text-xs font-bold text-foreground mb-1">{hoveredCashFlowMonth.formattedMonth}</p>
-                  <div className="space-y-0.5 text-xs">
-                    <p className="text-emerald-400 font-medium">Income: ${hoveredCashFlowMonth.income.toLocaleString()}</p>
-                    <p className="text-rose-400 font-medium">Total Expenses: ${hoveredCashFlowMonth.expense.toLocaleString()}</p>
-                    {hoveredCashFlowMonth.fixedExpense !== undefined && (
-                      <div className="pl-2 border-l border-border text-[11px] text-muted-foreground space-y-0.5 py-0.5">
-                        <p className="text-blue-400">🔵 Fixed: ${hoveredCashFlowMonth.fixedExpense.toLocaleString()}</p>
-                        <p className="text-emerald-400">🟢 Flexible: ${(hoveredCashFlowMonth.flexibleExpense || 0).toLocaleString()}</p>
-                        <p className="text-amber-400">🟠 Non-Monthly: ${(hoveredCashFlowMonth.nonMonthlyExpense || 0).toLocaleString()}</p>
-                      </div>
-                    )}
-                    <p className={`font-extrabold ${hoveredCashFlowMonth.net >= 0 ? 'text-teal-400' : 'text-rose-500'}`}>
-                      Net Savings: ${hoveredCashFlowMonth.net.toLocaleString()} ({hoveredCashFlowMonth.savingsRate}%)
-                    </p>
-                  </div>
-                  <p className="text-[10px] text-muted-foreground mt-1 text-center font-medium">Click bar to inspect pacing →</p>
-                </motion.div>
-              )}
-            </AnimatePresence>
           </div>
 
           {/* Bar Chart Legend */}
-          <div className="flex flex-wrap items-center justify-center gap-4 mt-4 pt-3 border-t border-border/40 text-xs text-muted-foreground">
+          <div className="flex flex-wrap items-center justify-center gap-6 mt-4 pt-3 border-t border-border/40 text-xs text-muted-foreground">
             <div className="flex items-center gap-1.5">
               <span className="w-2.5 h-2.5 bg-emerald-500 rounded-sm"></span>
-              <span>Income</span>
+              <span>Inflow</span>
             </div>
             <div className="flex items-center gap-1.5">
               <span className="w-2.5 h-2.5 bg-blue-500 rounded-sm"></span>
               <span>Fixed</span>
             </div>
             <div className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 bg-emerald-500 rounded-sm"></span>
-              <span>Flexible</span>
+              <span className="w-2.5 h-2.5 bg-violet-500 rounded-sm"></span>
+              <span>Variable</span>
             </div>
             <div className="flex items-center gap-1.5">
               <span className="w-2.5 h-2.5 bg-amber-500 rounded-sm"></span>

@@ -582,11 +582,11 @@ export function useTransactions(
     const idealPacingPoints: CumulativePacingPoint[] = [];
 
     // Path strings for Cumulative View
-    const cumCoords = cumulativePoints.map(p => `${p.x.toFixed(1)} ${p.y.toFixed(1)}`);
-    const cumulativePathData = `M ${cumCoords.join(' L ')}`;
     const firstX = cumulativePoints[0]?.x.toFixed(1) || paddingLeft.toString();
-    const lastX = cumulativePoints[cumulativePoints.length - 1]?.x.toFixed(1) || (width - paddingRight).toString();
     const bottomY = (height - paddingBottom).toFixed(1);
+    const lastX = cumulativePoints[cumulativePoints.length - 1]?.x.toFixed(1) || (width - paddingRight).toString();
+    const cumCoords = cumulativePoints.map(p => `${p.x.toFixed(1)} ${p.y.toFixed(1)}`);
+    const cumulativePathData = `M ${firstX} ${bottomY} L ${cumCoords.join(' L ')}`;
     const cumulativeAreaPathData = `M ${firstX} ${bottomY} L ${cumCoords.join(' L ')} L ${lastX} ${bottomY} Z`;
 
     const prevCoords = prevMonthCumulativePoints.map(p => `${p.x.toFixed(1)} ${p.y.toFixed(1)}`);
@@ -615,9 +615,10 @@ export function useTransactions(
         const validAmt = isNaN(amt) ? 0 : amt;
         if (t.type === 'expense') {
           monthGroupMap[mKey].expense += validAmt;
-          if (t.spendingBucket === 'fixed') {
+          const b = bucketOf(t, categories);
+          if (b === 'fixed') {
             monthGroupMap[mKey].fixedExpense += validAmt;
-          } else if (t.spendingBucket === 'non-monthly') {
+          } else if (b === 'non-monthly') {
             monthGroupMap[mKey].nonMonthlyExpense += validAmt;
           } else {
             monthGroupMap[mKey].flexibleExpense += validAmt;
@@ -628,7 +629,7 @@ export function useTransactions(
       }
     });
 
-    const monthlyCashFlows: MonthlyCashFlow[] = Object.keys(monthGroupMap)
+    const allCashFlows: MonthlyCashFlow[] = Object.keys(monthGroupMap)
       .sort()
       .map(mKey => {
         const data = monthGroupMap[mKey];
@@ -646,6 +647,10 @@ export function useTransactions(
           savingsRate
         };
       });
+
+    // Exclude phantom empty months unless no active data exists (C2)
+    const activeCashFlows = allCashFlows.filter(cf => cf.income > 0 || cf.expense > 0);
+    const monthlyCashFlows = activeCashFlows.length > 0 ? activeCashFlows : allCashFlows;
 
     let totalNetSavings = 0;
     let totalAllIncome = 0;

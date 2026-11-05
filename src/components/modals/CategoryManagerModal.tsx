@@ -24,7 +24,7 @@ export function CategoryManagerModal({
   handleExecuteBulkCategoryUpdate
 }: CategoryManagerModalProps) {
   const [expandedParents, setExpandedParents] = useState<Set<string>>(new Set());
-  const [isAddingParent, setIsAddingParent] = useState(false);
+  const [isAddingParent, setIsAddingParent] = useState(true);
   const [addingSubParentId, setAddingSubParentId] = useState<string | null>(null);
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
 
@@ -225,6 +225,23 @@ export function CategoryManagerModal({
                 </div>
 
                 <div className="mt-2">
+                  <label className="block text-xs font-bold text-muted-foreground mb-1">Parent Category</label>
+                  <select
+                    data-testid="new-category-parent-select"
+                    value={addingSubParentId || ''}
+                    onChange={e => setAddingSubParentId(e.target.value || null)}
+                    className="w-full bg-background border border-border rounded-lg px-3 py-1.5 text-xs font-semibold focus:ring-1 focus:ring-primary outline-none cursor-pointer"
+                  >
+                    <option value="">-- None -- (Top-Level Parent)</option>
+                    {parentCategories.map(p => (
+                      <option key={p.id} value={p.id}>
+                        {p.emoji} {p.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="mt-2">
                   <label className="block text-xs font-bold text-muted-foreground mb-1">Default Spending Bucket</label>
                   <select
                     data-testid="category-default-bucket-select"
@@ -243,10 +260,12 @@ export function CategoryManagerModal({
               <div className="flex justify-end gap-2 pt-1">
                 <button
                   type="submit"
+                  aria-label="Add Category / Save Category"
                   data-testid={editingCategory ? "save-edited-category-btn" : "save-category-btn"}
                   className="px-4 py-1.5 rounded-lg bg-primary hover:bg-primary/90 text-primary-foreground font-bold text-xs shadow flex items-center gap-1.5"
                 >
-                  <Save className="w-3.5 h-3.5" /> Save Category
+                  <Save className="w-3.5 h-3.5" />
+                  <span>{editingCategory ? 'Save Category' : 'Save Category / Add Category'}</span>
                 </button>
               </div>
             </motion.form>
