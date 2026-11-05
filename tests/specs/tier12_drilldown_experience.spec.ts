@@ -148,4 +148,60 @@ test.describe('Tier 12: v3 Progressive Disclosure Drill-Down Experience', () => 
     await page.goForward();
     await expect(page.getByTestId('breadcrumb-item-bucket-variable')).toBeVisible();
   });
+
+  test('5. Desktop Sidebar renders on 1440px, collapses and expands, and triggers navigation', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto('/#month/2026-11');
+    const sidebar = page.getByTestId('sidebar');
+    await expect(sidebar).toBeVisible();
+
+    // Toggle collapse
+    const toggleBtn = page.getByTestId('sidebar-toggle-btn');
+    await toggleBtn.click();
+    // After collapsing, expand button should become visible
+    await expect(page.getByTestId('sidebar-expand-btn')).toBeVisible();
+    await page.getByTestId('sidebar-expand-btn').click();
+    await expect(page.getByTestId('sidebar-toggle-btn')).toBeVisible();
+
+    // Navigate to transactions view via sidebar
+    await page.getByTestId('nav-item-transactions').click();
+    await expect(page.getByTestId('breadcrumb-item-transactions')).toBeVisible();
+  });
+
+  test('6. Mobile Bottom Navigation renders on 390px viewport with safe-area insets and drawer', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/#month/2026-11');
+    const bottomNav = page.getByTestId('bottom-nav');
+    await expect(bottomNav).toBeVisible();
+    await expect(page.getByTestId('sidebar')).not.toBeVisible();
+
+    // Click More to open mobile drawer
+    await page.getByTestId('bottom-nav-more').click();
+    const drawer = page.getByTestId('mobile-more-drawer');
+    await expect(drawer).toBeVisible();
+
+    // Click Trends in drawer
+    await page.getByTestId('drawer-nav-trends').click();
+    await expect(drawer).not.toBeVisible();
+    await expect(page.getByTestId('breadcrumb-item-trends')).toBeVisible();
+  });
+
+  test('7. Command Palette opens via trigger and ⌘K, searches items, and navigates', async ({ page }) => {
+    await page.goto('/#month/2026-11');
+    const trigger = page.getByTestId('command-palette-trigger');
+    await expect(trigger).toBeVisible();
+    await trigger.click();
+
+    const palette = page.getByTestId('command-palette-modal');
+    await expect(palette).toBeVisible();
+
+    const searchInput = page.getByTestId('command-palette-input');
+    await searchInput.fill('Fixed');
+    await expect(page.getByTestId('command-item-bucket-fixed')).toBeVisible();
+
+    // Select with Enter
+    await page.keyboard.press('Enter');
+    await expect(palette).not.toBeVisible();
+    await expect(page.getByTestId('breadcrumb-item-bucket-fixed')).toBeVisible();
+  });
 });

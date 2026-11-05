@@ -7,6 +7,9 @@ import { useHashRouting } from './hooks/useHashRouting';
 import { Transaction, SpendingBucket, Category } from './services/storage';
 import { NavigationProvider } from './context/NavigationContext';
 import { BreadcrumbTrail } from './components/layout/BreadcrumbTrail';
+import { Sidebar } from './components/layout/Sidebar';
+import { BottomNav } from './components/layout/BottomNav';
+import { CommandPalette } from './components/common/CommandPalette';
 import { classifyTransactionsWithLLM } from './services/llmCategorizer';
 import { hasGeminiApiKey } from './services/ai/geminiClient';
 import { suggestSpendingBucket } from './utils/categorizer';
@@ -101,6 +104,19 @@ function AppInner() {
   const [showCategoryManagerModal, setShowCategoryManagerModal] = useState(false);
   const [showDuplicateWarningModal, setShowDuplicateWarningModal] = useState(false);
   const [showMonthlyReportModal, setShowMonthlyReportModal] = useState(false);
+  const [showCommandPalette, setShowCommandPalette] = useState(false);
+
+  // Global ⌘K / Ctrl+K keyboard shortcut
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setShowCommandPalette(prev => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   const hasTriggeredOnboarding = useRef(false);
   useEffect(() => {
@@ -279,11 +295,21 @@ function AppInner() {
         onManageProjects={() => setShowManageProjectsModal(true)}
         onOpenGeminiKeyModal={() => setShowGeminiKeyModal(true)}
         onLoadSampleData={isMockMode ? handleLoadSampleData : undefined}
+        onOpenCommandPalette={() => setShowCommandPalette(true)}
         logout={logout}
       />
 
-      <main className="max-w-6xl mx-auto px-4 py-8 w-full flex-1 relative z-10">
-        {!isAuthenticated ? (
+      <div className="flex-1 flex overflow-hidden">
+        {isAuthenticated && activeProject && (
+          <Sidebar
+            activeProject={activeProject}
+            onOpenAddTxn={handleOpenAddTxn}
+          />
+        )}
+
+        <main className="flex-1 overflow-y-auto px-4 py-8 pb-24 md:pb-8 w-full relative z-10 custom-scrollbar">
+          <div className="max-w-6xl mx-auto w-full">
+            {!isAuthenticated ? (
           <div className="flex flex-col items-center justify-center h-[60vh] text-center">
             <h2 className="text-4xl font-bold mb-4 tracking-tight">Manage Expenses with Confidence</h2>
             <p className="text-lg text-muted-foreground mb-8 max-w-md">Secure, serverless budget tracking connected directly to your Google Workspace.</p>
@@ -485,7 +511,27 @@ function AppInner() {
             <p className="text-muted-foreground">Please select or create a project to get started.</p>
           </div>
         )}
-      </main>
+          </div>
+        </main>
+      </div>
+
+      {isAuthenticated && activeProject && (
+        <BottomNav onOpenAddTxn={handleOpenAddTxn} />
+      )}
+
+      <CommandPalette
+        isOpen={showCommandPalette}
+        onClose={() => setShowCommandPalette(false)}
+        categories={budgetHooks.categories}
+        onOpenAddTxn={handleOpenAddTxn}
+        onOpenCsvImport={() => csvHooks.setShowCsvWizard(true)}
+        onOpenManageProjects={() => setShowManageProjectsModal(true)}
+        onOpenGeminiKey={() => setShowGeminiKeyModal(true)}
+        onToggleTheme={() => setTheme(prev => prev === 'dark' ? 'light' : 'dark')}
+        onOpenReport={() => setShowMonthlyReportModal(true)}
+        onToggleLockMonth={isCurrentMonthLocked ? handleUnlockCurrentMonth : handleLockCurrentMonth}
+        isMonthLocked={isCurrentMonthLocked}
+      />
 
       {/* Modals Wrapped in AnimatePresence for Smooth Exit Transitions */}
       <AnimatePresence>
