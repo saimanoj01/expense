@@ -9,6 +9,7 @@ export interface AppContextType {
   activeProject: Project | null;
   currentView: ViewType;
   isLoading: boolean;
+  isProjectsLoaded: boolean;
   error: string | null;
   storageAdapter: StorageAdapter;
   loadProjects: () => Promise<void>;
@@ -27,6 +28,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [activeProject, setActiveProject] = useState<Project | null>(null);
   const [currentView, setCurrentView] = useState<ViewType>('project-selector');
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isProjectsLoaded, setIsProjectsLoaded] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
   // Memoize storage adapter selection based on AuthContext state
@@ -54,7 +56,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setProjects(list);
       
       // Determine target project ID to select on initialization
-      let targetProjectId = localStorage.getItem('expense_active_project_id');
+      const targetProjectId = localStorage.getItem('expense_active_project_id');
       let found = targetProjectId ? list.find(p => p.id === targetProjectId) : undefined;
       if (!found && list.length > 0) {
         found = list[0];
@@ -74,18 +76,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setError(err.message || 'Failed to load projects');
     } finally {
       setIsLoading(false);
+      setIsProjectsLoaded(true);
     }
   }, [isAuthenticated, storageAdapter]);
 
   useEffect(() => {
     if (authIsLoading) return;
     if (isAuthenticated) {
+      setIsLoading(true);
       loadProjects();
     } else {
       setProjects([]);
       setActiveProject(null);
       setCurrentView('project-selector');
       setIsLoading(false);
+      setIsProjectsLoaded(false);
     }
   }, [isAuthenticated, authIsLoading, loadProjects]);
 
@@ -163,6 +168,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       activeProject,
       currentView,
       isLoading,
+      isProjectsLoaded,
       error,
       storageAdapter,
       loadProjects,

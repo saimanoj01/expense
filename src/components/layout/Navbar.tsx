@@ -44,8 +44,11 @@ export function Navbar({
           </div>
           <h1 className="font-bold text-lg tracking-tight hidden sm:block">ExpenseTracker</h1>
           {isMockMode && (
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-secondary/20 text-secondary uppercase tracking-wider border border-secondary/20">
-              Mock
+            <span 
+              data-testid="mock-banner" 
+              className="mock-mode-banner px-2 py-0.5 rounded-full text-[10px] font-bold bg-secondary/20 text-secondary uppercase tracking-wider border border-secondary/20"
+            >
+              Mock Mode
             </span>
           )}
         </div>

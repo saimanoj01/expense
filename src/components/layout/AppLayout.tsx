@@ -23,7 +23,7 @@ export function AppLayout({ children, toastMessage }: { children: React.ReactNod
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 20, scale: 0.9 }}
             data-testid="notification-toast"
-            className="fixed bottom-6 left-4 right-4 sm:left-auto sm:right-6 z-50 py-3 px-6 rounded-2xl glass-card border border-primary/30 text-white font-medium shadow-glow-cyan flex items-center gap-3 bg-emerald-500/90 backdrop-blur-md"
+            className="notification-error fixed bottom-6 left-4 right-4 sm:left-auto sm:right-6 z-50 py-3 px-6 rounded-2xl glass-card border border-primary/30 text-white font-medium shadow-glow-cyan flex items-center gap-3 bg-emerald-500/90 backdrop-blur-md"
           >
             <div className="w-2 h-2 rounded-full bg-white animate-pulse" />
             {toastMessage}

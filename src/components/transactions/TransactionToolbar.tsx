@@ -47,6 +47,7 @@ export function TransactionToolbar({
     >
       <div className="flex flex-wrap items-center gap-3">
         <select
+          data-testid="month-selector"
           className="bg-card/50 border border-border rounded-xl px-4 py-2 font-medium focus:ring-2 focus:ring-primary outline-none transition-all"
           value={selectedMonth}
           onChange={(e) => setSelectedMonth(e.target.value)}

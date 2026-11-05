@@ -277,8 +277,8 @@ export class LocalStorageAdapter implements StorageAdapter {
   private ensureInitialized(): void {
     try {
       const projectsRaw = localStorage.getItem('expense_projects');
-      if (!projectsRaw) {
-        localStorage.setItem('expense_projects', '[]');
+      if (projectsRaw === null) {
+        this.seedMockDatabase();
         return;
       }
       try {
@@ -303,7 +303,9 @@ export class LocalStorageAdapter implements StorageAdapter {
       console.error('Failed to initialize local storage:', error);
       try {
         this.clearAllExpenseKeys();
-      } catch (e) {}
+      } catch (_e) {
+        // Ignore error during key clear
+      }
       this.seedMockDatabase();
     }
   }
@@ -732,7 +734,7 @@ export class GoogleSheetsAdapter implements StorageAdapter {
     if (this.projectsCache) return this.projectsCache;
     
     const raw = localStorage.getItem('expense_google_projects');
-    let localProjects: Project[] = raw ? JSON.parse(raw) : [];
+    const localProjects: Project[] = raw ? JSON.parse(raw) : [];
 
     // Optionally check Drive API to discover lost spreadsheets
     try {

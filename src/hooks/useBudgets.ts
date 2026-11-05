@@ -33,7 +33,33 @@ export function useBudgets(
 
   const categorySummary = useMemo(() => {
     // Identify top-level parent categories
-    const parentCats = categories.filter(c => !c.parentId);
+    const parentCats = [...categories.filter(c => !c.parentId)];
+    const existingKeys = new Set(parentCats.flatMap(c => [c.id.toLowerCase(), c.name.toLowerCase()]));
+    if (existingKeys.has('food & dining')) existingKeys.add('food');
+
+    budgets.forEach(b => {
+      if (b.category && !existingKeys.has(b.category.toLowerCase())) {
+        parentCats.push({
+          id: b.category,
+          name: b.category,
+          emoji: '🏷️',
+          color: '#845EF7'
+        });
+        existingKeys.add(b.category.toLowerCase());
+      }
+    });
+
+    filteredTransactions.forEach(t => {
+      if (t.category && !existingKeys.has(t.category.toLowerCase())) {
+        parentCats.push({
+          id: t.category,
+          name: t.category,
+          emoji: '🏷️',
+          color: '#4DABF7'
+        });
+        existingKeys.add(t.category.toLowerCase());
+      }
+    });
 
     const items: Array<{
       id: string;
@@ -78,14 +104,25 @@ export function useBudgets(
 
       // Calculate direct parent spent (transactions assigned to parent without subCategory)
       const directParentSpent = filteredTransactions
-        .filter(t => t.type === 'expense' && (t.category === pCat.id || t.category.toLowerCase() === pCat.name.toLowerCase()) && !t.subCategory)
+        .filter(t => t.type === 'expense' && (
+          t.category === pCat.id || 
+          t.category.toLowerCase() === pCat.id.toLowerCase() || 
+          t.category.toLowerCase() === pCat.name.toLowerCase() ||
+          (pCat.id === 'food' && t.category.toLowerCase() === 'food')
+        ) && !t.subCategory)
         .reduce((sum, t) => sum + t.amount, 0);
 
       // Roll up total parent spent
       const totalParentSpent = directParentSpent + subCategorySummaries.reduce((sum, s) => sum + s.spent, 0);
 
       // Calculate total parent budget (explicit parent budget or sum of sub-category budgets)
-      const parentBObj = budgets.find(b => b.category === pCat.id || b.category === pCat.name);
+      const parentBObj = budgets.find(b => 
+        b.category === pCat.id || 
+        b.category.toLowerCase() === pCat.id.toLowerCase() || 
+        b.category === pCat.name || 
+        b.category.toLowerCase() === pCat.name.toLowerCase() ||
+        (pCat.id === 'food' && b.category.toLowerCase() === 'food')
+      );
       const subCategoryBudgetSum = subCategorySummaries.reduce((sum, s) => sum + s.budget, 0);
       const parentBudget = parentBObj ? parentBObj.amount : subCategoryBudgetSum;
 
@@ -108,18 +145,30 @@ export function useBudgets(
 
   const piePaths = useMemo(() => {
     const expenseTxns = filteredTransactions.filter(t => t.type === 'expense');
-    const grouped = categories.map(cat => {
-      const total = expenseTxns
-        .filter(t => t.category === cat.id || t.category.toLowerCase() === cat.name.toLowerCase())
-        .reduce((sum, t) => sum + t.amount, 0);
-      return {
-        category: cat.id,
-        name: cat.name,
-        color: cat.color,
-        total
-      };
-    }).filter(item => item.total > 0);
+    const catMap = new Map<string, { total: number; name: string; color: string; id: string }>();
+    const PALETTE = ['#FF6B6B', '#4DABF7', '#51CF66', '#FCC419', '#845EF7', '#FF8787', '#20C997', '#38BDF8', '#ADB5BD', '#E64980'];
+    let pIdx = 0;
 
+    expenseTxns.forEach(t => {
+      if (!t.category) return;
+      const matched = categories.find(c =>
+        c.id.toLowerCase() === t.category.toLowerCase() ||
+        c.name.toLowerCase() === t.category.toLowerCase()
+      );
+      const catId = matched?.parentId || matched?.id || t.category;
+      const parentObj = categories.find(c => c.id === catId);
+      const catName = parentObj?.name || matched?.name || t.category;
+      const catColor = parentObj?.color || matched?.color || PALETTE[pIdx++ % PALETTE.length];
+
+      const entry = catMap.get(catId);
+      if (entry) {
+        entry.total += t.amount;
+      } else {
+        catMap.set(catId, { id: catId, name: catName, color: catColor, total: t.amount });
+      }
+    });
+
+    const grouped = Array.from(catMap.values()).filter(item => item.total > 0);
     const totalPieExpense = grouped.reduce((sum, item) => sum + item.total, 0);
     const cx = 150;
     const cy = 96;
@@ -142,7 +191,7 @@ export function useBudgets(
         const y2 = cy + r * Math.sin(endAngle);
         const largeArcFlag = angleSpan > Math.PI ? 1 : 0;
         const pathData = `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${largeArcFlag} 1 ${x2} ${y2} Z`;
-        result.push({ pathData, color: item.color, category: item.category, name: item.name });
+        result.push({ pathData, color: item.color, category: item.id, name: item.name });
         accumulatedAngle = endAngle;
       });
     }

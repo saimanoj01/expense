@@ -18,6 +18,7 @@ interface KpiGridProps {
 }
 
 export function KpiGrid({
+  totalBudget = 0,
   totalExpenses,
   totalIncome,
   fixedExpenses = 0,
@@ -84,11 +85,25 @@ export function KpiGrid({
         </div>
 
         {/* Savings Health Pill */}
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-card/80 border border-border/60 shadow-sm text-xs font-semibold">
-          <span className="text-muted-foreground">Net Savings Rate:</span>
-          <span className={`font-bold ${savingsAmount >= 0 ? 'text-emerald-400' : 'text-rose-400'}`} data-testid="kpi-savings-rate">
-            {savingsRate.toFixed(1)}%
-          </span>
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-card/80 border border-border/60 shadow-sm text-xs font-semibold">
+            <span className="text-muted-foreground">Total Budget:</span>
+            <span className="font-bold text-foreground" data-testid="kpi-total-budget">
+              {formatCurrency(totalBudget || 0)}
+            </span>
+          </div>
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-card/80 border border-border/60 shadow-sm text-xs font-semibold">
+            <span className="text-muted-foreground">Total Expenses:</span>
+            <span className="font-bold text-foreground" data-testid="kpi-total-expenses">
+              {formatCurrency(totalExpenses)}
+            </span>
+          </div>
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-card/80 border border-border/60 shadow-sm text-xs font-semibold">
+            <span className="text-muted-foreground">Net Savings Rate:</span>
+            <span className={`font-bold ${savingsAmount >= 0 ? 'text-emerald-400' : 'text-rose-400'}`} data-testid="kpi-savings-rate">
+              {savingsRate.toFixed(1)}%
+            </span>
+          </div>
         </div>
       </div>
 

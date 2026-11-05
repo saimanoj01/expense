@@ -179,7 +179,7 @@ export function CsvImportWizard({
                 </div>
                 <div>
                   <label className="block text-sm font-bold text-muted-foreground mb-1">Description Column (Required)</label>
-                  <select value={mapDescCol} data-testid="csv-map-col-desc" onChange={e => setMapDescCol(e.target.value)} className="w-full bg-card/50 border border-border rounded-xl px-4 py-2 font-medium focus:ring-2 focus:ring-primary outline-none">
+                  <select value={mapDescCol} data-testid="csv-map-col-description" onChange={e => setMapDescCol(e.target.value)} className="w-full bg-card/50 border border-border rounded-xl px-4 py-2 font-medium focus:ring-2 focus:ring-primary outline-none">
                     <option value="" className="bg-card text-card-foreground">-- Select --</option>
                     {csvRawHeaders.map(h => <option key={h} value={h} className="bg-card text-card-foreground">{h}</option>)}
                   </select>
@@ -502,6 +502,7 @@ export function CsvImportWizard({
           {csvStep === 1 ? (
             <button
               onClick={handleCsvNextStep}
+              data-testid="csv-next-step-btn"
               className="px-6 py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-bold shadow-lg shadow-primary/20 transition-all hover:scale-105 active:scale-95 flex items-center gap-2"
             >
               Next Step

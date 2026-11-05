@@ -39,8 +39,19 @@ import { useBudgets } from './hooks/useBudgets';
 import { useCsvImport } from './hooks/useCsvImport';
 
 function AppInner() {
-  const { user, isAuthenticated, isMockMode, login, loginAsMock, logout, setAuthErrorToast } = useAuth();
-  const { projects, activeProject, isLoading, storageAdapter, selectProject, createNewProject, deleteProject } = useApp();
+  const { 
+    user, 
+    isAuthenticated, 
+    isMockMode, 
+    login, 
+    loginAsMock, 
+    logout, 
+    setAuthErrorToast,
+    showSessionExpiredModal,
+    setShowSessionExpiredModal,
+    authErrorToast
+  } = useAuth();
+  const { projects, activeProject, isLoading, isProjectsLoaded, storageAdapter, selectProject, createNewProject, deleteProject } = useApp();
 
   useHashRouting();
 
@@ -86,11 +97,13 @@ function AppInner() {
 
   const hasTriggeredOnboarding = useRef(false);
   useEffect(() => {
-    if (isAuthenticated && projects.length === 0 && !isLoading && !hasTriggeredOnboarding.current) {
-      hasTriggeredOnboarding.current = true;
-      setShowCreateModal(true);
+    if (isAuthenticated && isProjectsLoaded && !isLoading) {
+      if (projects.length === 0 && !hasTriggeredOnboarding.current) {
+        hasTriggeredOnboarding.current = true;
+        setShowCreateModal(true);
+      }
     }
-  }, [isAuthenticated, projects.length, isLoading]);
+  }, [isAuthenticated, isProjectsLoaded, projects.length, isLoading]);
   const [pendingDuplicateTxn, setPendingDuplicateTxn] = useState<Transaction | null>(null);
   
   const [showBulkDeleteConfirmModal, setShowBulkDeleteConfirmModal] = useState(false);
@@ -197,7 +210,7 @@ function AppInner() {
   };
 
   return (
-    <AppLayout toastMessage={toastMessage}>
+    <AppLayout toastMessage={toastMessage || authErrorToast}>
       <Navbar
         user={user}
         isMockMode={isMockMode}
@@ -343,6 +356,7 @@ function AppInner() {
                 spendingHistory={budgetHooks.spendingHistory}
                 handleSaveBudgetNote={budgetHooks.handleSaveBudgetNote}
                 handleDeleteBudgetNote={budgetHooks.handleDeleteBudgetNote}
+                isLockedMonth={isCurrentMonthLocked}
               />
             </div>
 
@@ -561,6 +575,25 @@ function AppInner() {
           </div>
         )}
       </AnimatePresence>
+
+      {showSessionExpiredModal && (
+        <div data-testid="session-expired-modal" className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="glass-card max-w-sm w-full p-6 rounded-2xl animate-slide-up text-center">
+            <h3 className="font-bold text-base text-rose-400 mb-2">Session Expired</h3>
+            <p className="text-xs text-muted-foreground mb-4">Please log in again.</p>
+            <button
+              data-testid="modal-ok-btn"
+              onClick={() => {
+                setShowSessionExpiredModal(false);
+                logout();
+              }}
+              className="px-5 py-2 rounded-lg bg-primary text-primary-foreground text-xs font-bold"
+            >
+              OK
+            </button>
+          </div>
+        </div>
+      )}
     </AppLayout>
   );
 }

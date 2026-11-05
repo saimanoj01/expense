@@ -55,6 +55,7 @@ export function TransactionItem({
 
   return (
     <div 
+      data-testid="transaction-row"
       className={`group flex items-center justify-between p-4 bg-card/40 hover:bg-card/80 border-b border-border/50 last:border-0 transition-all rounded-xl ${
         isSelected ? 'bg-primary/5' : ''
       } ${isDuplicate ? 'bg-destructive/10' : ''}`}

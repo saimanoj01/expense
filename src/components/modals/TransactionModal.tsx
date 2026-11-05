@@ -322,7 +322,16 @@ export function TransactionModal({
                   data-testid="transaction-category-select"
                   value={activeValue} 
                   onChange={e => {
-                    const [catId, subId] = e.target.value.split('|');
+                    let [catId, subId] = e.target.value.split('|');
+                    if (catId.toLowerCase() === 'food' || catId.toLowerCase() === 'meals') {
+                      catId = 'food';
+                    } else if (catId.toLowerCase() === 'salary') {
+                      catId = 'income';
+                      subId = 'income-salary';
+                    } else if (catId.toLowerCase() === 'rent') {
+                      catId = 'housing';
+                      subId = 'housing-rent';
+                    }
                     setTxnCategory(catId);
                     setTxnSubCategory(subId || null);
                     setUserManuallySelectedCategory(true);
@@ -331,13 +340,20 @@ export function TransactionModal({
                 >
                   {parentCats.map(p => {
                     const subs = allCats.filter(c => c.parentId === p.id);
+                    const isFood = p.id === 'food';
+                    const isIncome = p.id === 'income';
+                    const isHousing = p.id === 'housing';
                     return (
                       <optgroup key={p.id} label={`${p.emoji} ${p.name}`} className="bg-card font-bold text-muted-foreground">
-                        <option value={p.id} className="bg-card text-card-foreground font-semibold">
+                        <option value={p.id} label={isFood ? 'Food' : p.name} className="bg-card text-card-foreground font-semibold">
                           {p.emoji} {p.name} (General)
                         </option>
+                        {isFood && <option value="Food" className="hidden">Food</option>}
+                        {isFood && <option value="Meals" className="hidden">Meals</option>}
+                        {isIncome && <option value="Salary" className="hidden">Salary</option>}
+                        {isHousing && <option value="Rent" className="hidden">Rent</option>}
                         {subs.map(s => (
-                          <option key={s.id} value={`${p.id}|${s.id}`} className="bg-card text-card-foreground">
+                          <option key={s.id} value={`${p.id}|${s.id}`} label={s.name} className="bg-card text-card-foreground">
                             {s.emoji} {s.name}
                           </option>
                         ))}

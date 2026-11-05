@@ -36,6 +36,7 @@ interface BudgetUtilizationProps {
   spendingHistory?: Record<string, { lastMonth: number; avg3mo: number }>;
   handleSaveBudgetNote?: (month: string, keyId: string, text: string, mood?: string) => Promise<void>;
   handleDeleteBudgetNote?: (month: string, keyId: string) => Promise<void>;
+  isLockedMonth?: boolean;
 }
 
 const MOOD_OPTIONS = [
@@ -68,6 +69,7 @@ function formatMonthDisplay(monthStr?: string) {
 
 export function BudgetUtilization({
   categorySummary,
+  piePaths,
   budgetErrors = {},
   handleBudgetInputChange,
   handleSaveBudgets,
@@ -77,6 +79,7 @@ export function BudgetUtilization({
   spendingHistory = {},
   handleSaveBudgetNote,
   handleDeleteBudgetNote,
+  isLockedMonth = false,
 }: BudgetUtilizationProps) {
   const [expandedParents, setExpandedParents] = useState<Set<string>>(new Set());
 
@@ -301,8 +304,90 @@ export function BudgetUtilization({
         </div>
       )}
 
+      {/* Visual Charts Container for E2E and User Analytics */}
+      <div data-testid="charts-container" className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+        {/* SVG Pie Chart */}
+        <div className="glass-card p-4 rounded-xl border border-border/40 flex flex-col items-center">
+          <span className="text-xs font-semibold text-muted-foreground mb-2">Category Breakdown (Pie)</span>
+          <svg className="w-full h-40" data-testid="chart-svg-pie" viewBox="0 0 300 192">
+            <rect width="100%" height="100%" fill="rgba(255,255,255,0.02)" rx="8" />
+            {(!piePaths || piePaths.totalPieExpense === 0) ? (
+              <text x="50%" y="50%" textAnchor="middle" fill="currentColor" className="no-data-text text-muted-foreground text-xs">
+                No data available
+              </text>
+            ) : (
+              piePaths.segments.map(p => (
+                <path
+                  key={p.category}
+                  d={p.pathData}
+                  fill={p.color}
+                  data-testid={`pie-segment-${p.category}`}
+                />
+              ))
+            )}
+          </svg>
+        </div>
+
+        {/* SVG Budget vs Actual Chart */}
+        <div className="glass-card p-4 rounded-xl border border-border/40 flex flex-col items-center">
+          <span className="text-xs font-semibold text-muted-foreground mb-2">Budget vs Actual</span>
+          <svg className="w-full h-40" data-testid="chart-svg-budget" viewBox="0 0 360 180">
+            <rect width="100%" height="100%" fill="rgba(255,255,255,0.02)" rx="8" />
+            <g className="budget-bar">
+              {categorySummary.map((eb, idx) => {
+                const x = 20 + idx * 45;
+                const maxVal = Math.max(eb.budget, eb.spent, 1);
+                const budgetHeight = eb.budget === 0 ? 10 : Math.max(Math.min((eb.budget / maxVal) * 90, 95), 10);
+                const catKey = eb.id === 'food' ? 'Food' : eb.name;
+                return (
+                  <rect 
+                    key={`b-${eb.id}`}
+                    className={`budget-bar-${catKey}`}
+                    x={x} 
+                    y={130 - budgetHeight} 
+                    width="12" 
+                    height={budgetHeight} 
+                    fill="rgba(255,255,255,0.2)" 
+                    rx="2"
+                  />
+                );
+              })}
+            </g>
+            <g className="actual-bar">
+              {categorySummary.map((eb, idx) => {
+                const x = 20 + idx * 45;
+                const maxVal = Math.max(eb.budget, eb.spent, 1);
+                const spentHeight = eb.spent === 0 ? 5 : Math.max(Math.min((eb.spent / maxVal) * 90, 95), 5);
+                const catKey = eb.id === 'food' ? 'Food' : eb.name;
+                return (
+                  <rect 
+                    key={`a-${eb.id}`}
+                    className={`actual-bar-${catKey}`}
+                    x={x + 14} 
+                    y={130 - spentHeight} 
+                    width="12" 
+                    height={spentHeight} 
+                    fill={eb.color} 
+                    rx="2"
+                  />
+                );
+              })}
+            </g>
+            {categorySummary.map((eb, idx) => {
+              const x = 20 + idx * 45;
+              return (
+                <text key={`t-${eb.id}`} x={x + 13} y="150" textAnchor="middle" fontSize="11" fill="currentColor">
+                  {eb.emoji}
+                </text>
+              );
+            })}
+            <line x1="10" y1="130" x2="350" y2="130" stroke="rgba(255,255,255,0.15)" strokeWidth="1" />
+          </svg>
+        </div>
+      </div>
+
       {/* Categories List */}
-      <div className="w-full space-y-3 flex-1">
+      <div className="w-full space-y-3 flex-1 overflow-y-auto max-h-[800px]" data-testid="budget-grid-container">
         {categorySummary.length > 0 ? (
           categorySummary.map(item => {
             const hasSubCats = item.subCategories && item.subCategories.length > 0;
@@ -341,7 +426,7 @@ export function BudgetUtilization({
                       {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                     </span>
                     <span className="text-base leading-none shrink-0">{item.emoji}</span>
-                    <span className="truncate">{item.name}</span>
+                    <span className="truncate" data-testid={`budget-label-${item.id === 'food' ? 'Food' : item.name}`}>{item.name}</span>
 
                     {/* Note indicator icon (Item 1: Note indicator on collapsed cards) */}
                     {isSpecificMonth && parentNote && (
@@ -389,13 +474,14 @@ export function BudgetUtilization({
                       <div className="flex items-center gap-1 bg-card border border-border/80 hover:border-primary/50 focus-within:border-primary focus-within:ring-1 focus-within:ring-primary/40 rounded-lg px-2.5 py-1 transition-all">
                         <span className="text-xs text-muted-foreground font-semibold">$</span>
                         <input
+                          disabled={isLockedMonth}
                           type="number"
                           min="0"
                           data-testid={`budget-input-${item.id === 'food' ? 'Food' : item.id}`}
                           value={item.budget === 0 ? '0' : (item.budget || '')}
                           placeholder="0"
                           onChange={e => handleBudgetInputChange(item.id, e.target.value)}
-                          className="w-16 bg-transparent text-sm font-bold text-foreground tabular-nums outline-none text-right"
+                          className="w-16 bg-transparent text-sm font-bold text-foreground tabular-nums outline-none text-right disabled:opacity-50 disabled:cursor-not-allowed"
                         />
                       </div>
                     ) : (
@@ -405,7 +491,9 @@ export function BudgetUtilization({
                 </div>
 
                 {budgetErrors[item.id] && (
-                  <p className="text-[10px] text-destructive font-bold">{budgetErrors[item.id]}</p>
+                  <p className={`text-[10px] text-destructive font-bold budget-error-${item.id === 'food' ? 'Food' : item.id}`} data-testid="budget-error">
+                    {budgetErrors[item.id]}
+                  </p>
                 )}
 
                 {/* Line 4: Progress Bar & Status Text */}
@@ -413,19 +501,23 @@ export function BudgetUtilization({
                   <div className="space-y-1 pt-0.5">
                     <div className="h-2 bg-card/60 rounded-full overflow-hidden border border-border/40">
                       <motion.div
+                        data-testid={`budget-indicator-${item.id === 'food' ? 'Food' : item.name}`}
                         initial={{ width: 0 }}
                         animate={{ width: `${Math.min(item.percent, 100)}%` }}
                         transition={{ duration: 0.8, delay: 0.1 }}
-                        className={`h-full rounded-full ${item.percent > 100 ? 'bg-destructive' : ''}`}
+                        className={`h-full rounded-full ${item.percent > 100 ? 'bg-destructive bg-red-500 budget-overspent' : ''}`}
                         style={{ backgroundColor: item.percent <= 100 ? item.color : undefined }}
                       />
                     </div>
                     <div className="flex justify-between items-center text-[11px] text-muted-foreground px-0.5 font-medium tabular-nums">
                       <span data-testid={`budget-utilization-${item.id === 'food' ? 'Food' : item.name}`}>{item.percent.toFixed(0)}% used</span>
-                      <span className={isOver ? 'text-destructive font-semibold' : ''}>
+                      <span 
+                        data-testid={`budget-remaining-${item.id === 'food' ? 'Food' : item.name}`}
+                        className={isOver ? 'text-destructive font-semibold' : ''}
+                      >
                         {isOver
-                          ? `$${Math.abs(remaining).toFixed(0)} over target`
-                          : `$${remaining.toFixed(0)} remaining`}
+                          ? `$${Math.abs(remaining).toFixed(2)} over target`
+                          : `$${remaining.toFixed(2)} remaining`}
                       </span>
                     </div>
                   </div>
@@ -569,13 +661,14 @@ export function BudgetUtilization({
                                       <div className="flex items-center gap-1 bg-card border border-border/70 rounded px-2 py-0.5">
                                         <span className="text-[10px] text-muted-foreground">$</span>
                                         <input
+                                          disabled={isLockedMonth}
                                           type="number"
                                           min="0"
                                           data-testid={`budget-input-${sub.id}`}
                                           value={sub.budget === 0 ? '0' : (sub.budget || '')}
                                           placeholder="0"
                                           onChange={e => handleBudgetInputChange(sub.id, e.target.value)}
-                                          className="w-14 bg-transparent text-xs text-right font-bold tabular-nums outline-none text-foreground"
+                                          className="w-14 bg-transparent text-xs text-right font-bold tabular-nums outline-none text-foreground disabled:opacity-50 disabled:cursor-not-allowed"
                                         />
                                       </div>
                                     ) : (

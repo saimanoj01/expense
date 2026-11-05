@@ -90,7 +90,11 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 const getPersistedGoogleUser = (): User => {
   const saved = localStorage.getItem('expense_google_user');
   if (saved) {
-    try { return JSON.parse(saved); } catch {}
+    try {
+      return JSON.parse(saved);
+    } catch (_e) {
+      // Ignore corrupt saved user
+    }
   }
   return { email: 'cloud@example.com', name: 'Google User' };
 };
@@ -103,7 +107,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
     const mockUser = localStorage.getItem('expense_mock_session');
     if (mockUser) {
-      try { return JSON.parse(mockUser); } catch {}
+      try {
+        return JSON.parse(mockUser);
+      } catch (_e) {
+        // Ignore corrupt mock user session
+      }
     }
     return null;
   });

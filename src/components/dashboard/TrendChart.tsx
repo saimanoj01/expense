@@ -72,6 +72,39 @@ export function TrendChart({
     }
   };
 
+  const daysInMonth = trendDetails?.daysInMonth || 30;
+  const range = trendDetails?.maxAmt || 0;
+  const eomProjection = trendDetails?.eomProjection || 0;
+  const effectiveRange = Math.max(range, totalBudget ? totalBudget * 1.1 : 0);
+
+  const idealPacingPathData = useMemo(() => {
+    if (!trendDetails || !totalBudget || totalBudget <= 0) return '';
+    const width = 500;
+    const height = 200;
+    const paddingLeft = 55;
+    const paddingRight = 25;
+    const paddingTop = 25;
+    const paddingBottom = 35;
+    const chartWidth = width - paddingLeft - paddingRight;
+    const chartHeight = height - paddingTop - paddingBottom;
+    const coords: string[] = [];
+    for (let d = 1; d <= daysInMonth; d++) {
+      const idealCum = (totalBudget / daysInMonth) * d;
+      const x = paddingLeft + ((d - 1) / Math.max(daysInMonth - 1, 1)) * chartWidth;
+      const norm = idealCum / effectiveRange;
+      const y = height - paddingBottom - Math.max(0, Math.min(1, norm)) * chartHeight;
+      coords.push(`${x.toFixed(1)} ${y.toFixed(1)}`);
+    }
+    return `M ${coords.join(' L ')}`;
+  }, [trendDetails, totalBudget, daysInMonth, effectiveRange]);
+
+  const pacingStatus = useMemo(() => {
+    if (!trendDetails || totalBudget <= 0) return 'on_track' as const;
+    if (eomProjection > totalBudget * 1.05) return 'over_budget' as const;
+    if (eomProjection < totalBudget * 0.92) return 'under_budget' as const;
+    return 'on_track' as const;
+  }, [trendDetails, eomProjection, totalBudget]);
+
   if (!trendDetails) {
     return (
       <motion.div 
@@ -105,47 +138,13 @@ export function TrendChart({
     prevMonthPathData,
     highestSpendDay,
     dailyAvg,
-    eomProjection,
-    daysInMonth,
     monthlyCashFlows,
     avgMonthlySavings,
     overallSavingsRate,
     bestCashFlowMonth,
     maxCashFlowValue,
-    yTicks,
-    maxAmt: range
+    yTicks
   } = trendDetails;
-
-  // Compute ideal pacing line and pacing status from totalBudget prop
-  const effectiveRange = Math.max(range, totalBudget ? totalBudget * 1.1 : 0);
-
-  const idealPacingPathData = useMemo(() => {
-    if (!totalBudget || totalBudget <= 0) return '';
-    const width = 500;
-    const height = 200;
-    const paddingLeft = 55;
-    const paddingRight = 25;
-    const paddingTop = 25;
-    const paddingBottom = 35;
-    const chartWidth = width - paddingLeft - paddingRight;
-    const chartHeight = height - paddingTop - paddingBottom;
-    const coords: string[] = [];
-    for (let d = 1; d <= daysInMonth; d++) {
-      const idealCum = (totalBudget / daysInMonth) * d;
-      const x = paddingLeft + ((d - 1) / Math.max(daysInMonth - 1, 1)) * chartWidth;
-      const norm = idealCum / effectiveRange;
-      const y = height - paddingBottom - Math.max(0, Math.min(1, norm)) * chartHeight;
-      coords.push(`${x.toFixed(1)} ${y.toFixed(1)}`);
-    }
-    return `M ${coords.join(' L ')}`;
-  }, [totalBudget, daysInMonth, effectiveRange]);
-
-  const pacingStatus = useMemo(() => {
-    if (totalBudget <= 0) return 'on_track' as const;
-    if (eomProjection > totalBudget * 1.05) return 'over_budget' as const;
-    if (eomProjection < totalBudget * 0.92) return 'under_budget' as const;
-    return 'on_track' as const;
-  }, [eomProjection, totalBudget]);
 
   return (
     <motion.div 
@@ -291,8 +290,8 @@ export function TrendChart({
 
               {/* Ideal Pacing Reference Line (Dotted Gray) */}
               {idealPacingPathData && (
-                <path
-                  d={idealPacingPathData}
+                <polyline
+                  points={idealPacingPathData.replace(/M\s+/, '').replace(/\s+L\s+/g, ' ')}
                   fill="none"
                   stroke="rgba(156, 163, 175, 0.5)"
                   strokeWidth="2"
@@ -302,8 +301,8 @@ export function TrendChart({
 
               {/* Previous Month Trajectory Line (Dashed Amber) */}
               {prevMonthPathData && prevMonthCumulativePoints.length > 0 && (
-                <path
-                  d={prevMonthPathData}
+                <polyline
+                  points={prevMonthCumulativePoints.map(p => `${p.x},${p.y}`).join(' ')}
                   fill="none"
                   stroke="rgba(245, 158, 11, 0.6)"
                   strokeWidth="2"
@@ -312,12 +311,12 @@ export function TrendChart({
               )}
 
               {/* Gradient Area under Cumulative Path */}
-              {cumulativeAreaPathData && (
-                <motion.path
+              {cumulativeAreaPathData && cumulativePoints.length > 0 && (
+                <motion.polygon
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   transition={{ duration: 0.8 }}
-                  d={cumulativeAreaPathData}
+                  points={`55,165 ${cumulativePoints.map(p => `${p.x},${p.y}`).join(' ')} 475,165`}
                   fill="url(#cumulativeGradient)"
                 />
               )}
@@ -487,7 +486,7 @@ export function TrendChart({
                         const nonMonthH = ((cf.nonMonthlyExpense || 0) / maxScale) * 130;
 
                         if (fixedH > 0 || flexH > 0 || nonMonthH > 0) {
-                          let currentY = 165;
+                          const currentY = 165;
                           return (
                             <g>
                               {/* Fixed Segment (Blue) */}
