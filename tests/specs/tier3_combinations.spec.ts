@@ -117,6 +117,7 @@ test.describe('Tier 3: Cross-Feature Combinations', () => {
       }
     });
     await appPage.goto();
+    await dashboardPage.ensureBudgetsView();
 
     // Check SVG bar chart displays actual bar higher than budget bar
     const utilitiesActualBar = page.locator('[data-testid="chart-svg-budget"] .actual-bar-Utilities');
@@ -185,6 +186,7 @@ test.describe('Tier 3: Cross-Feature Combinations', () => {
     await appPage.goto();
 
     await dashboardPage.lockCurrentMonth();
+    await dashboardPage.ensureBudgetsView();
 
     // Budget input for category must be set to read-only / disabled
     const budgetInput = page.getByTestId('budget-input-Food');

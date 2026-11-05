@@ -27,6 +27,7 @@ interface NavbarProps {
 
 export function Navbar({
   user,
+  isMockMode,
   activeProject,
   theme,
   toggleTheme,
@@ -58,7 +59,15 @@ export function Navbar({
       </button>
 
       {/* Right: Search & Theme (only expose theme-toggle-btn testId when unauthenticated so Sidebar owns it when authenticated) */}
-      <div className="flex items-center gap-1 shrink-0">
+      <div className="flex items-center gap-1.5 shrink-0">
+        {!isAuthenticated && isMockMode && (
+          <span
+            data-testid="mock-banner"
+            className="mock-mode-banner px-2 py-0.5 rounded text-label text-muted-foreground bg-surface2 border border-border"
+          >
+            Demo data<span className="sr-only"> (Mock Mode)</span>
+          </span>
+        )}
         {isAuthenticated && onOpenCommandPalette && (
           <button
             type="button"

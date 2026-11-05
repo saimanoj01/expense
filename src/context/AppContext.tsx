@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
 import { Project, StorageAdapter, LocalStorageAdapter, GoogleSheetsAdapter } from '../services/storage';
 import { useAuth } from './AuthContext';
-import { getCurrentLocalMonth } from '../utils/navigation';
+import { getCurrentLocalMonth, parseHash } from '../utils/navigation';
 
 export type ViewType = 'project-selector' | 'dashboard';
 
@@ -68,8 +68,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const list = await storageAdapter.getProjects();
       setProjects(list);
       
-      // Determine target project ID to select on initialization
-      const targetProjectId = localStorage.getItem('expense_active_project_id');
+      // Determine target project ID to select on initialization (prefer query param from hash if present)
+      const parsedInitial = parseHash(window.location.hash);
+      const targetProjectId = parsedInitial.projectId || localStorage.getItem('expense_active_project_id');
       let found = targetProjectId ? list.find(p => p.id === targetProjectId) : undefined;
       if (!found && list.length > 0) {
         found = list[0];
@@ -79,7 +80,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setCurrentView('dashboard');
         localStorage.setItem('expense_active_project_id', found.id);
         if (!window.location.hash || window.location.hash === '#/' || window.location.hash === '#' || window.location.hash.startsWith('#/dashboard')) {
-          window.location.hash = `#/month/${getCurrentLocalMonth()}`;
+          const targetMonth = parsedInitial.month || getCurrentLocalMonth();
+          window.history.replaceState(null, '', `#/month/${targetMonth}`);
         }
       } else {
         setActiveProject(null);
@@ -121,6 +123,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (found) {
       setActiveProject(found);
       setCurrentView('dashboard');
+      localStorage.setItem('expense_active_project_id', projectId);
+    } else if (projects.length === 0) {
+      // Cold-load before loadProjects() resolves: persist requested projectId so loadProjects() picks it up
       localStorage.setItem('expense_active_project_id', projectId);
     } else if (projects.length > 0) {
       setActiveProject(null);

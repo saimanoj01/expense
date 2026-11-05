@@ -187,6 +187,13 @@ export const OverviewHero: React.FC<OverviewHeroProps> = ({
               className={`text-label tabular-nums num ${deltaToneClass(incomeDelta.tone)}`}
             >
               · {incomeDelta.text}
+              {hasPriorMonthData && priorIncome !== undefined && priorIncome > 0 && (
+                <span className="sr-only">
+                  {' '}
+                  {((totalIncome - priorIncome) / priorIncome) * 100 >= 0 ? '+' : ''}
+                  {(((totalIncome - priorIncome) / priorIncome) * 100).toFixed(1)}% MoM
+                </span>
+              )}
             </span>
           </p>
         </div>
@@ -234,6 +241,13 @@ export const OverviewHero: React.FC<OverviewHeroProps> = ({
               className={`sr-only ${deltaToneClass(incomeDelta.tone)}`}
             >
               {incomeDelta.text}
+              {hasPriorMonthData && priorIncome !== undefined && priorIncome > 0 && (
+                <span>
+                  {' '}
+                  {((totalIncome - priorIncome) / priorIncome) * 100 >= 0 ? '+' : ''}
+                  {(((totalIncome - priorIncome) / priorIncome) * 100).toFixed(1)}% MoM
+                </span>
+              )}
             </span>
           </p>
         </div>

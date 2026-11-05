@@ -66,7 +66,7 @@ export function BudgetsView({
           <div className="flex items-center gap-4">
             <div className="text-right">
               <span className="text-[10px] text-muted-foreground uppercase font-semibold">Total Target</span>
-              <p className="text-base font-extrabold font-mono tabular-nums text-foreground">
+              <p data-testid="kpi-total-budget" className="text-base font-extrabold tabular-nums num text-foreground">
                 {formatCurrency(totalBudget)}
               </p>
             </div>

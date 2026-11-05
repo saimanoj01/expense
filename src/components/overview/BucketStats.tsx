@@ -157,6 +157,13 @@ export const BucketStats: React.FC<BucketStatsProps> = ({
               className={`sr-only sm:not-sr-only sm:inline-block text-label tabular-nums num mt-0.5 ${deltaToneClass(d.tone)}`}
             >
               {d.text}
+              {hasPriorMonthData && col.prior !== undefined && col.prior > 0 && (
+                <span className="sr-only">
+                  {' '}
+                  {((col.amount - col.prior) / col.prior) * 100 >= 0 ? '+' : ''}
+                  {(((col.amount - col.prior) / col.prior) * 100).toFixed(1)}% MoM
+                </span>
+              )}
             </span>
           </motion.button>
         );

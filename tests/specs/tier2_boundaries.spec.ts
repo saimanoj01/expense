@@ -325,6 +325,7 @@ test.describe('Tier 2: Boundary, Edge and Error Handling Cases', () => {
     });
 
     test('16. Negative Budget Limits: Disallows entering negative value configurations inside budget inputs', async ({ page }) => {
+      await dashboardPage.ensureBudgetsView();
       const input = page.getByTestId('budget-input-Food');
       await input.fill('-50');
       await dashboardPage.saveBudgets();
@@ -352,6 +353,7 @@ test.describe('Tier 2: Boundary, Edge and Error Handling Cases', () => {
         }
       });
       await appPage.goto();
+      await dashboardPage.ensureBudgetsView();
       const progressIndicator = page.getByTestId('budget-indicator-Food');
       await expect(progressIndicator).toHaveClass(/budget-overspent|bg-red-500/);
     });
@@ -367,6 +369,7 @@ test.describe('Tier 2: Boundary, Edge and Error Handling Cases', () => {
         }
       });
       await appPage.goto();
+      await dashboardPage.ensureBudgetsView();
       const grid = page.getByTestId('budget-grid-container');
       await expect(grid).toBeVisible();
       // Grid container should have style allowing scrolling without breaking viewport layout
@@ -375,6 +378,7 @@ test.describe('Tier 2: Boundary, Edge and Error Handling Cases', () => {
     });
 
     test('20. Invalid Color Inputs: Applies fallback defaults when category hex colors are invalid', async ({ page }) => {
+      await dashboardPage.ensureBudgetsView();
       await page.getByTestId('open-add-category-btn').click();
       await page.getByTestId('edit-category-Food-btn').click();
       await page.getByTestId('edit-category-color-input').evaluate((el: any) => {
@@ -622,7 +626,11 @@ test.describe('Tier 2: Boundary, Edge and Error Handling Cases', () => {
         transactions: { p1: [] }
       });
       await appPage.goto();
+      await dashboardPage.ensureBudgetsView();
       await expect(page.locator('[data-testid="chart-svg-pie"] .no-data-text')).toBeVisible();
+      await page.evaluate(() => {
+        window.location.hash = '#/trends';
+      });
       await expect(page.locator('[data-testid="chart-svg-trend"] .no-data-text')).toBeVisible();
     });
 
@@ -636,6 +644,9 @@ test.describe('Tier 2: Boundary, Edge and Error Handling Cases', () => {
         }
       });
       await appPage.goto();
+      await page.evaluate(() => {
+        window.location.hash = '#/trends';
+      });
       const trendPath = page.locator('[data-testid="chart-svg-trend"] path');
       await expect(trendPath).toBeVisible();
     });
@@ -653,6 +664,7 @@ test.describe('Tier 2: Boundary, Edge and Error Handling Cases', () => {
         }
       });
       await appPage.goto();
+      await dashboardPage.ensureBudgetsView();
       // Ensure budget vs actual chart handles $0 budget ratio gracefully without Nan or crash
       await expect(dashboardPage.budgetChart).toBeVisible();
     });
@@ -668,6 +680,7 @@ test.describe('Tier 2: Boundary, Edge and Error Handling Cases', () => {
         }
       });
       await appPage.goto();
+      await dashboardPage.ensureBudgetsView();
       const budgetLabel = page.locator(`[data-testid="budget-label-${giantCategory}"]`);
       const textOverflow = await budgetLabel.evaluate(el => window.getComputedStyle(el).textOverflow);
       expect(textOverflow).toBe('ellipsis');
@@ -686,6 +699,9 @@ test.describe('Tier 2: Boundary, Edge and Error Handling Cases', () => {
         }
       });
       await appPage.goto();
+      await page.evaluate(() => {
+        window.location.hash = '#/trends';
+      });
       // Trend area chart should plot successfully below baseline
       await expect(dashboardPage.trendChart).toBeVisible();
     });

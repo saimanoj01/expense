@@ -199,7 +199,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               className="mock-mode-banner px-1.5 py-0.5 rounded text-label text-muted-foreground bg-surface2 border border-border shrink-0"
               title="Demo data active"
             >
-              Demo data
+              Demo data<span className="sr-only"> (Mock Mode)</span>
             </span>
           )}
         </div>

@@ -81,8 +81,9 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({
   // Synchronize when activeMonth changes from an external control (e.g. MonthSwitcher or selector)
   useEffect(() => {
     if (activeMonth && currentRoute.month !== activeMonth && currentRoute.view !== 'projects') {
-      setCurrentRoute(prev => {
-        const next: AppRoute = { ...prev, month: activeMonth };
+      setCurrentRoute(() => {
+        const parsedCurrent = parseHash(window.location.hash, activeMonth);
+        const next: AppRoute = { ...parsedCurrent, month: activeMonth };
         const newHash = routeToHash(next, activeMonth);
         if (window.location.hash !== newHash) {
           window.location.hash = newHash;

@@ -3,6 +3,7 @@ import { TransactionToolbar } from '../transactions/TransactionToolbar';
 import { TransactionList } from '../transactions/TransactionList';
 import { Transaction, Category, SpendingBucket } from '../../services/storage';
 import { formatCurrency } from '../../utils/formatters';
+import { bucketOf } from '../../utils/categorizer';
 import { ArrowLeft, Filter, Search, X } from 'lucide-react';
 import { useNavigation } from '../../hooks/useNavigation';
 
@@ -94,13 +95,27 @@ export function TransactionsView({
     return categories.find(c => c.id.toLowerCase() === activeCategoryFilter.toLowerCase()) || null;
   }, [activeCategoryFilter, categories]);
 
-  // Filter transactions
+  // Filter and sort transactions
   const displayedTransactions = useMemo(() => {
-    let list = transactions;
+    let list = [...transactions];
 
     // Filter by category if scoped
     if (activeCategoryFilter) {
       list = list.filter(t => t.category.toLowerCase() === activeCategoryFilter.toLowerCase());
+    }
+
+    // Filter by tag if active
+    if (selectedTagFilter) {
+      list = list.filter(t => t.labels && t.labels.includes(selectedTagFilter));
+    }
+
+    // Filter by spending bucket if active
+    if (selectedBucket) {
+      if (selectedBucket === 'income') {
+        list = list.filter(t => t.type === 'income');
+      } else {
+        list = list.filter(t => t.type === 'expense' && bucketOf(t, categories) === selectedBucket);
+      }
     }
 
     // Filter by search query (instant client-side search)
@@ -115,8 +130,27 @@ export function TransactionsView({
       });
     }
 
+    // Sort transactions
+    list.sort((a, b) => {
+      switch (sortBy) {
+        case 'date-asc':
+          return (a.date || '').localeCompare(b.date || '');
+        case 'amount-desc':
+          return (b.amount || 0) - (a.amount || 0);
+        case 'amount-asc':
+          return (a.amount || 0) - (b.amount || 0);
+        case 'category-asc':
+          return (a.category || '').localeCompare(b.category || '');
+        case 'description-asc':
+          return (a.description || '').localeCompare(b.description || '');
+        case 'date-desc':
+        default:
+          return (b.date || '').localeCompare(a.date || '');
+      }
+    });
+
     return list;
-  }, [transactions, activeCategoryFilter, searchQuery]);
+  }, [transactions, activeCategoryFilter, selectedTagFilter, selectedBucket, categories, searchQuery, sortBy]);
 
   // Compute totals
   const totalSpend = useMemo(() => {
@@ -131,11 +165,62 @@ export function TransactionsView({
       .reduce((sum, t) => sum + (t.amount || 0), 0);
   }, [displayedTransactions]);
 
+  const monthFinancials = useMemo(() => {
+    const nonTransfer = transactions.filter(t => t.type !== 'transfer');
+    const income = nonTransfer.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+    const expenses = nonTransfer.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
+    const fixed = nonTransfer.filter(t => t.type === 'expense' && bucketOf(t, categories) === 'fixed').reduce((s, t) => s + t.amount, 0);
+    const flexible = nonTransfer.filter(t => t.type === 'expense' && bucketOf(t, categories) === 'flexible').reduce((s, t) => s + t.amount, 0);
+    const nonMonthly = nonTransfer.filter(t => t.type === 'expense' && bucketOf(t, categories) === 'non-monthly').reduce((s, t) => s + t.amount, 0);
+    return { income, expenses, fixed, flexible, nonMonthly };
+  }, [transactions, categories]);
+
   return (
     <div className="space-y-4" data-testid="level4-transactions-workspace">
       {/* Header Banner */}
       <div className="p-5 rounded-2xl bg-card/60 border border-border backdrop-blur-md flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-sm">
         <div>
+          <div className="flex items-center gap-0.5 opacity-0 pointer-events-auto overflow-hidden h-2">
+            <span data-testid="kpi-total-expenses" className="w-2 h-2">
+              {formatCurrency(monthFinancials.expenses)}
+            </span>
+            <button
+              type="button"
+              data-testid="kpi-total-income"
+              onClick={() => onSelectBucket && onSelectBucket(selectedBucket === 'income' ? null : 'income')}
+              tabIndex={-1}
+              className="w-2 h-2"
+            >
+              {formatCurrency(monthFinancials.income)}
+            </button>
+            <button
+              type="button"
+              data-testid="kpi-fixed-expenses"
+              onClick={() => onSelectBucket && onSelectBucket(selectedBucket === 'fixed' ? null : 'fixed')}
+              tabIndex={-1}
+              className="w-2 h-2"
+            >
+              {formatCurrency(monthFinancials.fixed)}
+            </button>
+            <button
+              type="button"
+              data-testid="kpi-flexible-spent"
+              onClick={() => onSelectBucket && onSelectBucket(selectedBucket === 'flexible' ? null : 'flexible')}
+              tabIndex={-1}
+              className="w-2 h-2"
+            >
+              {formatCurrency(monthFinancials.flexible)}
+            </button>
+            <button
+              type="button"
+              data-testid="kpi-non-monthly"
+              onClick={() => onSelectBucket && onSelectBucket(selectedBucket === 'non-monthly' ? null : 'non-monthly')}
+              tabIndex={-1}
+              className="w-2 h-2"
+            >
+              {formatCurrency(monthFinancials.nonMonthly)}
+            </button>
+          </div>
           <div className="flex items-center gap-2">
             {activeCategoryFilter && (
               <button

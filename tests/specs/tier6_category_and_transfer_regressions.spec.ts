@@ -54,6 +54,7 @@ test.describe('Tier 6: Category Dropdown & Transfer Regressions', () => {
       }
     });
     await appPage.goto();
+    await dashboardPage.ensureTransactionsView();
 
     const rowSelect = page.getByTestId('transaction-category-select-t1');
     await expect(rowSelect).toBeVisible();
@@ -78,6 +79,7 @@ test.describe('Tier 6: Category Dropdown & Transfer Regressions', () => {
       }
     });
     await appPage.goto();
+    await dashboardPage.ensureTransactionsView();
 
     const rowSelect = page.getByTestId('transaction-category-select-t1');
     await expect(rowSelect).toBeVisible();
@@ -99,6 +101,7 @@ test.describe('Tier 6: Category Dropdown & Transfer Regressions', () => {
       }
     });
     await appPage.goto();
+    await dashboardPage.ensureTransactionsView();
 
     // Total expenses should only reflect $100.00, excluding $500.00 transfer
     await expect(page.getByTestId('kpi-total-expenses')).toContainText('$100.00');
@@ -133,6 +136,7 @@ test.describe('Tier 6: Category Dropdown & Transfer Regressions', () => {
       }
     });
     await appPage.goto();
+    await dashboardPage.ensureTransactionsView();
 
     const rowSelect = page.getByTestId('transaction-category-select-t1');
     await expect(rowSelect).toBeVisible();

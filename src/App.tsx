@@ -111,6 +111,14 @@ function MainRouter({
       availableMonths={txnHooks.availableMonths}
       onSelectMonth={txnHooks.setSelectedMonth}
       onOpenReport={() => setShowMonthlyReportModal(true)}
+      onOpenShare={() => setShowShareModal(true)}
+      onOpenCsvWizard={() => csvHooks.setShowCsvWizard(true)}
+      onCsvFileUpload={csvHooks.handleCsvFileUpload}
+      onOpenCategoryManager={() => setShowCategoryManagerModal(true)}
+      onOpenAddTxn={handleOpenAddTxn}
+      isLockedMonth={isCurrentMonthLocked}
+      onLockMonth={handleLockCurrentMonth}
+      onUnlockMonth={handleUnlockCurrentMonth}
     />
   );
 

@@ -226,7 +226,7 @@ test.describe('Tier 5 Part 2: Adversarial Coverage Hardening Audit', () => {
         }
       });
 
-      await page.goto('/dashboard');
+      await page.goto('/#/transactions');
 
       // First select month 2026-05 directly -> Edit and Delete buttons should be hidden
       await page.getByTestId('month-selector').selectOption('2026-05');
@@ -255,7 +255,7 @@ test.describe('Tier 5 Part 2: Adversarial Coverage Hardening Audit', () => {
         }
       });
 
-      await page.goto('/#dashboard?month=2026-07');
+      await page.goto('/#/budgets?month=2026-07');
 
       // Verify budget input is disabled in UI when current month is locked
       await expect(page.getByTestId('budget-input-Food')).toBeDisabled();
@@ -286,7 +286,7 @@ test.describe('Tier 5 Part 2: Adversarial Coverage Hardening Audit', () => {
         locks: { 'proj-zero': [] }
       });
 
-      await page.goto('/dashboard');
+      await page.goto('/#/budgets');
 
       const budgetBar = page.locator('.budget-bar-Food');
       const actualBar = page.locator('.actual-bar-Food');
@@ -305,7 +305,7 @@ test.describe('Tier 5 Part 2: Adversarial Coverage Hardening Audit', () => {
         locks: { 'proj-empty-pie': [] }
       });
 
-      await page.goto('/dashboard');
+      await page.goto('/#/budgets');
       const pieSvgText = page.getByTestId('chart-svg-pie').locator('text.no-data-text');
       await expect(pieSvgText).toHaveText('No data available');
     });
@@ -330,7 +330,7 @@ test.describe('Tier 5 Part 2: Adversarial Coverage Hardening Audit', () => {
         locks: { 'proj-xss': [] }
       });
 
-      await page.goto('/dashboard');
+      await page.goto('/#/budgets');
       await page.getByTestId('open-add-category-btn').click();
 
       // Check the data-testid produced for the category edit button
@@ -362,7 +362,7 @@ test.describe('Tier 5 Part 2: Adversarial Coverage Hardening Audit', () => {
         locks: { 'proj-notes': [] }
       });
 
-      await page.goto('/dashboard');
+      await page.goto('/#/transactions');
 
       const txRow = page.getByTestId('transaction-row');
       await expect(txRow).toContainText('Secret Dinner');

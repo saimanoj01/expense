@@ -413,5 +413,65 @@ test.describe('Tier 12: v3 Progressive Disclosure Drill-Down Experience', () => 
     await expect(page.getByTestId('import-csv-trigger-btn')).toBeVisible();
     await expect(page.getByTestId('gemini-api-key-input')).toBeVisible();
   });
+
+  test('17. v4 Canonical Route, #/dashboard Redirect, Deficit Hero Copy, and MoM Delta Semantic Tone', async ({ page }) => {
+    // 1. Default route '/' redirects to canonical '#/month/YYYY-MM'
+    await page.goto('/');
+    await expect(page.getByTestId('hero-savings-card')).toBeVisible();
+    const initialHash = await page.evaluate(() => window.location.hash);
+    expect(initialHash).toMatch(/^#\/month\/\d{4}-\d{2}$/);
+
+    // 2. Legacy '#/dashboard?project=proj-v3&month=2026-10' redirects cleanly via replaceState preserving month
+    await page.goto('/#/dashboard?project=proj-v3&month=2026-10');
+    await expect(page.getByTestId('hero-savings-card')).toBeVisible();
+    const redirectedHash = await page.evaluate(() => window.location.hash);
+    expect(redirectedHash).toBe('#/month/2026-10');
+
+    // 3. Seed prior month (Oct 2026) and deficit expense in Nov 2026 via addInitScript, then reload on Nov 2026
+    await page.addInitScript(() => {
+      const raw = window.localStorage.getItem('expense_txs_proj-v3');
+      const txs = raw ? JSON.parse(raw) : [];
+      txs.push(
+        {
+          id: 'tx-oct-rent',
+          date: '2026-10-01',
+          category: 'housing',
+          amount: 2000,
+          type: 'expense',
+          spendingBucket: 'fixed',
+          description: 'October Rent',
+          notes: '',
+          labels: ['fixed'],
+          hash: 'h-oct-rent',
+        },
+        {
+          id: 'tx-deficit-spike',
+          date: '2026-11-20',
+          category: 'housing',
+          amount: 5000,
+          type: 'expense',
+          spendingBucket: 'non-monthly',
+          description: 'Emergency Roof Repair',
+          notes: '',
+          labels: ['home'],
+          hash: 'h-deficit-spike',
+        }
+      );
+      window.localStorage.setItem('expense_txs_proj-v3', JSON.stringify(txs));
+    });
+    await page.goto('/#/month/2026-11');
+    await page.reload();
+
+    // MoM Delta Semantic Tone in Nov 2026 (Fixed spent $2,400 vs Oct $2,000 -> expense increase is negative tone)
+    const fixedDelta = page.getByTestId('mom-delta-fixed');
+    await expect(fixedDelta).toBeVisible();
+    await expect(fixedDelta).toContainText('↑');
+    await expect(fixedDelta).toHaveClass(/text-negative/);
+
+    // Deficit month displays overspent hero copy ("You overspent by") and hatched ribbon
+    const heroCard = page.getByTestId('hero-savings-card');
+    await expect(heroCard).toContainText('You overspent by');
+    await expect(page.getByTestId('income-allocation-ring')).toBeVisible();
+  });
 });
 

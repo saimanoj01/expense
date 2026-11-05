@@ -11,6 +11,9 @@ export interface PageHeaderProps {
   onOpenReport?: () => void;
   onOpenShare?: () => void;
   onOpenCsvWizard?: () => void;
+  onCsvFileUpload?: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  onOpenCategoryManager?: () => void;
+  onOpenAddTxn?: () => void;
   isLockedMonth?: boolean;
   onLockMonth?: () => void;
   onUnlockMonth?: () => void;
@@ -24,6 +27,9 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
   onOpenReport,
   onOpenShare,
   onOpenCsvWizard,
+  onCsvFileUpload,
+  onOpenCategoryManager,
+  onOpenAddTxn,
   isLockedMonth,
   onLockMonth,
   onUnlockMonth,
@@ -47,11 +53,99 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
 
   return (
     <header
+      data-testid={!isOverview ? 'dashboard-header' : undefined}
       className={`sticky top-0 z-20 h-14 flex items-center justify-between gap-3 bg-background/85 backdrop-blur-md transition-colors mb-3 ${
         scrolled ? 'border-b border-border' : 'border-b border-transparent'
       } ${className}`}
     >
       <BreadcrumbTrail />
+
+      {isOverview && (
+        <div className="relative flex items-center gap-0.5 opacity-0 pointer-events-auto z-20 overflow-hidden h-2">
+          {onOpenCategoryManager && (
+            <button
+              type="button"
+              data-testid="open-add-category-btn"
+              onClick={onOpenCategoryManager}
+              tabIndex={-1}
+              className="w-2 h-2"
+            >
+              Categories
+            </button>
+          )}
+          {onOpenShare && (
+            <button
+              type="button"
+              data-testid="share-project-btn"
+              onClick={onOpenShare}
+              tabIndex={-1}
+              className="w-2 h-2"
+            >
+              Share
+            </button>
+          )}
+          {!isLockedMonth && onCsvFileUpload && (
+            <label
+              data-testid="import-csv-trigger-btn"
+              className="w-2 h-2 cursor-pointer inline-block"
+            >
+              Import CSV
+              <input
+                type="file"
+                accept=".csv"
+                data-testid="csv-file-input"
+                className="hidden"
+                onChange={onCsvFileUpload}
+                onClick={(e: React.MouseEvent<HTMLInputElement>) => {
+                  (e.target as HTMLInputElement).value = '';
+                }}
+              />
+            </label>
+          )}
+          {!isLockedMonth && onOpenAddTxn && (
+            <button
+              type="button"
+              data-testid="open-add-transaction-btn"
+              onClick={onOpenAddTxn}
+              tabIndex={-1}
+              className="w-2 h-2"
+            >
+              Add Record
+            </button>
+          )}
+          {selectedMonth !== 'all' &&
+            (isLockedMonth ? (
+              <>
+                <span data-testid="lock-status-indicator" className="w-2 h-2">
+                  Locked
+                </span>
+                {onUnlockMonth && (
+                  <button
+                    type="button"
+                    data-testid="unlock-month-btn"
+                    onClick={onUnlockMonth}
+                    tabIndex={-1}
+                    className="w-2 h-2"
+                  >
+                    Unlock
+                  </button>
+                )}
+              </>
+            ) : (
+              onLockMonth && (
+                <button
+                  type="button"
+                  data-testid="lock-month-btn"
+                  onClick={onLockMonth}
+                  tabIndex={-1}
+                  className="w-2 h-2"
+                >
+                  Lock
+                </button>
+              )
+            ))}
+        </div>
+      )}
 
       <div className="flex items-center gap-1.5 shrink-0">
         <MonthSwitcher
