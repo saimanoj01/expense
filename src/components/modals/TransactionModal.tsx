@@ -163,7 +163,7 @@ export function TransactionModal({
         </button>
       </div>
         
-        <form onSubmit={handleSaveTransaction} className="space-y-4">
+        <form onSubmit={handleSaveTransaction} noValidate className="space-y-4">
           <div className="flex gap-2 p-1 bg-card/50 rounded-xl border border-border/50" data-testid="transaction-type-toggle" data-active-type={txnType}>
             <button
               type="button"
@@ -246,7 +246,7 @@ export function TransactionModal({
                   placeholder="0.00"
                 />
               </div>
-              {amountError && <p className="text-destructive text-xs mt-1 font-bold">{amountError}</p>}
+              {amountError && <p data-testid="amount-error" className="text-destructive text-xs mt-1 font-bold field-error-amount">{amountError}</p>}
             </div>
             <div>
               <label className="block text-sm font-bold text-muted-foreground mb-1">Date *</label>
@@ -256,7 +256,7 @@ export function TransactionModal({
                 value={txnDate} onChange={e => setTxnDate(e.target.value)}
                 className={`w-full bg-card/50 border rounded-xl px-4 py-2.5 font-medium focus:ring-2 focus:ring-primary outline-none transition-all ${dateError ? 'border-destructive focus:ring-destructive' : 'border-border'}`}
               />
-              {dateError && <p className="text-destructive text-xs mt-1 font-bold">{dateError}</p>}
+              {dateError && <p data-testid="date-error" className="text-destructive text-xs mt-1 font-bold field-error-date">{dateError}</p>}
             </div>
           </div>
           
@@ -290,7 +290,7 @@ export function TransactionModal({
               className={`w-full bg-card/50 border rounded-xl px-4 py-2.5 font-medium focus:ring-2 focus:ring-primary outline-none transition-all ${descError ? 'border-destructive focus:ring-destructive' : 'border-border'}`}
               placeholder="What was this for? (e.g. Credit Card Payment, Whole Foods)"
             />
-            {descError && <p className="text-destructive text-xs mt-1 font-bold">{descError}</p>}
+            {descError && <p data-testid="desc-error" className="text-destructive text-xs mt-1 font-bold field-error-desc">{descError}</p>}
           </div>
 
           <div>

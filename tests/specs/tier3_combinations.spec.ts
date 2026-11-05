@@ -203,7 +203,7 @@ test.describe('Tier 3: Cross-Feature Combinations', () => {
         p1: [{ month: '2026-05', locked: true }] // May locked, June unlocked
       }
     });
-    await appPage.goto();
+    await page.goto('/#month/2026-06');
 
     await page.getByTestId('import-csv-trigger-btn').click();
     // One transaction in June (unlocked), one in May (locked)

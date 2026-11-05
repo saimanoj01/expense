@@ -186,7 +186,7 @@ test.describe('Tier 5 Part 2: Adversarial Coverage Hardening Audit', () => {
       });
 
       await page.getByTestId('csv-next-step-btn').click();
-      const statusCell = page.getByTestId('csv-preview-table').locator('tbody tr').nth(0).locator('td').nth(4);
+      const statusCell = page.getByTestId('csv-preview-table').locator('tbody tr').nth(0).locator('td').last();
       // Because computeTxHash hashes raw exact casing, and string equality checks case-insensitive match,
       // verify whether duplicate detection caught it via fallback or hash
       const rowStatus = await statusCell.innerText();
@@ -255,7 +255,7 @@ test.describe('Tier 5 Part 2: Adversarial Coverage Hardening Audit', () => {
         }
       });
 
-      await page.goto('/dashboard');
+      await page.goto('/#month/2026-07');
 
       // Verify budget input is disabled in UI when current month is locked
       await expect(page.getByTestId('budget-input-Food')).toBeDisabled();
@@ -331,6 +331,7 @@ test.describe('Tier 5 Part 2: Adversarial Coverage Hardening Audit', () => {
       });
 
       await page.goto('/dashboard');
+      await page.getByTestId('open-add-category-btn').click();
 
       // Check the data-testid produced for the category edit button
       const editBtn = page.locator('[data-testid="edit-category-Food <script>-btn"]');

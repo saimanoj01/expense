@@ -119,12 +119,26 @@ export function useTransactions(
   const getInitialMonth = () => {
     try {
       const hash = window.location.hash;
-      if (hash.startsWith('#/dashboard')) {
-        const params = new URLSearchParams(hash.split('?')[1] || '');
-        const m = params.get('month');
-        if (m && /^\d{4}-\d{2}$/.test(m)) {
+      if (hash) {
+        const clean = hash.replace(/^#\/?/, '');
+        if (clean.startsWith('month/')) {
+          const m = clean.split('/')[1];
+          if (m && /^\d{4}-\d{2}$/.test(m)) {
+            userExplicitlySelectedMonth.current = true;
+            return m;
+          }
+        }
+        if (clean.startsWith('dashboard')) {
+          const params = new URLSearchParams(hash.split('?')[1] || '');
+          const m = params.get('month');
+          if (m && /^\d{4}-\d{2}$/.test(m)) {
+            userExplicitlySelectedMonth.current = true;
+            return m;
+          }
+        }
+        if (/^\d{4}-\d{2}$/.test(clean)) {
           userExplicitlySelectedMonth.current = true;
-          return m;
+          return clean;
         }
       }
     } catch {
@@ -148,6 +162,13 @@ export function useTransactions(
               }
             }
             if (latest) return latest;
+          }
+        }
+        const rawLocks = localStorage.getItem(`expense_locks_${projId}`);
+        if (rawLocks) {
+          const parsedLocks = JSON.parse(rawLocks);
+          if (Array.isArray(parsedLocks) && parsedLocks.length > 0 && parsedLocks[0]?.month) {
+            return parsedLocks[0].month;
           }
         }
       }

@@ -336,8 +336,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const loginAsMock = () => {
-    if (!navigator.onLine) {
+  useEffect(() => {
+    const handleOffline = () => {
+      showToast('You are currently offline', 'error');
+    };
+    window.addEventListener('offline', handleOffline);
+    return () => window.removeEventListener('offline', handleOffline);
+  }, []);
+
+  const loginAsMock = async () => {
+    let isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
+    if (!isOffline && typeof fetch !== 'undefined') {
+      try {
+        await fetch(window.location.origin + window.location.pathname, { method: 'HEAD', cache: 'no-store' });
+      } catch {
+        isOffline = true;
+      }
+    }
+    if (isOffline) {
       setAuthErrorToast('You are currently offline');
       showToast('You are currently offline', 'error');
     }

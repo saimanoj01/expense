@@ -233,9 +233,9 @@ export const Level1MonthOverview: React.FC<Level1MonthOverviewProps> = ({
             </span>
           </div>
 
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-card border border-border/60 text-xs font-semibold">
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-card border border-border/60 text-xs font-semibold overflow-hidden">
             <span className="text-muted-foreground">Expenses:</span>
-            <span className="font-bold text-foreground font-mono" data-testid="kpi-total-expenses">
+            <span className="font-bold text-foreground font-mono truncate max-w-[160px] overflow-hidden" data-testid="kpi-total-expenses">
               {formatCurrency(totalExpenses)}
             </span>
           </div>

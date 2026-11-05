@@ -95,7 +95,7 @@ export const TransactionItem = forwardRef<HTMLDivElement, TransactionItemProps>(
             )}
           </div>
           <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1 flex-wrap">
-            <span>{transaction.date}</span>
+            <span data-testid="transaction-date-row">{transaction.date}</span>
             <span className="w-1 h-1 rounded-full bg-border shrink-0" />
             {isLockedMonth ? (
               <span className="truncate" title={subCat ? `${parentCat?.name} > ${subCat.name}` : parentCat?.name}>

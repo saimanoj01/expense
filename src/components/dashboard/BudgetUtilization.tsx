@@ -656,8 +656,8 @@ export function BudgetUtilization({
                         initial={{ width: 0 }}
                         animate={{ width: `${Math.min(item.percent, 100)}%` }}
                         transition={{ duration: 0.8, delay: 0.1 }}
-                        className={`h-full rounded-full ${item.percent > 100 ? 'bg-destructive bg-red-500 budget-overspent' : ''}`}
-                        style={{ backgroundColor: item.percent <= 100 ? item.color : undefined }}
+                        className={`h-full rounded-full ${isOver || item.percent > 100 ? 'bg-destructive bg-red-500 budget-overspent' : ''}`}
+                        style={{ backgroundColor: !isOver && item.percent <= 100 ? item.color : undefined }}
                       />
                     </div>
                     <div className="flex justify-between items-center text-[11px] text-muted-foreground px-0.5 font-medium tabular-nums">

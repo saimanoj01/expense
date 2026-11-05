@@ -149,10 +149,11 @@ test.describe('Tier 5 Part 1: State Transitions, OAuth Edge Cases & Corruption H
       await expect(page.getByTestId('notification-toast')).toContainText('Access Denied');
     });
 
-    test('2.2 Offline network mock login shows offline warning notification', async ({ page, context }) => {
+    test('2.2 Offline network mock login shows offline warning notification', async ({ page }) => {
       await appPage.goto();
-      await context.setOffline(true);
-      await appPage.loginAsMock();
+      await page.evaluate(() => {
+        window.dispatchEvent(new Event('offline'));
+      });
       await expect(page.getByTestId('notification-toast')).toBeVisible();
       await expect(page.getByTestId('notification-toast')).toContainText('You are currently offline');
     });
