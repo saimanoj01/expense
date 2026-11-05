@@ -29,6 +29,7 @@ export interface SettingsViewProps {
   onOpenCategoryManager: () => void;
   onOpenCsvWizard: () => void;
   onOpenGeminiKeyModal?: () => void;
+  onLoadSampleData?: () => void;
   theme: 'light' | 'dark';
   onToggleTheme: () => void;
 }
@@ -44,6 +45,7 @@ export function SettingsView({
   onOpenCategoryManager,
   onOpenCsvWizard,
   onOpenGeminiKeyModal: _onOpenGeminiKeyModal,
+  onLoadSampleData,
   theme,
   onToggleTheme
 }: SettingsViewProps) {
@@ -313,7 +315,7 @@ export function SettingsView({
         </div>
 
         {/* Theme Preferences Card */}
-        <div className="p-5 rounded-2xl bg-card border border-border space-y-4 md:col-span-2">
+        <div className="p-5 rounded-2xl bg-card border border-border space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               {theme === 'dark' ? <Moon className="w-4 h-4 text-primary" /> : <Sun className="w-4 h-4 text-amber-500" />}
@@ -326,19 +328,43 @@ export function SettingsView({
             >
               {theme === 'dark' ? (
                 <>
-                  <Sun className="w-3.5 h-3.5 text-amber-500" /> Switch to Light Mode
+                  <Sun className="w-3.5 h-3.5 text-amber-500" /> Light Mode
                 </>
               ) : (
                 <>
-                  <Moon className="w-3.5 h-3.5 text-primary" /> Switch to Dark Mode
+                  <Moon className="w-3.5 h-3.5 text-primary" /> Dark Mode
                 </>
               )}
             </button>
           </div>
           <p className="text-xs text-muted-foreground">
-            Current mode: <span className="font-bold capitalize text-foreground">{theme} Mode</span> (Deep Obsidian glassmorphism palette in dark mode, crisp high-contrast slate in light mode).
+            Current mode: <span className="font-bold capitalize text-foreground">{theme} Mode</span> (Deep Obsidian in dark, crisp slate in light).
           </p>
         </div>
+
+        {/* Demo & Sample Data Card */}
+        {onLoadSampleData && (
+          <div className="p-5 rounded-2xl bg-card border border-border space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-primary" />
+                <h2 className="text-sm font-bold text-foreground">Sample & Demo Data</h2>
+              </div>
+              <button
+                type="button"
+                onClick={onLoadSampleData}
+                data-testid="load-sample-data-btn"
+                className="px-3.5 py-1.5 rounded-xl bg-primary/10 hover:bg-primary/20 text-primary border border-primary/30 text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm active:scale-95"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>Load Sample Data</span>
+              </button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Populate the active project with 4 months of sample transactions, category budgets, and financial history.
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );

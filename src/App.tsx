@@ -86,6 +86,7 @@ interface MainRouterProps {
   setShowManageProjectsModal?: (v: boolean) => void;
   theme?: 'light' | 'dark';
   setTheme?: React.Dispatch<React.SetStateAction<'light' | 'dark'>>;
+  onLoadSampleData?: () => void;
 }
 
 function MainRouter({
@@ -115,7 +116,8 @@ function MainRouter({
   setShowCreateModal,
   setShowManageProjectsModal,
   theme,
-  setTheme
+  setTheme,
+  onLoadSampleData
 }: MainRouterProps) {
   const { currentRoute } = useNavigation();
 
@@ -289,6 +291,7 @@ function MainRouter({
           onOpenCategoryManager={() => setShowCategoryManagerModal(true)}
           onOpenCsvWizard={() => csvHooks.setShowCsvWizard(true)}
           onOpenGeminiKeyModal={() => setShowGeminiKeyModal(true)}
+          onLoadSampleData={onLoadSampleData}
           theme={theme || 'dark'}
           onToggleTheme={() => setTheme && setTheme(prev => prev === 'dark' ? 'light' : 'dark')}
         />
@@ -299,8 +302,6 @@ function MainRouter({
   // Level 1: Month Overview (Default)
   return (
     <>
-      <BreadcrumbTrail className="mb-4" />
-
       {/* Backfill Banner */}
       {txnHooks.unclassifiedCount > 0 && (
         <div className="mb-6 p-4 rounded-2xl bg-gradient-to-r from-primary/10 via-primary/5 to-card border border-primary/20 flex flex-col gap-3 shadow-lg shadow-primary/5" data-testid="backfill-banner">
@@ -786,6 +787,7 @@ function AppInner() {
             setShowManageProjectsModal={setShowManageProjectsModal}
             theme={theme}
             setTheme={setTheme}
+            onLoadSampleData={isMockMode ? handleLoadSampleData : undefined}
           />
         ) : (
           <div data-testid="no-projects-prompt" className="flex items-center justify-center h-[60vh]">

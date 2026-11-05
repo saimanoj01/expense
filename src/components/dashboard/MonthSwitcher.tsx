@@ -71,18 +71,14 @@ export const MonthSwitcher: React.FC<MonthSwitcherProps> = ({
   return (
     <div
       data-testid="month-switcher"
-      className={`flex items-center justify-between sm:justify-start gap-2 p-1.5 rounded-2xl glass-card border border-border/60 bg-card/70 backdrop-blur-md shadow-sm ${className}`}
+      className={`inline-flex items-center gap-1.5 p-1 rounded-2xl glass-card border border-border/60 bg-card/60 backdrop-blur-md shadow-sm ${className}`}
     >
-      <div className="flex items-center gap-2 pl-1">
-        <div className="hidden sm:flex items-center justify-center p-2 rounded-xl bg-primary/10 text-primary">
-          <Calendar className="w-4 h-4" />
+      <nav aria-label="Breadcrumb" data-testid="breadcrumb-trail" className="flex items-center gap-1.5">
+        {/* Calendar visual icon */}
+        <div className="hidden sm:flex items-center justify-center p-1.5 rounded-xl bg-primary/10 text-primary shrink-0">
+          <Calendar className="w-3.5 h-3.5" />
         </div>
-        <span className="hidden sm:inline text-xs font-bold text-muted-foreground uppercase tracking-wider">
-          Period:
-        </span>
-      </div>
 
-      <div className="flex items-center gap-1.5 w-full sm:w-auto justify-between sm:justify-start">
         {/* Prev Month Button */}
         <button
           type="button"
@@ -90,22 +86,23 @@ export const MonthSwitcher: React.FC<MonthSwitcherProps> = ({
           onClick={handlePrev}
           title="Previous Month (ArrowLeft)"
           aria-label="Previous Month"
-          className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl hover:bg-card border border-border/50 text-xs font-semibold text-muted-foreground hover:text-foreground transition-all active:scale-95"
+          className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl hover:bg-card border border-border/40 text-xs font-semibold text-muted-foreground hover:text-foreground transition-all active:scale-95"
         >
           <ChevronLeft className="w-4 h-4" />
-          <span className="hidden xs:inline">Prev</span>
+          <span className="hidden xs:inline text-[11px]">Prev</span>
         </button>
 
         {/* Central Switcher with animated label & underlying accessible select */}
-        <div className="relative flex items-center justify-center min-w-[130px] sm:min-w-[160px] px-3 py-1.5 rounded-xl bg-card border border-border/80 shadow-sm overflow-hidden">
+        <div className="relative flex items-center justify-center min-w-[130px] sm:min-w-[150px] px-3 py-1.5 rounded-xl bg-card border border-border/70 shadow-sm overflow-hidden">
           <AnimatePresence mode="wait" initial={false}>
             <motion.span
               key={selectedMonth}
-              initial={{ opacity: 0, y: 6 }}
+              data-testid="breadcrumb-item-month-overview"
+              initial={{ opacity: 0, y: 4 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -6 }}
+              exit={{ opacity: 0, y: -4 }}
               transition={{ duration: 0.15 }}
-              className="font-bold text-xs sm:text-sm text-foreground select-none pointer-events-none truncate"
+              className="font-bold text-xs sm:text-sm text-foreground select-none pointer-events-none truncate tracking-tight"
             >
               {monthDisplay}
             </motion.span>
@@ -136,12 +133,12 @@ export const MonthSwitcher: React.FC<MonthSwitcherProps> = ({
           onClick={handleNext}
           title="Next Month (ArrowRight)"
           aria-label="Next Month"
-          className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl hover:bg-card border border-border/50 text-xs font-semibold text-muted-foreground hover:text-foreground transition-all active:scale-95"
+          className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl hover:bg-card border border-border/40 text-xs font-semibold text-muted-foreground hover:text-foreground transition-all active:scale-95"
         >
-          <span className="hidden xs:inline">Next</span>
+          <span className="hidden xs:inline text-[11px]">Next</span>
           <ChevronRight className="w-4 h-4" />
         </button>
-      </div>
+      </nav>
     </div>
   );
 };

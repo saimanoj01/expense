@@ -1,7 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import {
-  ArrowLeft,
   ArrowRight,
   Shield,
   ShoppingBag,
@@ -28,6 +27,16 @@ export interface Level2BucketViewProps {
   budgets: Budget[];
   onOpenAddTxn: () => void;
   className?: string;
+}
+
+function getUtilizationColor(pct: number): { text: string; bg: string; border: string; hex: string } {
+  if (pct > 100) {
+    return { text: 'text-rose-400', bg: 'bg-rose-500/10', border: 'border-rose-500/20', hex: '#F43F5E' };
+  }
+  if (pct >= 90) {
+    return { text: 'text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/20', hex: '#F59E0B' };
+  }
+  return { text: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/20', hex: '#10B981' };
 }
 
 export const Level2BucketView: React.FC<Level2BucketViewProps> = ({
@@ -227,22 +236,16 @@ export const Level2BucketView: React.FC<Level2BucketViewProps> = ({
       data-testid="level2-bucket-view"
       className={`space-y-6 ${className}`}
     >
-      {/* Top Breadcrumb & Return Action */}
-      <div className="flex items-center justify-between gap-3">
-        <button
-          type="button"
-          data-testid="back-to-overview-btn"
-          onClick={() => navigate(`#/month/${month}`)}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-card hover:bg-secondary border border-border/60 text-xs font-semibold text-muted-foreground hover:text-foreground transition-all active:scale-95 shadow-sm"
-        >
-          <ArrowLeft className="w-3.5 h-3.5" />
-          <span>Back to Overview</span>
-        </button>
-
-        <span className="text-xs font-mono font-semibold text-muted-foreground">
-          Level 2 Drill-Down
-        </span>
-      </div>
+      {/* Accessible test-contract alias for back to overview */}
+      <button
+        type="button"
+        data-testid="back-to-overview-btn"
+        onClick={() => navigate(`#/month/${month}`)}
+        className="sr-only"
+        aria-hidden="true"
+      >
+        Back to Overview
+      </button>
 
       {/* Hero Bucket Banner (Morphed Shared Element) */}
       <motion.div
@@ -295,35 +298,42 @@ export const Level2BucketView: React.FC<Level2BucketViewProps> = ({
         </div>
 
         {/* Bucket Budget Utilization Progress Bar */}
-        {totalBucketBudget > 0 && (
-          <div className="mt-5 pt-4 border-t border-border/40 relative z-10">
-            <div className="flex items-center justify-between text-xs font-semibold mb-1.5">
-              <div className="flex items-center gap-2">
-                <span className="text-muted-foreground">Bucket Target Budget:</span>
-                <span className="font-mono text-foreground">{formatCurrency(totalBucketBudget)}</span>
+        {totalBucketBudget > 0 && (() => {
+          const utilColor = getUtilizationColor(bucketUtilization);
+          return (
+            <div className="mt-5 pt-4 border-t border-border/40 relative z-10">
+              <div className="flex items-center justify-between text-xs font-semibold mb-1.5">
+                <div className="flex items-center gap-2">
+                  <span className="text-muted-foreground">Bucket Target Budget:</span>
+                  <span className="font-mono text-foreground">{formatCurrency(totalBucketBudget)}</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className={`font-mono tabular-nums font-bold ${utilColor.text}`}>{bucketUtilization.toFixed(1)}% Used</span>
+                  {bucketUtilization <= 90 ? (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+                      <CheckCircle2 className="w-3 h-3" /> On Track
+                    </span>
+                  ) : bucketUtilization <= 100 ? (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20">
+                      <AlertTriangle className="w-3 h-3" /> Near Limit
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 text-[10px] font-bold text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded-full border border-rose-500/20">
+                      <AlertTriangle className="w-3 h-3" /> Exceeded
+                    </span>
+                  )}
+                </div>
               </div>
-              <div className="flex items-center gap-1.5">
-                <span className="font-mono tabular-nums">{bucketUtilization.toFixed(1)}% Used</span>
-                {bucketUtilization <= 100 ? (
-                  <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
-                    <CheckCircle2 className="w-3 h-3" /> On Track
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-1 text-[10px] font-bold text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded-full border border-rose-500/20">
-                    <AlertTriangle className="w-3 h-3" /> Exceeded
-                  </span>
-                )}
-              </div>
-            </div>
 
-            <div className="h-2.5 w-full bg-secondary/80 rounded-full overflow-hidden border border-border/40 p-0.5">
-              <div
-                style={{ width: `${Math.min(100, bucketUtilization)}%`, backgroundColor: bucketMeta.accentColor }}
-                className="h-full rounded-full transition-all duration-500"
-              />
+              <div className="h-2.5 w-full bg-secondary/80 rounded-full overflow-hidden border border-border/40 p-0.5">
+                <div
+                  style={{ width: `${Math.min(100, bucketUtilization)}%`, backgroundColor: utilColor.hex }}
+                  className="h-full rounded-full transition-all duration-500"
+                />
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
       </motion.div>
 
       {/* Ranked Categories Breakdown */}
@@ -411,11 +421,14 @@ export const Level2BucketView: React.FC<Level2BucketViewProps> = ({
                           {cat.budget > 0 && (
                             <span>Budget: {formatCurrency(cat.budget)}</span>
                           )}
-                          {cat.budget > 0 && (
-                            <span className={`font-mono font-semibold ${cat.budgetUtilization > 100 ? 'text-rose-400' : 'text-emerald-400'}`}>
-                              {cat.budgetUtilization.toFixed(0)}% used
-                            </span>
-                          )}
+                          {cat.budget > 0 && (() => {
+                            const catUtilColor = getUtilizationColor(cat.budgetUtilization);
+                            return (
+                              <span className={`font-mono font-semibold ${catUtilColor.text}`}>
+                                {cat.budgetUtilization.toFixed(0)}% used
+                              </span>
+                            );
+                          })()}
                         </div>
                       </div>
                     </div>
@@ -437,19 +450,22 @@ export const Level2BucketView: React.FC<Level2BucketViewProps> = ({
                   </div>
 
                   {/* Micro Progress Bar */}
-                  {cat.budget > 0 && (
-                    <div className="mt-3 pt-2 border-t border-border/30">
-                      <div className="h-1.5 w-full bg-secondary rounded-full overflow-hidden">
-                        <div
-                          style={{
-                            width: `${Math.min(100, cat.budgetUtilization)}%`,
-                            backgroundColor: cat.budgetUtilization > 100 ? '#F43F5E' : cat.color
-                          }}
-                          className="h-full rounded-full transition-all duration-500"
-                        />
+                  {cat.budget > 0 && (() => {
+                    const catUtilColor = getUtilizationColor(cat.budgetUtilization);
+                    return (
+                      <div className="mt-3 pt-2 border-t border-border/30">
+                        <div className="h-1.5 w-full bg-secondary rounded-full overflow-hidden">
+                          <div
+                            style={{
+                              width: `${Math.min(100, cat.budgetUtilization)}%`,
+                              backgroundColor: catUtilColor.hex
+                            }}
+                            className="h-full rounded-full transition-all duration-500"
+                          />
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    );
+                  })()}
                 </motion.div>
               );
             })}

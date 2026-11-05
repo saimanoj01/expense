@@ -49,6 +49,9 @@ function getPriorMonthKey(monthStr: string): string | null {
   return `${prevYear}-${prevMonth}`;
 }
 
+// Module-level set to prevent duplicate confetti bursts within the same app session
+const firedConfettiKeys = new Set<string>();
+
 export const Level1MonthOverview: React.FC<Level1MonthOverviewProps> = ({
   selectedMonth,
   availableMonths,
@@ -187,9 +190,20 @@ export const Level1MonthOverview: React.FC<Level1MonthOverviewProps> = ({
       window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     if (prefersReducedMotion) return;
 
-    const storageKey = `expense_confetti_${activeProject?.id || 'default'}_${selectedMonth}`;
-    if (typeof window !== 'undefined' && window.localStorage.getItem(storageKey)) return;
+    // NEVER trigger during drill-down navigation
+    if (typeof window !== 'undefined' && window.location.hash) {
+      const hash = window.location.hash.toLowerCase();
+      if (hash.includes('/bucket/') || hash.includes('/category/') || hash.includes('/transactions')) {
+        return;
+      }
+    }
 
+    const projectId = activeProject?.id || 'default';
+    const storageKey = `expense_confetti_${projectId}_${selectedMonth}`;
+    if (typeof window !== 'undefined' && window.localStorage.getItem(storageKey)) return;
+    if (firedConfettiKeys.has(storageKey)) return;
+
+    firedConfettiKeys.add(storageKey);
     if (typeof window !== 'undefined') {
       window.localStorage.setItem(storageKey, 'fired');
     }
@@ -209,15 +223,15 @@ export const Level1MonthOverview: React.FC<Level1MonthOverviewProps> = ({
   return (
     <div
       data-testid="dashboard-header"
-      className={`space-y-3 mb-6 ${className}`}
+      className={`space-y-2.5 mb-4 ${className}`}
     >
       {/* Hidden test-compatibility nodes */}
       <div className="sr-only" data-testid="monthly-financial-story">
         Monthly Financial Story
       </div>
 
-      {/* Top Controls Bar: Month Switcher & Quick Stats */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 p-2 rounded-2xl glass-card border border-border/70 bg-card/60 backdrop-blur-md">
+      {/* Top Controls Bar: Clean Month Switcher & Quick Report Action */}
+      <div className="flex items-center justify-between gap-2.5 p-1 rounded-2xl">
         <MonthSwitcher
           selectedMonth={selectedMonth}
           availableMonths={availableMonths}
@@ -225,39 +239,23 @@ export const Level1MonthOverview: React.FC<Level1MonthOverviewProps> = ({
           className="border-0 shadow-none bg-transparent p-0"
         />
 
-        <div className="flex items-center gap-2 flex-wrap">
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-card border border-border/60 text-xs font-semibold">
-            <span className="text-muted-foreground">Budget:</span>
-            <span className="font-bold text-foreground font-mono" data-testid="kpi-total-budget">
-              {formatCurrency(totalBudget || 0)}
-            </span>
-          </div>
-
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-card border border-border/60 text-xs font-semibold overflow-hidden">
-            <span className="text-muted-foreground">Expenses:</span>
-            <span className="font-bold text-foreground font-mono truncate max-w-[160px] overflow-hidden" data-testid="kpi-total-expenses">
-              {formatCurrency(totalExpenses)}
-            </span>
-          </div>
-
-          {onOpenReport && (
-            <button
-              type="button"
-              onClick={onOpenReport}
-              data-testid="story-print-report-btn"
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-card hover:bg-secondary border border-border/60 text-xs font-semibold transition-all text-muted-foreground hover:text-foreground active:scale-95 shadow-sm"
-              title="Print or export monthly financial report"
-            >
-              <Printer className="w-3.5 h-3.5 text-primary" />
-              <span>Report</span>
-            </button>
-          )}
-        </div>
+        {onOpenReport && (
+          <button
+            type="button"
+            onClick={onOpenReport}
+            data-testid="story-print-report-btn"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-card hover:bg-secondary border border-border/60 text-xs font-semibold transition-all text-muted-foreground hover:text-foreground active:scale-95 shadow-sm"
+            title="Print or export monthly financial report"
+          >
+            <Printer className="w-3.5 h-3.5 text-primary" />
+            <span>Report</span>
+          </button>
+        )}
       </div>
 
       {/* Unclassified Warning Banner */}
       {unclassifiedCount > 0 && (
-        <div className="p-3 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-between gap-3 text-xs">
+        <div className="p-2.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-between gap-3 text-xs">
           <div className="flex items-center gap-2 text-amber-500 font-semibold">
             <AlertTriangle className="w-4 h-4 shrink-0" />
             <span>⚠️ {unclassifiedCount} transaction{unclassifiedCount > 1 ? 's' : ''} ({formatCurrency(unclassifiedExpenses)}) unclassified</span>
@@ -275,11 +273,13 @@ export const Level1MonthOverview: React.FC<Level1MonthOverviewProps> = ({
       )}
 
       {/* Row 1: The Hero Row (Hero Savings Card + Income Allocation Ring) */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-2.5">
         <HeroSavingsCard
           savingsAmount={savingsAmount}
           savingsRate={savingsRate}
           totalIncome={totalIncome}
+          totalExpenses={totalExpenses}
+          totalBudget={totalBudget}
           flexNumber={flexNumber}
           priorSavingsAmount={priorMetrics?.savings}
           hasPriorMonthData={hasPriorMonthData}
@@ -308,7 +308,7 @@ export const Level1MonthOverview: React.FC<Level1MonthOverviewProps> = ({
       />
 
       {/* Row 3: Narrative & Waterfall Breakdown */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-2.5">
         <StoryNarrativeCard
           selectedMonth={selectedMonth}
           totalIncome={totalIncome}
@@ -323,11 +323,11 @@ export const Level1MonthOverview: React.FC<Level1MonthOverviewProps> = ({
         />
 
         {/* Cash Flow Waterfall Chart Card */}
-        <div className="p-4 rounded-2xl bg-card border border-border/70 shadow-md flex flex-col justify-between">
-          <div className="flex items-center justify-between mb-1.5">
+        <div className="p-3.5 rounded-2xl bg-card border border-border/70 shadow-sm flex flex-col justify-between">
+          <div className="flex items-center justify-between mb-1">
             <div className="flex items-center gap-2">
               <div className="p-1 rounded-lg bg-primary/10 text-primary">
-                <BarChart3 className="w-4 h-4" />
+                <BarChart3 className="w-3.5 h-3.5" />
               </div>
               <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
                 Cash Flow Waterfall
@@ -336,10 +336,10 @@ export const Level1MonthOverview: React.FC<Level1MonthOverviewProps> = ({
             <span className="text-[10px] text-muted-foreground font-mono">Inflow to Outflow</span>
           </div>
 
-          <div className="flex-1 min-h-[160px] flex items-center justify-center">
+          <div className="flex-1 min-h-[140px] flex items-center justify-center">
             <Suspense
               fallback={
-                <div className="w-full h-[160px] flex items-center justify-center text-xs text-muted-foreground bg-secondary/30 rounded-xl border border-border/40 animate-pulse">
+                <div className="w-full h-[140px] flex items-center justify-center text-xs text-muted-foreground bg-secondary/30 rounded-xl border border-border/40 animate-pulse">
                   Loading Waterfall Chart...
                 </div>
               }

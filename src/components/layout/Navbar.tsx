@@ -37,7 +37,7 @@ export function Navbar({
   setShowCreateModal,
   onManageProjects,
   onOpenGeminiKeyModal,
-  onLoadSampleData,
+  onLoadSampleData: _onLoadSampleData,
   onOpenCommandPalette,
   logout
 }: NavbarProps) {
@@ -55,26 +55,12 @@ export function Navbar({
           </div>
           <h1 className="font-bold text-lg tracking-tight hidden lg:block">Nebula</h1>
           {isMockMode && (
-            <div className="flex items-center gap-1.5 sm:gap-2">
-              <span 
-                data-testid="mock-banner" 
-                className="mock-mode-banner px-2 py-0.5 rounded-full text-[10px] font-bold bg-secondary/20 text-secondary uppercase tracking-wider border border-secondary/20"
-              >
-                Mock Mode
-              </span>
-              {onLoadSampleData && (
-                <button
-                  type="button"
-                  onClick={onLoadSampleData}
-                  data-testid="load-sample-data-btn"
-                  className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-primary/15 text-primary hover:bg-primary/25 border border-primary/30 transition-all flex items-center gap-1"
-                  title="Populate project with 4 months of sample transactions and budgets"
-                >
-                  <Sparkles className="w-3 h-3" />
-                  <span className="hidden sm:inline">Load Sample Data</span>
-                </button>
-              )}
-            </div>
+            <span 
+              data-testid="mock-banner" 
+              className="mock-mode-banner px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-primary/10 text-primary uppercase tracking-wider border border-primary/20 shadow-sm"
+            >
+              Mock Mode
+            </span>
           )}
         </div>
 

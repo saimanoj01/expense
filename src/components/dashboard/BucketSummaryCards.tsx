@@ -76,11 +76,11 @@ export const BucketSummaryCards: React.FC<BucketSummaryCardsProps> = ({
       drillBucket: 'income',
       momDelta: priorMetrics ? (
         totalIncome >= priorMetrics.income ? (
-          <span className="text-emerald-400 font-semibold tabular-nums font-mono">
+          <span className="text-emerald-400 font-semibold tabular-nums font-sans">
             +{priorMetrics.income > 0 ? (((totalIncome - priorMetrics.income) / priorMetrics.income) * 100).toFixed(1) : '0.0'}% MoM
           </span>
         ) : (
-          <span className="text-rose-400 font-semibold tabular-nums font-mono">
+          <span className="text-rose-400 font-semibold tabular-nums font-sans">
             {priorMetrics.income > 0 ? (((totalIncome - priorMetrics.income) / priorMetrics.income) * 100).toFixed(1) : '-100.0'}% MoM
           </span>
         )
@@ -103,11 +103,11 @@ export const BucketSummaryCards: React.FC<BucketSummaryCardsProps> = ({
       drillBucket: 'fixed',
       momDelta: priorMetrics ? (
         fixedExpenses >= priorMetrics.fixed ? (
-          <span className="text-emerald-400 font-semibold tabular-nums font-mono">
+          <span className="text-emerald-400 font-semibold tabular-nums font-sans">
             +{priorMetrics.fixed > 0 ? (((fixedExpenses - priorMetrics.fixed) / priorMetrics.fixed) * 100).toFixed(1) : '0.0'}% MoM
           </span>
         ) : (
-          <span className="text-rose-400 font-semibold tabular-nums font-mono">
+          <span className="text-rose-400 font-semibold tabular-nums font-sans">
             {priorMetrics.fixed > 0 ? (((fixedExpenses - priorMetrics.fixed) / priorMetrics.fixed) * 100).toFixed(1) : '-100.0'}% MoM
           </span>
         )
@@ -130,11 +130,11 @@ export const BucketSummaryCards: React.FC<BucketSummaryCardsProps> = ({
       drillBucket: 'variable',
       momDelta: priorMetrics ? (
         flexibleExpenses >= priorMetrics.flexible ? (
-          <span className="text-emerald-400 font-semibold tabular-nums font-mono">
+          <span className="text-emerald-400 font-semibold tabular-nums font-sans">
             +{priorMetrics.flexible > 0 ? (((flexibleExpenses - priorMetrics.flexible) / priorMetrics.flexible) * 100).toFixed(1) : '0.0'}% MoM
           </span>
         ) : (
-          <span className="text-rose-400 font-semibold tabular-nums font-mono">
+          <span className="text-rose-400 font-semibold tabular-nums font-sans">
             {priorMetrics.flexible > 0 ? (((flexibleExpenses - priorMetrics.flexible) / priorMetrics.flexible) * 100).toFixed(1) : '-100.0'}% MoM
           </span>
         )
@@ -162,7 +162,7 @@ export const BucketSummaryCards: React.FC<BucketSummaryCardsProps> = ({
   ];
 
   return (
-    <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 ${className}`}>
+    <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 ${className}`}>
       {cards.map(c => {
         const Icon = c.icon;
         const isSelected = selectedBucket === c.id;
@@ -171,14 +171,14 @@ export const BucketSummaryCards: React.FC<BucketSummaryCardsProps> = ({
           <motion.div
             key={c.id}
             layoutId={`bucket-card-${c.drillBucket}`}
-            className={`p-3.5 rounded-2xl border transition-all relative flex flex-col justify-between bg-card/80 backdrop-blur-md shadow-sm hover:shadow-md ${
+            className={`p-3 rounded-2xl border transition-all relative flex flex-col justify-between bg-card/80 backdrop-blur-md shadow-sm hover:shadow-md ${
               isSelected
                 ? `${c.activeBorder} ring-2 ring-primary/40 bg-gradient-to-br ${c.bgGlow} to-card`
                 : `${c.borderColor} hover:border-border/80`
             }`}
           >
             {/* Top row: Title and Icon */}
-            <div className="flex items-center justify-between gap-2 mb-1.5">
+            <div className="flex items-center justify-between gap-2 mb-1">
               <span className={`text-[11px] font-extrabold uppercase tracking-wider ${c.color}`}>
                 {c.title}
               </span>
@@ -195,7 +195,7 @@ export const BucketSummaryCards: React.FC<BucketSummaryCardsProps> = ({
               className="text-left py-0.5 group/btn focus:outline-none"
               title="Click to toggle filter on transactions list"
             >
-              <div className="text-2xl font-extrabold font-mono tracking-tight tabular-nums text-foreground group-hover/btn:text-primary transition-colors">
+              <div className="text-xl sm:text-2xl font-extrabold font-sans tracking-tight tabular-nums text-foreground group-hover/btn:text-primary transition-colors">
                 {c.id === 'income' ? formatCurrency(c.amount) : formatExpenseCurrency(c.amount)}
               </div>
               <div className="flex items-center justify-between text-[11px] text-muted-foreground mt-0.5">
@@ -207,7 +207,7 @@ export const BucketSummaryCards: React.FC<BucketSummaryCardsProps> = ({
             </button>
 
             {/* Bottom: Direct Level 2 Drill-Down CTA */}
-            <div className="mt-2 pt-1.5 border-t border-border/40 flex items-center justify-between">
+            <div className="mt-1.5 pt-1.5 border-t border-border/40 flex items-center justify-between">
               <button
                 type="button"
                 data-testid={`drill-down-${c.drillBucket}`}

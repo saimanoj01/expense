@@ -1,10 +1,14 @@
-import { useState } from 'react';
+import { useState, useMemo, Suspense, lazy } from 'react';
 import { BreadcrumbTrail } from '../layout/BreadcrumbTrail';
 import { TrendChart } from '../dashboard/TrendChart';
 import { TrendChartDetails } from '../../hooks/useTransactions';
 import { Category, Budget, Transaction } from '../../services/storage';
-import { BarChart3 } from 'lucide-react';
+import { BarChart3, TrendingUp } from 'lucide-react';
 import { formatMonthLabel } from '../../utils/navigation';
+import { bucketOf } from '../../utils/categorizer';
+import { WaterfallItem } from '../dashboard/WaterfallChart';
+
+const WaterfallChart = lazy(() => import('../dashboard/WaterfallChart'));
 
 export interface TrendsViewProps {
   month: string;
@@ -32,6 +36,78 @@ export function TrendsView({
   const [selectedTimeframe, setSelectedTimeframe] = useState<'month' | 'all'>('month');
 
   const activeMonth = selectedTimeframe === 'all' ? 'all' : month;
+
+  // Waterfall Chart Data for cash flow breakdown
+  const waterfallData = useMemo<WaterfallItem[]>(() => {
+    const periodTxns = activeMonth === 'all'
+      ? transactions.filter(t => t.type !== 'transfer')
+      : transactions.filter(t => t.date && t.date.startsWith(activeMonth) && t.type !== 'transfer');
+
+    const totalIncome = periodTxns.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
+    const fixedExpenses = periodTxns.filter(t => t.type === 'expense' && bucketOf(t, categories) === 'fixed').reduce((s, t) => s + t.amount, 0);
+    const flexibleExpenses = periodTxns.filter(t => t.type === 'expense' && bucketOf(t, categories) === 'flexible').reduce((s, t) => s + t.amount, 0);
+    const nonMonthlyExpenses = periodTxns.filter(t => t.type === 'expense' && bucketOf(t, categories) === 'non-monthly').reduce((s, t) => s + t.amount, 0);
+    const totalExpenses = fixedExpenses + flexibleExpenses + nonMonthlyExpenses;
+    const savingsAmount = totalIncome - totalExpenses;
+
+    const items: WaterfallItem[] = [];
+
+    // 1. Inflow
+    items.push({
+      name: 'Inflow',
+      placeholder: 0,
+      value: Math.max(0, totalIncome),
+      displayValue: totalIncome,
+      color: '#10B981',
+      stepType: 'inflow'
+    });
+
+    // 2. Fixed
+    let running = totalIncome;
+    running -= fixedExpenses;
+    items.push({
+      name: 'Fixed',
+      placeholder: Math.max(0, running),
+      value: fixedExpenses,
+      displayValue: fixedExpenses,
+      color: '#6366F1',
+      stepType: 'outflow'
+    });
+
+    // 3. Variable
+    running -= flexibleExpenses;
+    items.push({
+      name: 'Variable',
+      placeholder: Math.max(0, running),
+      value: flexibleExpenses,
+      displayValue: flexibleExpenses,
+      color: '#8B5CF6',
+      stepType: 'outflow'
+    });
+
+    // 4. Non-Monthly
+    running -= nonMonthlyExpenses;
+    items.push({
+      name: 'Non-Monthly',
+      placeholder: Math.max(0, running),
+      value: nonMonthlyExpenses,
+      displayValue: nonMonthlyExpenses,
+      color: '#F59E0B',
+      stepType: 'outflow'
+    });
+
+    // 5. Net Saved
+    items.push({
+      name: savingsAmount >= 0 ? 'Net Saved' : 'Deficit',
+      placeholder: 0,
+      value: Math.max(0, Math.abs(savingsAmount)),
+      displayValue: savingsAmount,
+      color: savingsAmount >= 0 ? '#10B981' : '#F43F5E',
+      stepType: 'total'
+    });
+
+    return items;
+  }, [transactions, activeMonth, categories]);
 
   return (
     <div className="space-y-4" data-testid="trends-workspace">
@@ -89,6 +165,38 @@ export function TrendsView({
         onSelectMonth={onSelectMonth}
         onRequestGeminiKey={onRequestGeminiKey}
       />
+
+      {/* Cash Flow Waterfall Breakdown Card */}
+      <div className="p-6 rounded-2xl bg-card border border-border shadow-md space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="p-2 rounded-xl bg-primary/10 text-primary">
+              <TrendingUp className="w-4 h-4" />
+            </div>
+            <div>
+              <h2 className="text-sm font-bold text-foreground">
+                Cash Flow Allocation Breakdown
+              </h2>
+              <p className="text-xs text-muted-foreground">
+                Inflow allocation across fixed commitments, variable spending, and retained net savings
+              </p>
+            </div>
+          </div>
+          <span className="text-xs font-mono text-muted-foreground">{formatMonthLabel(activeMonth)}</span>
+        </div>
+
+        <div className="min-h-[180px] flex items-center justify-center pt-2">
+          <Suspense
+            fallback={
+              <div className="w-full h-[180px] flex items-center justify-center text-xs text-muted-foreground bg-secondary/30 rounded-xl border border-border/40 animate-pulse">
+                Loading Waterfall Breakdown...
+              </div>
+            }
+          >
+            <WaterfallChart data={waterfallData} />
+          </Suspense>
+        </div>
+      </div>
     </div>
   );
 }

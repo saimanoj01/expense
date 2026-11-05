@@ -8,6 +8,8 @@ export interface HeroSavingsCardProps {
   savingsAmount: number;
   savingsRate: number;
   totalIncome: number;
+  totalExpenses?: number;
+  totalBudget?: number;
   flexNumber?: number;
   priorSavingsAmount?: number;
   hasPriorMonthData?: boolean;
@@ -18,6 +20,8 @@ export const HeroSavingsCard: React.FC<HeroSavingsCardProps> = ({
   savingsAmount,
   savingsRate,
   totalIncome,
+  totalExpenses = 0,
+  totalBudget = 0,
   flexNumber,
   priorSavingsAmount,
   hasPriorMonthData = false,
@@ -99,27 +103,60 @@ export const HeroSavingsCard: React.FC<HeroSavingsCardProps> = ({
       </div>
 
       {/* Primary Hero Figure */}
-      <div className="my-2 relative z-10">
+      <div className="my-1.5 relative z-10">
         <div
           data-testid="kpi-savings-amount"
-          className={`text-3xl font-extrabold tracking-tight tabular-nums font-mono ${
+          className={`text-4xl sm:text-5xl font-extrabold tracking-tight tabular-nums font-sans ${
             isDeficit ? 'text-rose-400' : isPositive ? 'text-emerald-400' : 'text-foreground'
           }`}
         >
           {formattedSavings}
         </div>
 
-        <p className="text-xs text-muted-foreground mt-1">
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground mt-1.5">
           {totalIncome > 0 ? (
             isDeficit ? (
-              <span>Spending exceeded income by <span className="font-semibold text-rose-400">{formatCurrency(Math.abs(savingsAmount))}</span></span>
+              <span>
+                Exceeded income by <span className="font-semibold text-rose-400 tabular-nums">{formatCurrency(Math.abs(savingsAmount))}</span>
+              </span>
             ) : (
-              <span>You retained <span className="font-semibold text-emerald-400">{savingsRateDisplay}</span> of your <span className="font-medium text-foreground">{formatCurrency(totalIncome)}</span> total inflow.</span>
+              <span>
+                Retained <span className="font-semibold text-emerald-400 tabular-nums">{savingsRateDisplay}</span> of <span className="font-medium text-foreground tabular-nums">{formatCurrency(totalIncome)}</span> inflow
+              </span>
             )
           ) : (
             <span>No income recorded for this period.</span>
           )}
-        </p>
+
+          <span className="text-muted-foreground/40">•</span>
+
+          <span className="inline-flex items-center gap-1">
+            <span>Outflow:</span>
+            <span
+              data-testid="kpi-total-expenses"
+              className="font-semibold text-foreground tabular-nums overflow-hidden truncate max-w-[140px] inline-block align-bottom"
+              title={`Total Expenses: ${formatCurrency(totalExpenses)}`}
+            >
+              {formatCurrency(totalExpenses)}
+            </span>
+          </span>
+
+          {totalBudget > 0 && (
+            <>
+              <span className="text-muted-foreground/40">•</span>
+              <span className="inline-flex items-center gap-1">
+                <span>Budget:</span>
+                <span
+                  data-testid="kpi-total-budget"
+                  className="font-semibold text-foreground tabular-nums"
+                  title={`Total Budget: ${formatCurrency(totalBudget)}`}
+                >
+                  {formatCurrency(totalBudget)}
+                </span>
+              </span>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Footer Metrics: MoM Delta & Accessible Flex Number */}
@@ -127,7 +164,7 @@ export const HeroSavingsCard: React.FC<HeroSavingsCardProps> = ({
         {momDelta !== null ? (
           <div className="flex items-center gap-1.5 font-medium">
             <span className="text-muted-foreground text-[11px]">vs prior month:</span>
-            <span className={`inline-flex items-center gap-0.5 text-xs font-semibold tabular-nums font-mono ${
+            <span className={`inline-flex items-center gap-0.5 text-xs font-semibold tabular-nums font-sans ${
               momDelta >= 0 ? 'text-emerald-400' : 'text-rose-400'
             }`}>
               {momDelta >= 0 ? '+' : ''}{formatCurrency(momDelta)}
@@ -144,7 +181,7 @@ export const HeroSavingsCard: React.FC<HeroSavingsCardProps> = ({
             title="Flex Number: Inflow minus fixed commitments and non-monthly irregulars"
           >
             <span>Flex Pool:</span>
-            <span className="font-mono font-semibold text-foreground tabular-nums">
+            <span className="font-sans font-semibold text-foreground tabular-nums">
               {formatCurrency(Math.max(0, flexNumber))}
             </span>
           </div>

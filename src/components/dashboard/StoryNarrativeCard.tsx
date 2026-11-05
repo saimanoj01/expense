@@ -125,62 +125,59 @@ export const StoryNarrativeCard: React.FC<StoryNarrativeCardProps> = ({
       {/* 50/30/20 Guideline Meter */}
       <div 
         data-testid="guideline-meter-50-30-20"
-        className="mt-2.5 pt-2 border-t border-border/40"
+        className="mt-2 pt-2 border-t border-border/40"
       >
         <div className="flex items-center justify-between text-[11px] mb-1">
           <span className="font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1">
-            50/30/20 Rule Health:
+            50/30/20 Rule:
           </span>
-          <span className="text-[10px] text-muted-foreground">Target: 50% Needs • 30% Wants • 20% Saved</span>
+          <span className="text-[10px] text-muted-foreground">Target: 50% Needs • 30% Wants • 20% Savings</span>
         </div>
 
         <div className="grid grid-cols-3 gap-2 text-xs">
           {/* Needs */}
-          <div className="p-1.5 rounded-xl bg-secondary/50 border border-border/50 flex flex-col">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-semibold text-muted-foreground">Needs</span>
-              {needsPct <= 50 ? (
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-              ) : (
-                <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
-              )}
+          <div className="p-1.5 rounded-xl bg-secondary/40 border border-border/40 flex items-center justify-between">
+            <div>
+              <div className="text-[11px] font-semibold text-muted-foreground">Needs</div>
+              <div className="text-sm font-extrabold font-sans tabular-nums text-foreground">
+                {needsPct.toFixed(1)}%
+              </div>
             </div>
-            <span className="text-base font-extrabold font-mono tabular-nums text-foreground mt-0.5">
-              {needsPct.toFixed(1)}%
-            </span>
-            <span className="text-[9px] text-muted-foreground">Fixed & Irregular (≤50%)</span>
+            {needsPct <= 50 ? (
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+            ) : (
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+            )}
           </div>
 
           {/* Wants */}
-          <div className="p-1.5 rounded-xl bg-secondary/50 border border-border/50 flex flex-col">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-semibold text-muted-foreground">Wants</span>
-              {wantsPct <= 30 ? (
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-              ) : (
-                <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
-              )}
+          <div className="p-1.5 rounded-xl bg-secondary/40 border border-border/40 flex items-center justify-between">
+            <div>
+              <div className="text-[11px] font-semibold text-muted-foreground">Wants</div>
+              <div className="text-sm font-extrabold font-sans tabular-nums text-foreground">
+                {wantsPct.toFixed(1)}%
+              </div>
             </div>
-            <span className="text-base font-extrabold font-mono tabular-nums text-foreground mt-0.5">
-              {wantsPct.toFixed(1)}%
-            </span>
-            <span className="text-[9px] text-muted-foreground">Variable Spend (≤30%)</span>
+            {wantsPct <= 30 ? (
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+            ) : (
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+            )}
           </div>
 
           {/* Savings */}
-          <div className="p-1.5 rounded-xl bg-secondary/50 border border-border/50 flex flex-col">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-semibold text-muted-foreground">Savings</span>
-              {benchmarkSavingsPct >= 20 ? (
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-              ) : (
-                <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
-              )}
+          <div className="p-1.5 rounded-xl bg-secondary/40 border border-border/40 flex items-center justify-between">
+            <div>
+              <div className="text-[11px] font-semibold text-muted-foreground">Savings</div>
+              <div className="text-sm font-extrabold font-sans tabular-nums text-foreground">
+                {benchmarkSavingsPct.toFixed(1)}%
+              </div>
             </div>
-            <span className="text-base font-extrabold font-mono tabular-nums text-foreground mt-0.5">
-              {benchmarkSavingsPct.toFixed(1)}%
-            </span>
-            <span className="text-[9px] text-muted-foreground">Retained Wealth (≥20%)</span>
+            {benchmarkSavingsPct >= 20 ? (
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+            ) : (
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+            )}
           </div>
         </div>
       </div>

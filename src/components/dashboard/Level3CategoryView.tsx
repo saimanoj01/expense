@@ -32,6 +32,16 @@ export interface Level3CategoryViewProps {
   className?: string;
 }
 
+function getUtilizationColor(pct: number): { text: string; bg: string; border: string; hex: string } {
+  if (pct > 100) {
+    return { text: 'text-rose-400', bg: 'bg-rose-500/10', border: 'border-rose-500/20', hex: '#F43F5E' };
+  }
+  if (pct >= 90) {
+    return { text: 'text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/20', hex: '#F59E0B' };
+  }
+  return { text: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/20', hex: '#10B981' };
+}
+
 export const Level3CategoryView: React.FC<Level3CategoryViewProps> = ({
   categoryId,
   month,
@@ -149,10 +159,6 @@ export const Level3CategoryView: React.FC<Level3CategoryViewProps> = ({
           <ArrowLeft className="w-3.5 h-3.5" />
           <span>Back to {bucketId === 'flexible' ? 'Variable Spending' : bucketId.charAt(0).toUpperCase() + bucketId.slice(1)}</span>
         </button>
-
-        <span className="text-xs font-mono font-semibold text-muted-foreground">
-          Level 3 Category Deep Dive
-        </span>
       </div>
 
       {/* Hero Category Header Card */}
@@ -193,46 +199,48 @@ export const Level3CategoryView: React.FC<Level3CategoryViewProps> = ({
               {formatExpenseCurrency(totalSpent)}
             </div>
 
-            {budget > 0 && (
-              <div className="flex items-center gap-2 text-xs mt-1">
-                <span className="text-muted-foreground font-mono">
-                  of {formatCurrency(budget)} budget
-                </span>
-                <span className={`inline-flex items-center gap-1 font-bold px-2 py-0.5 rounded-full text-[10px] border ${
-                  isOverBudget
-                    ? 'bg-rose-500/10 text-rose-400 border-rose-500/20'
-                    : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                }`}>
-                  {isOverBudget ? <AlertTriangle className="w-3 h-3" /> : <CheckCircle2 className="w-3 h-3" />}
-                  <span>{utilization.toFixed(0)}% used</span>
-                </span>
-              </div>
-            )}
+            {budget > 0 && (() => {
+              const utilColor = getUtilizationColor(utilization);
+              return (
+                <div className="flex items-center gap-2 text-xs mt-1">
+                  <span className="text-muted-foreground font-mono">
+                    of {formatCurrency(budget)} budget
+                  </span>
+                  <span className={`inline-flex items-center gap-1 font-bold px-2 py-0.5 rounded-full text-[10px] border ${utilColor.bg} ${utilColor.text} ${utilColor.border}`}>
+                    {isOverBudget ? <AlertTriangle className="w-3 h-3" /> : <CheckCircle2 className="w-3 h-3" />}
+                    <span>{utilization.toFixed(0)}% used</span>
+                  </span>
+                </div>
+              );
+            })()}
           </div>
         </div>
 
         {/* Budget Pacing Progress Bar */}
-        {budget > 0 && (
-          <div className="mt-5 pt-4 border-t border-border/40 relative z-10">
-            <div className="flex items-center justify-between text-xs font-semibold mb-1.5">
-              <span className="text-muted-foreground">Budget Pacing:</span>
-              <span className="font-mono text-foreground">
-                {isOverBudget
-                  ? `Over budget by ${formatCurrency(totalSpent - budget)}`
-                  : `${formatCurrency(remainingBudget)} remaining`}
-              </span>
+        {budget > 0 && (() => {
+          const utilColor = getUtilizationColor(utilization);
+          return (
+            <div className="mt-5 pt-4 border-t border-border/40 relative z-10">
+              <div className="flex items-center justify-between text-xs font-semibold mb-1.5">
+                <span className="text-muted-foreground">Budget Pacing:</span>
+                <span className="font-mono text-foreground">
+                  {isOverBudget
+                    ? `Over budget by ${formatCurrency(totalSpent - budget)}`
+                    : `${formatCurrency(remainingBudget)} remaining`}
+                </span>
+              </div>
+              <div className="h-2.5 w-full bg-secondary/80 rounded-full overflow-hidden border border-border/40 p-0.5">
+                <div
+                  style={{
+                    width: `${Math.min(100, utilization)}%`,
+                    backgroundColor: utilColor.hex
+                  }}
+                  className="h-full rounded-full transition-all duration-500"
+                />
+              </div>
             </div>
-            <div className="h-2.5 w-full bg-secondary/80 rounded-full overflow-hidden border border-border/40 p-0.5">
-              <div
-                style={{
-                  width: `${Math.min(100, utilization)}%`,
-                  backgroundColor: isOverBudget ? '#F43F5E' : category.color || '#6366F1'
-                }}
-                className="h-full rounded-full transition-all duration-500"
-              />
-            </div>
-          </div>
-        )}
+          );
+        })()}
       </motion.div>
 
       {/* Row 2: Daily Spending Velocity Timeline */}
