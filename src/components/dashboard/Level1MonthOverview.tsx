@@ -1,7 +1,7 @@
 import React, { useMemo, useRef, useEffect, useState, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { Project, Transaction, Category, Budget } from '../../services/storage';
-import { formatCurrency, formatMoney, splitMoneyParts } from '../../utils/formatters';
+import { formatCurrency, formatMoney } from '../../utils/formatters';
 import { formatMonthLabel } from '../../utils/navigation';
 import { useNavigation } from '../../hooks/useNavigation';
 import { bucketOf } from '../../utils/categorizer';
@@ -10,6 +10,7 @@ import { OverviewHero } from '../overview/OverviewHero';
 import { IncomeRibbon } from '../overview/IncomeRibbon';
 import { BucketStats } from '../overview/BucketStats';
 import { InsightList } from '../overview/InsightList';
+import { SpendTimeline } from '../overview/SpendTimeline';
 
 export interface Level1MonthOverviewProps {
   selectedMonth: string;
@@ -149,43 +150,6 @@ export const Level1MonthOverview: React.FC<Level1MonthOverviewProps> = ({
     };
   }, [priorTxns, hasPriorMonthData, categories]);
 
-  // Cumulative daily spend curve for SpendTimeline preview
-  const cumulativePoints = useMemo(() => {
-    const days = 30;
-    const monthPrefix = selectedMonth === 'all' ? '' : selectedMonth;
-    const expTxns = allTransactions.filter(
-      t => t.type === 'expense' && (selectedMonth === 'all' || (t.date && t.date.startsWith(monthPrefix)))
-    );
-    const byDay = new Array(days).fill(0);
-    expTxns.forEach(t => {
-      const d = parseInt((t.date || '').split('-')[2] || '1', 10);
-      const idx = Math.min(days - 1, Math.max(0, d - 1));
-      byDay[idx] += t.amount;
-    });
-    const cum: number[] = [];
-    let running = 0;
-    for (let i = 0; i < days; i++) {
-      running += byDay[i];
-      cum.push(running);
-    }
-    return cum;
-  }, [allTransactions, selectedMonth]);
-
-  const timelinePath = useMemo(() => {
-    const w = 600;
-    const h = 72;
-    const maxVal = Math.max(...cumulativePoints, totalBudget, 1);
-    return cumulativePoints
-      .map((val, idx) => {
-        const x = (idx / (cumulativePoints.length - 1)) * w;
-        const y = h - 6 - (val / maxVal) * (h - 12);
-        return `${idx === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${y.toFixed(1)}`;
-      })
-      .join(' ');
-  }, [cumulativePoints, totalBudget]);
-
-  const expenseParts = splitMoneyParts(totalExpenses);
-
   // Screen-reader accessible metrics for 50/30/20 & Waterfall table
   const needsPct = totalIncome > 0 ? ((fixedExpenses + nonMonthlyExpenses) / totalIncome) * 100 : 0;
   const wantsPct = totalIncome > 0 ? (flexibleExpenses / totalIncome) * 100 : 0;
@@ -324,43 +288,15 @@ export const Level1MonthOverview: React.FC<Level1MonthOverviewProps> = ({
       </div>
 
       {/* Section 4: Spending This Month Timeline */}
-      <div className="pt-4 border-t border-border space-y-2">
-        <div className="flex items-center justify-between">
-          <h3 className="text-heading text-foreground">Spending this month</h3>
-          <span className="text-label text-muted-foreground tabular-nums num">
-            <span data-testid="kpi-total-expenses" className="text-foreground font-medium">
-              {expenseParts.whole}
-              <span className="sr-only">{expenseParts.cents}</span>
-            </span>{' '}
-            so far
-          </span>
-        </div>
-
-        <div className="w-full h-[80px]">
-          <svg
-            viewBox="0 0 600 72"
-            className="w-full h-full overflow-visible"
-            role="img"
-            aria-label="Cumulative spending timeline"
-          >
-            <line
-              x1="0"
-              y1="66"
-              x2="600"
-              y2="66"
-              stroke="hsl(var(--border))"
-              strokeWidth="1"
-            />
-            <path
-              d={timelinePath}
-              fill="none"
-              stroke="hsl(var(--foreground))"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        </div>
+      <div className="pt-4 border-t border-border">
+        <SpendTimeline
+          selectedMonth={selectedMonth}
+          priorMonthKey={priorMonthKey}
+          allTransactions={allTransactions}
+          totalExpenses={totalExpenses}
+          totalBudget={totalBudget}
+          isOverview={isOverview}
+        />
       </div>
     </motion.div>
   );
