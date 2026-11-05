@@ -26,7 +26,7 @@ export function useCsvImport(
   activeProject: any,
   storageAdapter: any,
   refreshProjectData: () => Promise<void>,
-  showToast: (msg: string) => void,
+  showToast: (msg: string, type?: 'success' | 'error' | 'info') => void,
   setSelectedMonth?: (m: string) => void
 ) {
   const [showCsvWizard, setShowCsvWizard] = useState(false);
@@ -245,7 +245,7 @@ export function useCsvImport(
 
       showToast(`Imported ${toImport.length} transactions`);
     } catch (err: any) {
-      alert(err.message || 'Failed to import CSV');
+      showToast(err.message || 'Failed to import CSV', 'error');
     }
   };
 

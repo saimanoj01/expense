@@ -36,6 +36,36 @@ export default {
           DEFAULT: "hsl(var(--card) / <alpha-value>)",
           foreground: "hsl(var(--card-foreground) / <alpha-value>)",
         },
+        income: {
+          DEFAULT: "#10B981",
+          light: "#34D399",
+          dark: "#059669",
+        },
+        fixed: {
+          DEFAULT: "#3B82F6",
+          light: "#60A5FA",
+          dark: "#2563EB",
+        },
+        variable: {
+          DEFAULT: "#8B5CF6",
+          light: "#A78BFA",
+          dark: "#7C3AED",
+        },
+        nonmonthly: {
+          DEFAULT: "#F59E0B",
+          light: "#FBBF24",
+          dark: "#D97706",
+        },
+        savings: {
+          DEFAULT: "#A855F7",
+          light: "#C084FC",
+          dark: "#9333EA",
+        },
+        deficit: {
+          DEFAULT: "#F43F5E",
+          light: "#FB7185",
+          dark: "#E11D48",
+        },
         glow: {
           cyan: "#00f3ff",
           purple: "#d300ff",

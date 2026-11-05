@@ -1,5 +1,6 @@
 import { TrendingUp, Shield, Calendar, ShoppingBag, PiggyBank, ArrowRight } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { formatCurrency, formatExpenseCurrency } from '../../utils/formatters';
 
 interface KpiGridProps {
   totalBudget?: number;
@@ -30,9 +31,6 @@ export function KpiGrid({
   selectedBucket,
   onSelectBucket
 }: KpiGridProps) {
-  const formatCurrency = (val: number) => 
-    val.toLocaleString('en-US', { style: 'currency', currency: 'USD' });
-
   // Percentage calculations
   const denom = Math.max(totalIncome, totalExpenses, 1);
   const fixedPct = Math.min(100, Math.max(0, (fixedExpenses / denom) * 100));
@@ -158,7 +156,7 @@ export function KpiGrid({
           </div>
           <div>
             <div className="text-2xl font-bold tracking-tight text-blue-400" data-testid="kpi-fixed-expenses">
-              -{formatCurrency(fixedExpenses)}
+              {formatExpenseCurrency(fixedExpenses)}
             </div>
             <p className="text-[11px] text-muted-foreground mt-1 font-medium">
               Mortgage/Bills ({fixedPct.toFixed(0)}%)
@@ -190,7 +188,7 @@ export function KpiGrid({
           </div>
           <div>
             <div className="text-2xl font-bold tracking-tight text-amber-400" data-testid="kpi-non-monthly">
-              -{formatCurrency(nonMonthlyExpenses)}
+              {formatExpenseCurrency(nonMonthlyExpenses)}
             </div>
             <p className="text-[11px] text-muted-foreground mt-1 font-medium">
               Insurance/Taxes ({nonMonthlyPct.toFixed(0)}%)
@@ -222,7 +220,7 @@ export function KpiGrid({
           </div>
           <div>
             <div className="text-2xl font-bold tracking-tight text-rose-400" data-testid="kpi-flexible-spent">
-              -{formatCurrency(flexibleExpenses)}
+              {formatExpenseCurrency(flexibleExpenses)}
             </div>
             <p className="text-[11px] text-muted-foreground mt-1 font-medium">
               Daily Spend ({flexSpentPct.toFixed(0)}%)

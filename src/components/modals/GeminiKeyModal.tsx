@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Sparkles, Key, X, Eye, EyeOff, ExternalLink, Trash2, Check } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { Modal } from '../common/Modal';
 import { getGeminiApiKey, setGeminiApiKey, clearGeminiApiKey, hasUserStoredKey } from '../../services/ai/geminiClient';
 
 interface GeminiKeyModalProps {
@@ -68,14 +68,16 @@ export function GeminiKeyModal({ showModal, onClose, onSaveSuccess }: GeminiKeyM
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm" data-testid="gemini-key-modal">
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.95 }}
-        className="glass-panel w-full max-w-md rounded-2xl p-6 shadow-2xl border border-border/50"
-      >
-        <div className="flex justify-between items-center mb-4">
+    <Modal
+      isOpen={showModal}
+      onClose={onClose}
+      dataTestId="gemini-key-modal"
+      title="Gemini AI Configuration"
+      maxWidth="max-w-md"
+      overlayClassName="z-[60]"
+      className="p-6"
+    >
+      <div className="flex justify-between items-center mb-4">
           <div className="flex items-center gap-2 font-bold text-lg">
             <div className="p-1.5 rounded-lg bg-primary/10 text-primary">
               <Sparkles className="w-5 h-5" />
@@ -163,7 +165,6 @@ export function GeminiKeyModal({ showModal, onClose, onSaveSuccess }: GeminiKeyM
             </button>
           </div>
         </form>
-      </motion.div>
-    </div>
+    </Modal>
   );
 }

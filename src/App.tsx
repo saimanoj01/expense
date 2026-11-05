@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
+import { AnimatePresence } from 'framer-motion';
 import { Sparkles, Loader2 } from 'lucide-react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { AppProvider, useApp } from './context/AppContext';
@@ -13,8 +13,10 @@ import { generateSampleData } from './utils/sampleDataGenerator';
 // Layout & UI
 import { AppLayout } from './components/layout/AppLayout';
 import { Navbar } from './components/layout/Navbar';
+import { Modal } from './components/common/Modal';
 
 // Dashboard
+import { PeriodController } from './components/dashboard/PeriodController';
 import { KpiGrid } from './components/dashboard/KpiGrid';
 import { TrendChart } from './components/dashboard/TrendChart';
 import { BudgetUtilization } from './components/dashboard/BudgetUtilization';
@@ -38,6 +40,7 @@ import { GeminiKeyModal } from './components/modals/GeminiKeyModal';
 import { useTransactions } from './hooks/useTransactions';
 import { useBudgets } from './hooks/useBudgets';
 import { useCsvImport } from './hooks/useCsvImport';
+import { showToast } from './utils/toast';
 
 function AppInner() {
   const { 
@@ -71,11 +74,12 @@ function AppInner() {
     localStorage.setItem('expense_theme', theme);
   }, [theme]);
 
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
-  const showToast = (msg: string) => {
-    setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 3500);
-  };
+  // Sync auth errors to Sonner toast
+  useEffect(() => {
+    if (authErrorToast) {
+      showToast(authErrorToast, 'error');
+    }
+  }, [authErrorToast]);
 
   // State
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -203,7 +207,7 @@ function AppInner() {
       showToast(`Month ${txnHooks.selectedMonth} locked. Report generated.`);
       refreshProjectData();
     } catch (err: any) {
-      alert(err.message || 'Failed to lock month');
+      showToast(err.message || 'Failed to lock month', 'error');
     }
   };
 
@@ -214,7 +218,7 @@ function AppInner() {
       showToast(`Month ${txnHooks.selectedMonth} unlocked.`);
       refreshProjectData();
     } catch (err: any) {
-      alert(err.message || 'Failed to unlock month');
+      showToast(err.message || 'Failed to unlock month', 'error');
     }
   };
 
@@ -227,12 +231,12 @@ function AppInner() {
       await refreshProjectData();
       showToast('Sample data loaded for the past 4 months!');
     } catch (e: any) {
-      showToast(`Failed to load sample data: ${e.message}`);
+      showToast(`Failed to load sample data: ${e.message}`, 'error');
     }
   };
 
   return (
-    <AppLayout toastMessage={toastMessage || authErrorToast}>
+    <AppLayout>
       <Navbar
         user={user}
         isMockMode={isMockMode}
@@ -273,6 +277,12 @@ function AppInner() {
           </div>
         ) : activeProject ? (
           <>
+            <PeriodController
+              selectedMonth={txnHooks.selectedMonth}
+              availableMonths={txnHooks.availableMonths}
+              onSelectMonth={txnHooks.setSelectedMonth}
+            />
+
             {/* Backfill Banner */}
             {txnHooks.unclassifiedCount > 0 && (
               <div className="mb-6 p-4 rounded-2xl bg-gradient-to-r from-primary/10 via-primary/5 to-card border border-primary/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-lg shadow-primary/5" data-testid="backfill-banner">
@@ -520,7 +530,7 @@ function AppInner() {
                 showToast(`Collaborator ${email} added`);
                 refreshProjectData();
               } catch (err: any) {
-                alert(err.message || 'Failed to share project');
+                showToast(err.message || 'Failed to share project', 'error');
               }
             }}
           />
@@ -572,49 +582,63 @@ function AppInner() {
         )}
       </AnimatePresence>
 
-      <AnimatePresence>
-        {showBulkDeleteConfirmModal && (
-          <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="glass-panel w-full max-w-sm rounded-2xl p-6 shadow-2xl border border-destructive/30 text-center"
-            >
-              <h2 className="text-xl font-bold text-destructive mb-2">Delete {selectedTxnIds.size} records?</h2>
-              <p className="text-muted-foreground mb-6 text-sm">This action cannot be undone.</p>
-              <div className="flex gap-3">
-                <button onClick={() => setShowBulkDeleteConfirmModal(false)} className="flex-1 px-4 py-2 bg-card border border-border rounded-xl font-bold">Cancel</button>
-                <button onClick={() => {
-                  txnHooks.handleExecuteBulkDelete(selectedTxnIds, () => {
-                    setSelectedTxnIds(new Set());
-                    setShowBulkDeleteConfirmModal(false);
-                  });
-                }} className="flex-1 px-4 py-2 bg-destructive text-destructive-foreground rounded-xl font-bold shadow-lg shadow-destructive/20">Delete</button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {showSessionExpiredModal && (
-        <div data-testid="session-expired-modal" className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="glass-card max-w-sm w-full p-6 rounded-2xl animate-slide-up text-center">
-            <h3 className="font-bold text-base text-rose-400 mb-2">Session Expired</h3>
-            <p className="text-xs text-muted-foreground mb-4">Please log in again.</p>
-            <button
-              data-testid="modal-ok-btn"
-              onClick={() => {
-                setShowSessionExpiredModal(false);
-                logout();
-              }}
-              className="px-5 py-2 rounded-lg bg-primary text-primary-foreground text-xs font-bold"
-            >
-              OK
-            </button>
-          </div>
+      <Modal
+        isOpen={showBulkDeleteConfirmModal}
+        onClose={() => setShowBulkDeleteConfirmModal(false)}
+        title={`Delete ${selectedTxnIds.size} records?`}
+        maxWidth="max-w-sm"
+        overlayClassName="z-[60]"
+        className="p-6 text-center border border-destructive/30"
+      >
+        <h2 className="text-xl font-bold text-destructive mb-2">Delete {selectedTxnIds.size} records?</h2>
+        <p className="text-muted-foreground mb-6 text-sm">This action cannot be undone.</p>
+        <div className="flex gap-3">
+          <button
+            type="button"
+            onClick={() => setShowBulkDeleteConfirmModal(false)}
+            className="flex-1 px-4 py-2 bg-card border border-border rounded-xl font-bold"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              txnHooks.handleExecuteBulkDelete(selectedTxnIds, () => {
+                setSelectedTxnIds(new Set());
+                setShowBulkDeleteConfirmModal(false);
+              });
+            }}
+            className="flex-1 px-4 py-2 bg-destructive text-destructive-foreground rounded-xl font-bold shadow-lg shadow-destructive/20"
+          >
+            Delete
+          </button>
         </div>
-      )}
+      </Modal>
+
+      <Modal
+        isOpen={showSessionExpiredModal}
+        onClose={() => {
+          setShowSessionExpiredModal(false);
+          logout();
+        }}
+        dataTestId="session-expired-modal"
+        title="Session Expired"
+        maxWidth="max-w-sm"
+        className="p-6 text-center"
+      >
+        <h3 className="font-bold text-base text-rose-400 mb-2">Session Expired</h3>
+        <p className="text-xs text-muted-foreground mb-4">Please log in again.</p>
+        <button
+          data-testid="modal-ok-btn"
+          onClick={() => {
+            setShowSessionExpiredModal(false);
+            logout();
+          }}
+          className="px-5 py-2 rounded-lg bg-primary text-primary-foreground text-xs font-bold"
+        >
+          OK
+        </button>
+      </Modal>
     </AppLayout>
   );
 }

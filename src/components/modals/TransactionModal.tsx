@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Save, Sparkles, Shield, ShoppingBag, Calendar } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { Modal } from '../common/Modal';
 import { Category, Transaction, DEFAULT_CATEGORIES, SpendingBucket } from '../../services/storage';
 import { computeTxHash } from '../../utils/crypto';
 import { suggestCategory, detectTransactionType, suggestSpendingBucket } from '../../utils/categorizer';
@@ -143,19 +143,25 @@ export function TransactionModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm">
-      <motion.div 
-        initial={{ opacity: 0, scale: 0.95, y: 20 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.95, y: 20 }}
-        className="glass-panel w-full max-w-md max-h-[90vh] overflow-y-auto custom-scrollbar rounded-2xl p-6 shadow-2xl border border-border/50"
-      >
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-bold">{editingTxnId ? 'Edit Record' : 'Add Record'}</h2>
-          <button onClick={() => setShowTxnModal(false)} className="p-2 hover:bg-card rounded-lg text-muted-foreground hover:text-foreground transition-colors">
-            <X className="w-6 h-6" />
-          </button>
-        </div>
+    <Modal
+      isOpen={showTxnModal}
+      onClose={() => setShowTxnModal(false)}
+      title={editingTxnId ? 'Edit Record' : 'Add Record'}
+      maxWidth="max-w-md"
+      className="max-h-[90vh] overflow-y-auto custom-scrollbar p-6"
+    >
+      <div className="flex justify-between items-center mb-6">
+        <h2 className="text-2xl font-bold">{editingTxnId ? 'Edit Record' : 'Add Record'}</h2>
+        <button
+          type="button"
+          onClick={() => setShowTxnModal(false)}
+          aria-label="Close dialog"
+          title="Close dialog"
+          className="p-2 hover:bg-card rounded-lg text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <X className="w-6 h-6" />
+        </button>
+      </div>
         
         <form onSubmit={handleSaveTransaction} className="space-y-4">
           <div className="flex gap-2 p-1 bg-card/50 rounded-xl border border-border/50" data-testid="transaction-type-toggle" data-active-type={txnType}>
@@ -403,7 +409,6 @@ export function TransactionModal({
             </button>
           </div>
         </form>
-      </motion.div>
-    </div>
+    </Modal>
   );
 }

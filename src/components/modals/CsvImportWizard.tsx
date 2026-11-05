@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Upload, Check, X, Sparkles, Loader2, AlertCircle } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { Modal } from '../common/Modal';
 import { CsvItem } from '../../hooks/useCsvImport';
 import { Category, DEFAULT_CATEGORIES } from '../../services/storage';
 import { classifyTransactionsWithLLM } from '../../services/llmCategorizer';
@@ -135,14 +135,14 @@ export function CsvImportWizard({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm">
-      <motion.div 
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.95 }}
-        className="glass-panel w-full max-w-5xl max-h-[90vh] rounded-2xl p-6 overflow-hidden flex flex-col shadow-2xl"
-      >
-        <div className="flex justify-between items-center mb-6">
+    <Modal
+      isOpen={showCsvWizard}
+      onClose={() => setShowCsvWizard(false)}
+      title={csvStep === 1 ? 'Map Columns & Batch Tags' : 'Preview Import & Categorize'}
+      maxWidth="max-w-5xl"
+      className="max-h-[90vh] p-6 overflow-hidden flex flex-col"
+    >
+      <div className="flex justify-between items-center mb-6">
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-xl bg-primary/10 text-primary">
               <Upload className="w-6 h-6" />
@@ -517,7 +517,6 @@ export function CsvImportWizard({
             </button>
           )}
         </div>
-      </motion.div>
-    </div>
+    </Modal>
   );
 }

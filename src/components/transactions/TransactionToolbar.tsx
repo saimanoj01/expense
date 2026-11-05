@@ -23,13 +23,13 @@ interface TransactionToolbarProps {
 
 export function TransactionToolbar({
   selectedMonth,
-  availableMonths,
+  availableMonths: _availableMonths,
   availableTags = [],
   selectedTagFilter,
   selectedBucket,
   sortBy,
   isCurrentMonthLocked,
-  setSelectedMonth,
+  setSelectedMonth: _setSelectedMonth,
   setSelectedTagFilter,
   setSelectedBucket,
   setSortBy,
@@ -46,18 +46,6 @@ export function TransactionToolbar({
       className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6"
     >
       <div className="flex flex-wrap items-center gap-3">
-        <select
-          data-testid="month-selector"
-          className="bg-card/50 border border-border rounded-xl px-4 py-2 font-medium focus:ring-2 focus:ring-primary outline-none transition-all"
-          value={selectedMonth}
-          onChange={(e) => setSelectedMonth(e.target.value)}
-        >
-          <option value="all" className="bg-card text-card-foreground">All Time</option>
-          {availableMonths.map(m => (
-            <option key={m} value={m} className="bg-card text-card-foreground">{m}</option>
-          ))}
-        </select>
-
         {/* Sort Selector */}
         {setSortBy && (
           <div className="relative flex items-center">

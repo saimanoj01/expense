@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, Plus, Edit2, Trash2, Save, ChevronDown, ChevronRight, Sparkles } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { Modal } from '../common/Modal';
 import { Category, Transaction } from '../../services/storage';
 
 interface CategoryManagerModalProps {
@@ -138,14 +139,15 @@ export function CategoryManagerModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm" data-testid="category-manager-modal">
-      <motion.div 
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.95 }}
-        className="glass-card w-full max-w-2xl max-h-[85vh] flex flex-col p-6 rounded-2xl shadow-2xl border border-border"
-      >
-        {/* Header */}
+    <Modal
+      isOpen={showModal}
+      onClose={() => setShowModal(false)}
+      dataTestId="category-manager-modal"
+      title="Category & Sub-Category Manager"
+      maxWidth="max-w-2xl"
+      className="max-h-[85vh] flex flex-col p-6"
+    >
+      {/* Header */}
         <div className="flex items-center justify-between pb-4 border-b border-border/50">
           <div className="flex items-center gap-3">
             <div className="p-2 rounded-xl bg-primary/10 text-primary">
@@ -334,7 +336,6 @@ export function CategoryManagerModal({
             );
           })}
         </div>
-      </motion.div>
-    </div>
+    </Modal>
   );
 }

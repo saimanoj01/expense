@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { X, Save } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { Modal } from '../common/Modal';
 import { Category, DEFAULT_CATEGORIES } from '../../services/storage';
 
 interface CategoryModalProps {
@@ -60,19 +60,26 @@ export function CategoryModal({ showModal, setShowModal, handleSaveCategory, cat
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm" data-testid="add-category-modal">
-      <motion.div 
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.95 }}
-        className="glass-panel w-full max-w-sm rounded-2xl p-6 shadow-2xl border border-border/50"
-      >
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-xl font-bold">Add Category</h2>
-          <button onClick={() => setShowModal(false)} className="p-2 hover:bg-card rounded-lg text-muted-foreground hover:text-foreground transition-colors">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
+    <Modal
+      isOpen={showModal}
+      onClose={() => setShowModal(false)}
+      dataTestId="add-category-modal"
+      title="Add Category"
+      maxWidth="max-w-sm"
+      className="p-6"
+    >
+      <div className="flex justify-between items-center mb-6">
+        <h2 className="text-xl font-bold">Add Category</h2>
+        <button
+          type="button"
+          onClick={() => setShowModal(false)}
+          aria-label="Close dialog"
+          title="Close dialog"
+          className="p-2 hover:bg-card rounded-lg text-muted-foreground hover:text-foreground transition-colors"
+        >
+          <X className="w-5 h-5" />
+        </button>
+      </div>
         
         {error && <div className="mb-4 text-destructive text-sm font-bold" data-testid="category-modal-error">{error}</div>}
 
@@ -133,7 +140,6 @@ export function CategoryModal({ showModal, setShowModal, handleSaveCategory, cat
             <Save className="w-5 h-5" /> Add Category
           </button>
         </form>
-      </motion.div>
-    </div>
+    </Modal>
   );
 }

@@ -7,7 +7,7 @@ export function useBudgets(
   monthTransactions: Transaction[],
   allTransactions: Transaction[] = [],
   selectedMonth: string = '',
-  showToast: (msg: string) => void,
+  showToast: (msg: string, type?: 'success' | 'error' | 'info') => void,
   setAuthErrorToast: (msg: string) => void
 ) {
   const [budgets, setBudgets] = useState<Budget[]>([]);
@@ -261,7 +261,7 @@ export function useBudgets(
       if (err.name === 'QuotaExceededError' || /quota/i.test(err.message || '')) {
         setAuthErrorToast('Storage quota exceeded. Session is now read-only.');
       } else {
-        alert(err.message || 'Failed to save budgets');
+        showToast(err.message || 'Failed to save budgets', 'error');
       }
     }
   };
@@ -292,7 +292,7 @@ export function useBudgets(
       showToast(isEdit ? 'Category edited successfully' : 'Category added successfully');
       return true;
     } catch (err: any) {
-      alert(err.message || 'Failed to save category');
+      showToast(err.message || 'Failed to save category', 'error');
       return false;
     }
   };
@@ -306,7 +306,7 @@ export function useBudgets(
       await refreshBudgetsAndCategories();
       showToast('Category deleted');
     } catch (err: any) {
-      alert(err.message || 'Failed to delete category');
+      showToast(err.message || 'Failed to delete category', 'error');
     }
   };
 
@@ -323,7 +323,7 @@ export function useBudgets(
       setBudgetNotes(prev => ({ ...prev, [key]: noteObj }));
       showToast('Note saved');
     } catch (err: any) {
-      alert(err.message || 'Failed to save note');
+      showToast(err.message || 'Failed to save note', 'error');
     }
   }, [activeProject, storageAdapter, showToast]);
 
@@ -339,7 +339,7 @@ export function useBudgets(
       });
       showToast('Note removed');
     } catch (err: any) {
-      alert(err.message || 'Failed to delete note');
+      showToast(err.message || 'Failed to delete note', 'error');
     }
   }, [activeProject, storageAdapter, showToast]);
 

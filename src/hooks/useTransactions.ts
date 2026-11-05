@@ -109,7 +109,7 @@ export function useTransactions(
   storageAdapter: any,
   activeProject: any,
   locks: MonthlyLock[],
-  showToast: (msg: string) => void,
+  showToast: (msg: string, type?: 'success' | 'error' | 'info') => void,
   categories: Category[] = []
 ) {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -724,7 +724,7 @@ export function useTransactions(
       showToast(isEdit ? 'Transaction updated successfully' : 'Transaction saved successfully');
       return true;
     } catch (err: any) {
-      alert(err.message || 'Failed to save transaction');
+      showToast(err.message || 'Failed to save transaction', 'error');
       return false;
     }
   };
@@ -737,7 +737,7 @@ export function useTransactions(
       showToast(`Saved ${txnsToSave.length} transactions successfully`);
       return true;
     } catch (err: any) {
-      alert(err.message || 'Failed to save transactions');
+      showToast(err.message || 'Failed to save transactions', 'error');
       return false;
     }
   };
@@ -750,7 +750,7 @@ export function useTransactions(
       if (onDeleted) onDeleted(id);
       showToast('Transaction deleted');
     } catch (err: any) {
-      alert(err.message || 'Failed to delete transaction');
+      showToast(err.message || 'Failed to delete transaction', 'error');
     }
   };
 
@@ -769,7 +769,7 @@ export function useTransactions(
       if (onComplete) onComplete();
       showToast(`Successfully deleted ${idsToDelete.length} transaction${idsToDelete.length > 1 ? 's' : ''}`);
     } catch (err: any) {
-      alert(err.message || 'Failed to delete selected transactions');
+      showToast(err.message || 'Failed to delete selected transactions', 'error');
     }
   };
 
@@ -788,7 +788,7 @@ export function useTransactions(
       if (onComplete) onComplete();
       showToast(`Updated category for ${updatedTxns.length} transaction${updatedTxns.length > 1 ? 's' : ''}`);
     } catch (err: any) {
-      alert(err.message || 'Failed to update categories');
+      showToast(err.message || 'Failed to update categories', 'error');
     }
   };
 
@@ -818,7 +818,7 @@ export function useTransactions(
       await refreshTransactions();
       showToast(`Added tag${newTags.length > 1 ? 's' : ''} ${newTags.map(t => `#${t}`).join(', ')}`);
     } catch (err: any) {
-      alert(err.message || 'Failed to add tags');
+      showToast(err.message || 'Failed to add tags', 'error');
     }
   };
 
@@ -846,7 +846,7 @@ export function useTransactions(
       await refreshTransactions();
       showToast(`Removed tag #${tagToRemove}`);
     } catch (err: any) {
-      alert(err.message || 'Failed to remove tag');
+      showToast(err.message || 'Failed to remove tag', 'error');
     }
   };
 
@@ -895,7 +895,7 @@ export function useTransactions(
       }
       showToast(msg);
     } catch (err: any) {
-      alert(err.message || 'Failed to add bulk tags');
+      showToast(err.message || 'Failed to add bulk tags', 'error');
     }
   };
 
@@ -942,7 +942,7 @@ export function useTransactions(
       }
       showToast(msg);
     } catch (err: any) {
-      alert(err.message || 'Failed to remove bulk tags');
+      showToast(err.message || 'Failed to remove bulk tags', 'error');
     }
   };
 

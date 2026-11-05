@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { FolderKanban, X, Trash2, Plus, Users, AlertTriangle } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { Modal } from '../common/Modal';
 import { Project } from '../../services/storage';
 
 interface ManageProjectsModalProps {
@@ -59,17 +60,15 @@ export function ManageProjectsModal({
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm"
-      data-testid="manage-projects-modal"
+    <Modal
+      isOpen={showModal}
+      onClose={onClose}
+      dataTestId="manage-projects-modal"
+      title="Manage Projects"
+      maxWidth="max-w-lg"
+      className="p-6 flex flex-col max-h-[85vh]"
     >
-      <motion.div
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        exit={{ opacity: 0, scale: 0.95 }}
-        className="glass-panel w-full max-w-lg rounded-2xl p-6 shadow-2xl border border-border/50 flex flex-col max-h-[85vh]"
-      >
-        {/* Header */}
+      {/* Header */}
         <div className="flex justify-between items-center pb-4 border-b border-border/40">
           <div className="flex items-center gap-2.5 font-bold text-lg">
             <div className="p-2 rounded-xl bg-primary/10 text-primary">
@@ -215,7 +214,6 @@ export function ManageProjectsModal({
             </button>
           </div>
         </form>
-      </motion.div>
-    </div>
+    </Modal>
   );
 }

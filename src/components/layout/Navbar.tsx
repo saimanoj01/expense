@@ -103,6 +103,7 @@ export function Navbar({
                   data-testid="manage-projects-icon-btn"
                   className="p-1.5 hover:bg-card/50 rounded-lg transition-colors border border-transparent hover:border-border text-muted-foreground hover:text-foreground"
                   title="Manage & Delete Projects"
+                  aria-label="Manage & Delete Projects"
                 >
                   <FolderKanban className="w-4 h-4" />
                 </button>
@@ -115,6 +116,7 @@ export function Navbar({
             data-testid="theme-toggle-btn"
             className="p-2 hover:bg-card/50 rounded-lg transition-colors border border-transparent hover:border-border"
             title="Toggle Light/Dark Theme"
+            aria-label="Toggle Light/Dark Theme"
           >
             {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
           </button>
@@ -125,6 +127,7 @@ export function Navbar({
               data-testid="ai-settings-btn"
               className="p-2 hover:bg-card/50 rounded-lg transition-colors border border-transparent hover:border-border text-primary"
               title="Gemini AI Settings"
+              aria-label="Gemini AI Settings"
             >
               <Sparkles className="w-5 h-5" />
             </button>

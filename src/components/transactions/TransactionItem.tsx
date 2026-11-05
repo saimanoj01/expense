@@ -213,6 +213,8 @@ export function TransactionItem({
             <button 
               onClick={() => handleEditTxn(transaction)}
               data-testid={`edit-transaction-btn-${transaction.id}`}
+              title="Edit transaction"
+              aria-label="Edit transaction"
               className="p-2 hover:bg-card rounded-lg text-muted-foreground hover:text-foreground transition-colors"
             >
               <Edit2 className="w-4 h-4" />
@@ -220,6 +222,8 @@ export function TransactionItem({
             <button 
               onClick={() => handleDeleteTxn(transaction.id)}
               data-testid={`delete-transaction-btn-${transaction.id}`}
+              title="Delete transaction"
+              aria-label="Delete transaction"
               className="p-2 hover:bg-destructive/10 rounded-lg text-muted-foreground hover:text-destructive transition-colors"
             >
               <Trash2 className="w-4 h-4" />
