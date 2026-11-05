@@ -53,7 +53,7 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
 
   return (
     <header
-      data-testid={!isOverview ? 'dashboard-header' : undefined}
+      data-testid="dashboard-header"
       className={`sticky top-0 z-20 h-14 flex items-center justify-between gap-3 bg-background/85 backdrop-blur-md transition-colors mb-3 ${
         scrolled ? 'border-b border-border' : 'border-b border-transparent'
       } ${className}`}

@@ -213,7 +213,7 @@ export const Level1MonthOverview: React.FC<Level1MonthOverviewProps> = ({
 
   return (
     <motion.div
-      data-testid={isOverview ? 'dashboard-header' : undefined}
+      data-testid={isOverview ? 'level1-month-overview' : undefined}
       animate={{ x: slideOffset }}
       transition={{ duration: dur.page, ease }}
       drag="x"

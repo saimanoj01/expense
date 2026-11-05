@@ -163,6 +163,9 @@ export const TransactionItem = forwardRef<HTMLDivElement, TransactionItemProps>(
                 />
               )}
               <span>{bucketLabel}</span>
+              {transaction.type === 'transfer' && (
+                <span className="sr-only">↔️ Transfer</span>
+              )}
             </span>
 
             {currentLabels.length > 0 && (

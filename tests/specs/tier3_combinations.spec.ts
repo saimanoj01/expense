@@ -100,6 +100,7 @@ test.describe('Tier 3: Cross-Feature Combinations', () => {
     await expect(page.getByTestId('kpi-total-expenses')).toContainText('$150.00');
 
     // Chart segments should reflect new category counts
+    await dashboardPage.ensureBudgetsView();
     const piePaths = dashboardPage.pieChart.locator('path');
     await expect(piePaths).toHaveCount(1); // just Food
   });

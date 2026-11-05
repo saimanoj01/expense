@@ -204,6 +204,9 @@ test.describe('Tier 5 Part 1: State Transitions, OAuth Edge Cases & Corruption H
         };
       });
 
+      await page.evaluate(() => {
+        window.location.hash = '#/budgets';
+      });
       const saveBtn = page.getByTestId('save-budgets-btn');
       await saveBtn.click();
 
