@@ -48,8 +48,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [isMockMode, setShowSessionExpiredModal]);
 
   useEffect(() => {
-    if (import.meta.env.DEV || (typeof window !== 'undefined' && (window as any).__PLAYWRIGHT__)) {
-      (window as any).expenseStorage = storageAdapter;
+    interface WindowWithPlaywright extends Window {
+      __PLAYWRIGHT__?: boolean;
+      expenseStorage?: StorageAdapter;
+    }
+    const win = typeof window !== 'undefined' ? (window as unknown as WindowWithPlaywright) : undefined;
+    if (win && (import.meta.env.DEV || win.__PLAYWRIGHT__)) {
+      win.expenseStorage = storageAdapter;
     }
   }, [storageAdapter]);
 
@@ -63,7 +68,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setProjects(list);
       
       // Determine target project ID to select on initialization
-      const targetProjectId = localStorage.getItem('expense_active_project_id');
+      const existingParams = new URLSearchParams(window.location.hash.split('?')[1] || '');
+      const hashProjectId = existingParams.get('project');
+      const existingMonth = existingParams.get('month');
+      const targetProjectId = hashProjectId || localStorage.getItem('expense_active_project_id');
       let found = targetProjectId ? list.find(p => p.id === targetProjectId) : undefined;
       if (!found && list.length > 0) {
         found = list[0];
@@ -72,15 +80,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setActiveProject(found);
         setCurrentView('dashboard');
         localStorage.setItem('expense_active_project_id', found.id);
-        window.location.hash = `#/dashboard?project=${found.id}`;
+        const monthSuffix = existingMonth && /^\d{4}-\d{2}$/.test(existingMonth) ? `&month=${existingMonth}` : '';
+        window.location.hash = `#/dashboard?project=${found.id}${monthSuffix}`;
       } else {
         setActiveProject(null);
         setCurrentView('project-selector');
         localStorage.removeItem('expense_active_project_id');
         window.location.hash = '#/projects';
       }
-    } catch (err: any) {
-      setError(err.message || 'Failed to load projects');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to load projects');
     } finally {
       setIsLoading(false);
       setIsProjectsLoaded(true);
@@ -114,6 +123,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setActiveProject(found);
       setCurrentView('dashboard');
       localStorage.setItem('expense_active_project_id', projectId);
+    } else if (projects.length === 0) {
+      localStorage.setItem('expense_active_project_id', projectId);
     } else if (projects.length > 0) {
       setActiveProject(null);
       setCurrentView('project-selector');
@@ -134,8 +145,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       localStorage.setItem('expense_active_project_id', newProj.id);
       window.location.hash = '';
       return newProj;
-    } catch (err: any) {
-      setError(err.message || 'Failed to create project');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to create project');
       throw err;
     } finally {
       setIsLoading(false);
@@ -161,8 +172,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           window.location.hash = '#/projects';
         }
       }
-    } catch (err: any) {
-      setError(err.message || 'Failed to delete project');
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to delete project');
       throw err;
     } finally {
       setIsLoading(false);
@@ -189,6 +200,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   );
 };
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const useApp = () => {
   const context = useContext(AppContext);
   if (!context) throw new Error('useApp must be used within an AppProvider');

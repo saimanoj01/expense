@@ -63,6 +63,44 @@ function formatMonthTitle(monthStr: string): string {
   return monthStr;
 }
 
+function renderMomDeltaBadge(
+  current: number,
+  prior: number | undefined,
+  isExpense: boolean,
+  hasPriorMonthData: boolean,
+  testId: string,
+  fallbackText: string = 'No prior month data'
+): React.ReactNode {
+  if (!hasPriorMonthData || prior === undefined || prior <= 0) {
+    return (
+      <span data-testid={testId} className="text-muted-foreground text-[10px]">
+        {fallbackText}
+      </span>
+    );
+  }
+  const deltaPct = ((current - prior) / prior) * 100;
+  if (Math.abs(deltaPct) < 0.05) {
+    return (
+      <span data-testid={testId} className="text-muted-foreground text-[10px]">
+        No change MoM
+      </span>
+    );
+  }
+  const isPositiveTone = isExpense ? deltaPct < 0 : deltaPct > 0;
+  const toneClasses = isPositiveTone
+    ? 'text-emerald-400 bg-emerald-500/10'
+    : 'text-rose-400 bg-rose-500/10';
+  const sign = deltaPct > 0 ? '+' : '';
+  return (
+    <span
+      data-testid={testId}
+      className={`${toneClasses} px-1.5 py-0.5 rounded font-semibold tabular-nums font-sans`}
+    >
+      {sign}{deltaPct.toFixed(1)}% MoM
+    </span>
+  );
+}
+
 export function MonthlyFinancialStory({
   selectedMonth,
   activeProject,
@@ -102,6 +140,7 @@ export function MonthlyFinancialStory({
     const pIncome = priorTxns.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
     const pFixed = priorTxns.filter(t => t.type === 'expense' && bucketOf(t, categories) === 'fixed').reduce((s, t) => s + t.amount, 0);
     const pFlexible = priorTxns.filter(t => t.type === 'expense' && bucketOf(t, categories) === 'flexible').reduce((s, t) => s + t.amount, 0);
+    const pNonMonthly = priorTxns.filter(t => t.type === 'expense' && bucketOf(t, categories) === 'non-monthly').reduce((s, t) => s + t.amount, 0);
     const pExpenses = priorTxns.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0);
     const pSavings = pIncome - pExpenses;
     const pSavingsRate = pIncome > 0 ? (pSavings / pIncome) * 100 : 0;
@@ -110,6 +149,7 @@ export function MonthlyFinancialStory({
       income: pIncome,
       fixed: pFixed,
       flexible: pFlexible,
+      nonMonthly: pNonMonthly,
       expenses: pExpenses,
       savings: pSavings,
       savingsRate: pSavingsRate
@@ -329,13 +369,13 @@ export function MonthlyFinancialStory({
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-card/80 border border-border/60 shadow-sm text-xs font-semibold">
             <span className="text-muted-foreground">Budget:</span>
-            <span className="font-bold text-foreground" data-testid="kpi-total-budget">
+            <span className="font-bold text-foreground truncate overflow-hidden" data-testid="kpi-total-budget">
               {formatCurrency(totalBudget || 0)}
             </span>
           </div>
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-card/80 border border-border/60 shadow-sm text-xs font-semibold">
             <span className="text-muted-foreground">Expenses:</span>
-            <span className="font-bold text-foreground" data-testid="kpi-total-expenses">
+            <span className="font-bold text-foreground truncate overflow-hidden" data-testid="kpi-total-expenses">
               {formatCurrency(totalExpenses)}
             </span>
           </div>
@@ -413,25 +453,7 @@ export function MonthlyFinancialStory({
             </div>
             <div className="mt-1 flex items-center justify-between gap-1 text-[11px]">
               <span className="text-muted-foreground font-medium">Starting cash</span>
-              {priorMetrics && (
-                <span
-                  data-testid="mom-delta-income"
-                  className={`font-semibold tabular-nums ${
-                    totalIncome >= priorMetrics.income ? 'text-emerald-500' : 'text-rose-400'
-                  }`}
-                >
-                  {totalIncome >= priorMetrics.income ? '+' : ''}
-                  {priorMetrics.income > 0
-                    ? `${(((totalIncome - priorMetrics.income) / priorMetrics.income) * 100).toFixed(1)}%`
-                    : '—'}{' '}
-                  MoM
-                </span>
-              )}
-              {!priorMetrics && hasPriorMonthData === false && (
-                <span data-testid="mom-delta-income" className="text-muted-foreground text-[10px]">
-                  No prior month data
-                </span>
-              )}
+              {renderMomDeltaBadge(totalIncome, priorMetrics?.income, false, hasPriorMonthData, 'mom-delta-income')}
             </div>
           </div>
         </motion.button>
@@ -464,25 +486,7 @@ export function MonthlyFinancialStory({
             </div>
             <div className="mt-1 flex items-center justify-between gap-1 text-[11px]">
               <span className="text-muted-foreground font-medium">Bills ({fixedPct.toFixed(0)}%)</span>
-              {priorMetrics && (
-                <span
-                  data-testid="mom-delta-fixed"
-                  className={`font-semibold tabular-nums ${
-                    fixedExpenses <= priorMetrics.fixed ? 'text-emerald-500' : 'text-rose-400'
-                  }`}
-                >
-                  {fixedExpenses >= priorMetrics.fixed ? '+' : ''}
-                  {priorMetrics.fixed > 0
-                    ? `${(((fixedExpenses - priorMetrics.fixed) / priorMetrics.fixed) * 100).toFixed(1)}%`
-                    : '—'}{' '}
-                  MoM
-                </span>
-              )}
-              {!priorMetrics && hasPriorMonthData === false && (
-                <span data-testid="mom-delta-fixed" className="text-muted-foreground text-[10px]">
-                  No prior month data
-                </span>
-              )}
+              {renderMomDeltaBadge(fixedExpenses, priorMetrics?.fixed, true, hasPriorMonthData, 'mom-delta-fixed')}
             </div>
           </div>
         </motion.button>
@@ -515,25 +519,7 @@ export function MonthlyFinancialStory({
             </div>
             <div className="mt-1 flex items-center justify-between gap-1 text-[11px]">
               <span className="text-muted-foreground font-medium">Daily ({flexSpentPct.toFixed(0)}%)</span>
-              {priorMetrics && (
-                <span
-                  data-testid="mom-delta-flexible"
-                  className={`font-semibold tabular-nums ${
-                    flexibleExpenses <= priorMetrics.flexible ? 'text-emerald-500' : 'text-rose-400'
-                  }`}
-                >
-                  {flexibleExpenses >= priorMetrics.flexible ? '+' : ''}
-                  {priorMetrics.flexible > 0
-                    ? `${(((flexibleExpenses - priorMetrics.flexible) / priorMetrics.flexible) * 100).toFixed(1)}%`
-                    : '—'}{' '}
-                  MoM
-                </span>
-              )}
-              {!priorMetrics && hasPriorMonthData === false && (
-                <span data-testid="mom-delta-flexible" className="text-muted-foreground text-[10px]">
-                  No prior month data
-                </span>
-              )}
+              {renderMomDeltaBadge(flexibleExpenses, priorMetrics?.flexible, true, hasPriorMonthData, 'mom-delta-flexible')}
             </div>
           </div>
         </motion.button>
@@ -564,9 +550,10 @@ export function MonthlyFinancialStory({
             <div className="text-2xl font-bold tracking-tight text-amber-400" data-testid="kpi-non-monthly">
               {formatExpenseCurrency(nonMonthlyExpenses)}
             </div>
-            <p className="text-[11px] text-muted-foreground mt-1 font-medium">
-              Irregular ({nonMonthlyPct.toFixed(0)}%)
-            </p>
+            <div className="mt-1 flex items-center justify-between gap-1 text-[11px]">
+              <span className="text-muted-foreground font-medium">Irregular ({nonMonthlyPct.toFixed(0)}%)</span>
+              {renderMomDeltaBadge(nonMonthlyExpenses, priorMetrics?.nonMonthly, true, hasPriorMonthData, 'mom-delta-non-monthly')}
+            </div>
           </div>
         </motion.button>
 
@@ -613,14 +600,14 @@ export function MonthlyFinancialStory({
               <span className="text-muted-foreground font-medium">
                 Rate: {totalIncome > 0 ? `${savingsRate.toFixed(1)}%` : '—'}
               </span>
-              {priorMetrics && totalIncome > 0 && (
+              {priorMetrics && totalIncome > 0 && priorMetrics.income > 0 && Math.abs(savingsRate - priorMetrics.savingsRate) >= 0.05 && (
                 <span
                   data-testid="mom-delta-savings-rate"
-                  className={`font-semibold tabular-nums ${
-                    savingsRate >= priorMetrics.savingsRate ? 'text-emerald-500' : 'text-rose-400'
+                  className={`px-1.5 py-0.5 rounded font-semibold tabular-nums ${
+                    savingsRate > priorMetrics.savingsRate ? 'text-emerald-400 bg-emerald-500/10' : 'text-rose-400 bg-rose-500/10'
                   }`}
                 >
-                  {savingsRate >= priorMetrics.savingsRate ? '+' : ''}
+                  {savingsRate > priorMetrics.savingsRate ? '+' : ''}
                   {(savingsRate - priorMetrics.savingsRate).toFixed(1)} pts MoM
                 </span>
               )}

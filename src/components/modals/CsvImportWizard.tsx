@@ -83,6 +83,7 @@ export function CsvImportWizard({
         handleRunAiClassification();
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showCsvWizard, csvStep, hasAutoClassified, isAiClassifying, parsedCsvItems.length]);
 
   if (!showCsvWizard) return null;
@@ -160,7 +161,7 @@ export function CsvImportWizard({
         </div>
         
         {csvError && (
-          <div className="mb-4 p-4 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive font-bold">
+          <div data-testid="csv-error" className="mb-4 p-4 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive font-bold csv-error csv-upload-error csv-mapping-error">
             {csvError}
           </div>
         )}
@@ -511,7 +512,8 @@ export function CsvImportWizard({
             <button
               onClick={handleCommitCsvImport}
               data-testid="csv-import-btn"
-              className="px-6 py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-bold shadow-lg shadow-primary/20 transition-all hover:scale-105 active:scale-95 flex items-center gap-2"
+              disabled={parsedCsvItems.filter(i => i.selected).length === 0}
+              className="px-6 py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-bold shadow-lg shadow-primary/20 transition-all hover:scale-105 active:scale-95 flex items-center gap-2 disabled:opacity-50 disabled:pointer-events-none"
             >
               <Check className="w-5 h-5" /> Import Selected
             </button>

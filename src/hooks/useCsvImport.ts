@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { parseCsv, standardizeDate, parseCurrencyAmount } from '../utils/csv';
 import { computeTxHash } from '../utils/crypto';
-import { Transaction, MonthlyLock, Category, SpendingBucket } from '../services/storage';
+import { Transaction, MonthlyLock, Category, SpendingBucket, Project, StorageAdapter } from '../services/storage';
 import { suggestCategory, detectTransactionType, suggestSpendingBucket } from '../utils/categorizer';
 
 export interface CsvItem {
@@ -23,8 +23,8 @@ export function useCsvImport(
   transactions: Transaction[],
   locks: MonthlyLock[],
   categories: Category[],
-  activeProject: any,
-  storageAdapter: any,
+  activeProject: Project | null,
+  storageAdapter: StorageAdapter | null,
   refreshProjectData: () => Promise<void>,
   showToast: (msg: string, type?: 'success' | 'error' | 'info') => void,
   setSelectedMonth?: (m: string) => void
@@ -244,8 +244,8 @@ export function useCsvImport(
       }
 
       showToast(`Imported ${toImport.length} transactions`);
-    } catch (err: any) {
-      showToast(err.message || 'Failed to import CSV', 'error');
+    } catch (err: unknown) {
+      showToast(err instanceof Error ? err.message : 'Failed to import CSV', 'error');
     }
   };
 

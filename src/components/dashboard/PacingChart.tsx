@@ -24,16 +24,23 @@ export function PacingChart({
     prevMap.set(p.day, p.cumulativeAmount);
   });
 
-  const chartData = cumulativePoints.map(p => {
-    const ideal = totalBudget > 0 ? Math.round((totalBudget / daysInMonth) * p.day) : undefined;
-    const prev = prevMap.get(p.day);
+  const actualMap = new Map<number, { cum: number; daily: number; formattedDate: string }>();
+  cumulativePoints.forEach(p => {
+    actualMap.set(p.day, { cum: p.cumulativeAmount, daily: p.dailyAmount, formattedDate: p.formattedDate });
+  });
+
+  const chartData = Array.from({ length: daysInMonth }, (_, i) => {
+    const day = i + 1;
+    const act = actualMap.get(day);
+    const ideal = totalBudget > 0 ? Math.round((totalBudget / daysInMonth) * day) : undefined;
+    const prev = prevMap.get(day);
 
     return {
-      day: p.day,
-      dayLabel: `Day ${p.day}`,
-      formattedDate: p.formattedDate,
-      actual: p.cumulativeAmount,
-      daily: p.dailyAmount,
+      day,
+      dayLabel: `Day ${day}`,
+      formattedDate: act?.formattedDate || `Day ${day}`,
+      actual: act ? act.cum : null,
+      daily: act ? act.daily : 0,
       ideal,
       previous: prev
     };
@@ -43,7 +50,7 @@ export function PacingChart({
   const maxPrev = prevMonthCumulativePoints[prevMonthCumulativePoints.length - 1]?.cumulativeAmount || 0;
   const maxDomain = Math.max(maxActual, maxPrev, totalBudget, 100) * 1.1;
 
-  const CustomTooltip = ({ active, payload }: any) => {
+  const CustomTooltip = ({ active, payload }: { active?: boolean; payload?: Array<{ payload: (typeof chartData)[0] }> }) => {
     if (!active || !payload || !payload.length) return null;
     const data = payload[0]?.payload;
     if (!data) return null;

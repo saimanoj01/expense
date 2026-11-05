@@ -66,9 +66,9 @@ export function TrendChart({
         totalBudget
       });
       setAiResult(res);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Failed to generate AI insights:', err);
-      setAiError(err.message || 'Failed to generate AI insights. Please check your API key.');
+      setAiError(err instanceof Error ? err.message : 'Failed to generate AI insights. Please check your API key.');
     } finally {
       setIsGeneratingAi(false);
     }
@@ -109,6 +109,33 @@ export function TrendChart({
 
   const hasData = trendDetails && transactions.some(t => t.type === 'expense' && (selectedMonth === 'all' || (t.date || '').startsWith(selectedMonth)));
 
+  const topExpenseCategories = useMemo(() => {
+    const map = new Map<string, { name: string; emoji: string; color: string; amount: number }>();
+    const catLookup = new Map<string, Category>();
+    categories.forEach(c => {
+      catLookup.set(c.id, c);
+      catLookup.set(c.id.toLowerCase(), c);
+      catLookup.set(c.name.toLowerCase(), c);
+    });
+    transactions.forEach(t => {
+      if (t.type !== 'expense') return;
+      if (selectedMonth !== 'all' && !(t.date || '').startsWith(selectedMonth)) return;
+      const key = (t.category || 'misc').toLowerCase();
+      const catObj = catLookup.get(t.category) || catLookup.get(key);
+      const name = catObj?.name || t.category || 'Other';
+      const emoji = catObj?.emoji || '📦';
+      const color = catObj?.color || '#14B8A6';
+      const amt = typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount || 0)) || 0;
+      const cur = map.get(key) || { name, emoji, color, amount: 0 };
+      cur.amount += amt;
+      map.set(key, cur);
+    });
+    return Array.from(map.values())
+      .filter(c => c.amount > 0)
+      .sort((a, b) => b.amount - a.amount)
+      .slice(0, 5);
+  }, [transactions, categories, selectedMonth]);
+
   if (!trendDetails) {
     return (
       <motion.div 
@@ -144,12 +171,20 @@ export function TrendChart({
     prevMonthPathData,
     highestSpendDay,
     dailyAvg,
+    totalSpent,
+    daysElapsed,
     monthlyCashFlows,
     avgMonthlySavings,
     overallSavingsRate,
     bestCashFlowMonth,
     yTicks
   } = trendDetails;
+
+  const remainingBudget = Math.max(0, totalBudget - totalSpent);
+  const daysRemaining = Math.max(0, daysInMonth - daysElapsed);
+  const safeDailyAllowance = daysRemaining > 0
+    ? Math.round(remainingBudget / daysRemaining)
+    : Math.round(remainingBudget);
 
   return (
     <motion.div 
@@ -345,7 +380,7 @@ export function TrendChart({
                       initial={{ opacity: 0 }}
                       animate={{ opacity: 1 }}
                       transition={{ duration: 0.8 }}
-                      points={`55,165 ${cumulativePoints.map(p => `${p.x},${p.y}`).join(' ')} 475,165`}
+                      points={`55,165 ${cumulativePoints.map(p => `${p.x},${p.y}`).join(' ')} ${cumulativePoints[cumulativePoints.length - 1]?.x.toFixed(1) || 475},165`}
                       fill="url(#cumulativeGradient)"
                     />
                   )}
@@ -429,6 +464,122 @@ export function TrendChart({
               <div className="flex items-center gap-2">
                 <span className="w-3 h-0.5 bg-amber-400 border-t border-dashed border-amber-400"></span>
                 <span>Previous Month Trajectory</span>
+              </div>
+            )}
+          </div>
+
+          {/* Velocity & Category Drivers Panel (Balances two-column desktop layout) */}
+          <div className="mt-4 pt-4 border-t border-border/40 space-y-5" data-testid="trend-velocity-breakdown">
+            {/* 3-Card Runway & Velocity Strip */}
+            <div className="grid grid-cols-3 gap-3">
+              <div className="p-3 rounded-xl bg-card/50 border border-border/50">
+                <span className="text-[11px] font-medium text-muted-foreground block">Budget Headroom</span>
+                <span className="text-base font-extrabold text-foreground tabular-nums mt-0.5 block">
+                  ${remainingBudget.toLocaleString()}
+                </span>
+                <span className="text-[10px] text-muted-foreground">
+                  {totalBudget > 0 ? `${Math.round((remainingBudget / totalBudget) * 100)}% of cap left` : 'No cap set'}
+                </span>
+              </div>
+              <div className="p-3 rounded-xl bg-card/50 border border-border/50">
+                <span className="text-[11px] font-medium text-muted-foreground block">Safe Daily Pace</span>
+                <span className="text-base font-extrabold text-primary tabular-nums mt-0.5 block">
+                  ${safeDailyAllowance.toLocaleString()}/d
+                </span>
+                <span className="text-[10px] text-muted-foreground">
+                  {daysRemaining > 0 ? `${daysRemaining} days remaining` : 'Month complete'}
+                </span>
+              </div>
+              <div className="p-3 rounded-xl bg-card/50 border border-border/50">
+                <span className="text-[11px] font-medium text-muted-foreground block">Avg Net Savings</span>
+                <span className={`text-base font-extrabold tabular-nums mt-0.5 block ${avgMonthlySavings >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                  ${avgMonthlySavings.toLocaleString()}
+                </span>
+                <span className="text-[10px] text-muted-foreground">
+                  {overallSavingsRate}% multi-mo rate
+                </span>
+              </div>
+            </div>
+
+            {/* Top Spending Drivers This Period */}
+            <div className="p-4 rounded-xl bg-card/40 border border-border/40 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-foreground">Top Spending Drivers</span>
+                <span className="text-[11px] text-muted-foreground">Share of ${totalSpent.toLocaleString()}</span>
+              </div>
+              {topExpenseCategories.length === 0 ? (
+                <p className="text-xs text-muted-foreground italic py-2">No expenses recorded in this period.</p>
+              ) : (
+                <div className="space-y-2.5">
+                  {topExpenseCategories.map(cat => {
+                    const share = totalSpent > 0 ? Math.round((cat.amount / totalSpent) * 100) : 0;
+                    return (
+                      <div key={cat.name} className="space-y-1">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="font-semibold text-foreground flex items-center gap-1.5 truncate">
+                            <span>{cat.emoji}</span>
+                            <span className="truncate">{cat.name}</span>
+                          </span>
+                          <span className="tabular-nums font-medium text-muted-foreground">
+                            <strong className="text-foreground">${Math.round(cat.amount).toLocaleString()}</strong> ({share}%)
+                          </span>
+                        </div>
+                        <div className="h-1.5 w-full bg-card/80 rounded-full overflow-hidden border border-border/30">
+                          <div
+                            className="h-full rounded-full transition-all duration-500"
+                            style={{ width: `${Math.max(4, Math.min(100, share))}%`, backgroundColor: cat.color }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Recent Multi-Month Cash Flow Strip */}
+            {monthlyCashFlows.length > 0 && (
+              <div className="p-4 rounded-xl bg-card/40 border border-border/40 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-foreground">Recent Cash Flow Trajectory</span>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('cashflow')}
+                    className="text-[11px] font-semibold text-primary hover:underline"
+                  >
+                    Full Chart →
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {monthlyCashFlows.slice(-3).map(cf => {
+                    const isSelected = cf.month === selectedMonth;
+                    return (
+                      <button
+                        key={cf.month}
+                        type="button"
+                        onClick={() => onSelectMonth?.(cf.month)}
+                        className={`p-2.5 rounded-lg border text-left transition-all ${
+                          isSelected
+                            ? 'bg-primary/10 border-primary/40'
+                            : 'bg-card/50 border-border/40 hover:border-border'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="font-bold text-foreground">{cf.formattedMonth}</span>
+                          <span className={`font-bold tabular-nums ${cf.net >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                            {cf.savingsRate}%
+                          </span>
+                        </div>
+                        <div className="text-xs font-extrabold tabular-nums text-foreground mt-1">
+                          {cf.net >= 0 ? '+' : '-'}${Math.abs(cf.net).toLocaleString()}
+                        </div>
+                        <div className="text-[10px] text-muted-foreground tabular-nums mt-0.5">
+                          In ${cf.income.toLocaleString()} · Out ${cf.expense.toLocaleString()}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             )}
           </div>

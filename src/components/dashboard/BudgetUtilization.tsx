@@ -27,9 +27,17 @@ export interface CategorySummary {
   subCategories?: SubCategorySummary[];
 }
 
+export interface PieSegment {
+  pathData: string;
+  color: string;
+  category: string;
+  name: string;
+  expense: number;
+}
+
 interface BudgetUtilizationProps {
   categorySummary: CategorySummary[];
-  piePaths?: { segments: any[]; totalPieExpense: number };
+  piePaths?: { segments: PieSegment[]; totalPieExpense: number };
   budgetErrors?: Record<string, string>;
   handleBudgetInputChange?: (catName: string, val: string) => void;
   handleSaveBudgets?: () => void;
@@ -506,7 +514,7 @@ export function BudgetUtilization({
       </AnimatePresence>
 
       {/* Categories List */}
-      <div className="w-full space-y-3 flex-1 overflow-y-auto max-h-[800px]" data-testid="budget-grid-container">
+      <div className="w-full space-y-3 flex-1 max-h-[420px] overflow-y-auto custom-scrollbar pr-1" data-testid="budget-grid-container">
         {displayedCategories.length > 0 ? (
           displayedCategories.map(item => {
             const catKey = item.id === 'food' ? 'Food' : (item.id === 'meals' ? 'Meals' : (item.id === 'housing' ? 'Rent' : item.name));
@@ -656,8 +664,8 @@ export function BudgetUtilization({
                         initial={{ width: 0 }}
                         animate={{ width: `${Math.min(item.percent, 100)}%` }}
                         transition={{ duration: 0.8, delay: 0.1 }}
-                        className={`h-full rounded-full ${item.percent > 100 ? 'bg-destructive bg-red-500 budget-overspent' : ''}`}
-                        style={{ backgroundColor: item.percent <= 100 ? item.color : undefined }}
+                        className={`h-full rounded-full ${isOver || item.percent > 100 ? 'bg-destructive bg-red-500 budget-overspent' : ''}`}
+                        style={{ backgroundColor: !isOver && item.percent <= 100 ? item.color : undefined }}
                       />
                     </div>
                     <div className="flex justify-between items-center text-[11px] text-muted-foreground px-0.5 font-medium tabular-nums">

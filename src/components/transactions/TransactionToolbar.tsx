@@ -81,38 +81,42 @@ export function TransactionToolbar({
               <button
                 onClick={() => setSelectedBucket(selectedBucket === 'income' ? null : 'income')}
                 data-testid="filter-bucket-income"
-                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
                   selectedBucket === 'income' ? 'bg-emerald-500 text-white shadow-sm' : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
-                🟢 Income
+                <span className={`w-2 h-2 rounded-full shrink-0 ${selectedBucket === 'income' ? 'bg-white' : 'bg-emerald-500'}`} />
+                Income
               </button>
               <button
                 onClick={() => setSelectedBucket(selectedBucket === 'fixed' ? null : 'fixed')}
                 data-testid="filter-bucket-fixed"
-                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${
-                  selectedBucket === 'fixed' ? 'bg-blue-500 text-white shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                  selectedBucket === 'fixed' ? 'bg-indigo-500 text-white shadow-sm' : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
-                🔵 Fixed
+                <span className={`w-2 h-2 rounded-full shrink-0 ${selectedBucket === 'fixed' ? 'bg-white' : 'bg-indigo-500'}`} />
+                Fixed
               </button>
               <button
                 onClick={() => setSelectedBucket(selectedBucket === 'flexible' ? null : 'flexible')}
                 data-testid="filter-bucket-flexible"
-                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${
-                  selectedBucket === 'flexible' ? 'bg-rose-500 text-white shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                  selectedBucket === 'flexible' ? 'bg-violet-500 text-white shadow-sm' : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
-                🔴 Flexible
+                <span className={`w-2 h-2 rounded-full shrink-0 ${selectedBucket === 'flexible' ? 'bg-white' : 'bg-violet-500'}`} />
+                Flexible
               </button>
               <button
                 onClick={() => setSelectedBucket(selectedBucket === 'non-monthly' ? null : 'non-monthly')}
                 data-testid="filter-bucket-non-monthly"
-                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
                   selectedBucket === 'non-monthly' ? 'bg-amber-500 text-white shadow-sm' : 'text-muted-foreground hover:text-foreground'
                 }`}
               >
-                🟠 Non-Monthly
+                <span className={`w-2 h-2 rounded-full shrink-0 ${selectedBucket === 'non-monthly' ? 'bg-white' : 'bg-amber-500'}`} />
+                Non-Monthly
               </button>
             </div>
           )}
@@ -160,7 +164,7 @@ export function TransactionToolbar({
             <>
               <label data-testid="import-csv-trigger-btn" className="flex items-center gap-2 px-3.5 py-2 bg-card/50 hover:bg-card border border-border rounded-xl text-sm font-medium transition-colors cursor-pointer">
                 <Upload className="w-4 h-4" /> Import CSV
-                <input type="file" accept=".csv" data-testid="csv-file-input" className="hidden" onChange={handleCsvFileUpload} onClick={(e: any) => e.target.value = null} />
+                <input type="file" accept=".csv" data-testid="csv-file-input" className="hidden" onChange={handleCsvFileUpload} onClick={(e: React.MouseEvent<HTMLInputElement>) => { (e.target as HTMLInputElement).value = ''; }} />
               </label>
               <button
                 onClick={handleOpenAddTxn}

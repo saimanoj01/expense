@@ -39,8 +39,8 @@ export function ManageProjectsModal({
     try {
       await onCreateProject(newProjectName.trim());
       setNewProjectName('');
-    } catch (err: any) {
-      setErrorMessage(err.message || 'Failed to create project');
+    } catch (err: unknown) {
+      setErrorMessage(err instanceof Error ? err.message : 'Failed to create project');
     } finally {
       setIsCreating(false);
     }
@@ -52,8 +52,8 @@ export function ManageProjectsModal({
     try {
       await onDeleteProject(projectId);
       setConfirmDeleteId(null);
-    } catch (err: any) {
-      setErrorMessage(err.message || 'Failed to delete project');
+    } catch (err: unknown) {
+      setErrorMessage(err instanceof Error ? err.message : 'Failed to delete project');
     } finally {
       setDeletingProjectId(null);
     }

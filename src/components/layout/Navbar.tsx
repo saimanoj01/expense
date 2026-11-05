@@ -1,9 +1,10 @@
 import { Shield, Sun, Moon, LogOut, Sparkles, FolderKanban } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Project } from '../../services/storage';
+import { User } from '../../context/AuthContext';
 
 interface NavbarProps {
-  user: any;
+  user: User | null;
   isMockMode: boolean;
   projects: Project[];
   activeProject: Project | null;
@@ -39,17 +40,17 @@ export function Navbar({
       animate={{ y: 0, opacity: 1 }}
       className="sticky top-0 z-40 border-b border-border/40 backdrop-blur-md bg-background/60"
     >
-      <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="p-2 rounded-xl bg-primary/10 text-primary ring-1 ring-primary/30">
-            <Shield className="w-5 h-5" />
+      <div className="max-w-6xl mx-auto px-3 sm:px-4 h-16 flex items-center justify-between gap-1.5 sm:gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
+          <div className="p-1.5 sm:p-2 rounded-xl bg-primary/10 text-primary ring-1 ring-primary/30 shrink-0">
+            <Shield className="w-4 h-4 sm:w-5 sm:h-5" />
           </div>
           <h1 className="font-bold text-lg tracking-tight hidden sm:block">ExpenseTracker</h1>
           {isMockMode && (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
               <span 
                 data-testid="mock-banner" 
-                className="mock-mode-banner px-2 py-0.5 rounded-full text-[10px] font-bold bg-secondary/20 text-secondary uppercase tracking-wider border border-secondary/20"
+                className="mock-mode-banner px-1.5 sm:px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-bold bg-secondary/20 text-secondary uppercase tracking-wider border border-secondary/20 whitespace-nowrap"
               >
                 Mock Mode
               </span>
@@ -58,7 +59,7 @@ export function Navbar({
                   type="button"
                   onClick={onLoadSampleData}
                   data-testid="load-sample-data-btn"
-                  className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-primary/15 text-primary hover:bg-primary/25 border border-primary/30 transition-all flex items-center gap-1"
+                  className="hidden md:flex px-2 py-0.5 rounded-full text-[10px] font-semibold bg-primary/15 text-primary hover:bg-primary/25 border border-primary/30 transition-all items-center gap-1 whitespace-nowrap"
                   title="Populate project with 4 months of sample transactions and budgets"
                 >
                   <Sparkles className="w-3 h-3" />
@@ -69,13 +70,13 @@ export function Navbar({
           )}
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-1 sm:gap-3 shrink-0">
           {projects.length > 0 && (
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1 sm:gap-1.5">
               <select
                 disabled={isLoading}
                 data-testid="project-selector"
-                className="bg-card/50 border border-border rounded-lg px-3 py-1.5 text-sm max-w-[130px] sm:max-w-[200px] truncate focus:ring-2 focus:ring-primary outline-none transition-all cursor-pointer"
+                className="bg-card/50 border border-border rounded-lg px-1.5 sm:px-3 py-1 sm:py-1.5 text-xs sm:text-sm max-w-[92px] sm:max-w-[200px] truncate focus:ring-2 focus:ring-primary outline-none transition-all cursor-pointer"
                 value={activeProject?.id || ''}
                 onChange={(e) => {
                   const val = e.target.value;
@@ -101,7 +102,7 @@ export function Navbar({
                 <button
                   onClick={onManageProjects}
                   data-testid="manage-projects-icon-btn"
-                  className="p-1.5 hover:bg-card/50 rounded-lg transition-colors border border-transparent hover:border-border text-muted-foreground hover:text-foreground"
+                  className="hidden sm:inline-flex p-1.5 hover:bg-card/50 rounded-lg transition-colors border border-transparent hover:border-border text-muted-foreground hover:text-foreground"
                   title="Manage & Delete Projects"
                   aria-label="Manage & Delete Projects"
                 >
@@ -114,47 +115,47 @@ export function Navbar({
           <button
             onClick={toggleTheme}
             data-testid="theme-toggle-btn"
-            className="p-2 hover:bg-card/50 rounded-lg transition-colors border border-transparent hover:border-border"
+            className="p-1.5 sm:p-2 hover:bg-card/50 rounded-lg transition-colors border border-transparent hover:border-border"
             title="Toggle Light/Dark Theme"
             aria-label="Toggle Light/Dark Theme"
           >
-            {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+            {theme === 'dark' ? <Sun className="w-4 h-4 sm:w-5 sm:h-5" /> : <Moon className="w-4 h-4 sm:w-5 sm:h-5" />}
           </button>
 
           {onOpenGeminiKeyModal && (
             <button
               onClick={onOpenGeminiKeyModal}
               data-testid="ai-settings-btn"
-              className="p-2 hover:bg-card/50 rounded-lg transition-colors border border-transparent hover:border-border text-primary"
+              className="p-1.5 sm:p-2 hover:bg-card/50 rounded-lg transition-colors border border-transparent hover:border-border text-primary"
               title="Gemini AI Settings"
               aria-label="Gemini AI Settings"
             >
-              <Sparkles className="w-5 h-5" />
+              <Sparkles className="w-4 h-4 sm:w-5 sm:h-5" />
             </button>
           )}
 
-          <div className="h-8 w-px bg-border mx-1" />
+          <div className="h-6 sm:h-8 w-px bg-border mx-0.5 sm:mx-1" />
 
           {user && (
-            <div className="flex items-center gap-3 pl-1">
+            <div className="flex items-center gap-1.5 sm:gap-3 pl-0.5 sm:pl-1">
               <div className="hidden md:flex flex-col items-end">
                 <span className="text-sm font-medium leading-none">{user.name}</span>
                 <span className="text-xs text-muted-foreground mt-1">{user.email}</span>
               </div>
               {user.picture ? (
-                <img src={user.picture} alt="Avatar" className="w-8 h-8 rounded-full ring-2 ring-primary/20" />
+                <img src={user.picture} alt="Avatar" className="w-7 h-7 sm:w-8 sm:h-8 rounded-full ring-2 ring-primary/20" />
               ) : (
-                <div className="w-8 h-8 rounded-full bg-primary/20 text-primary flex items-center justify-center font-bold">
+                <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-primary/20 text-primary flex items-center justify-center font-bold text-xs sm:text-sm">
                   {user.name?.charAt(0) || 'U'}
                 </div>
               )}
               <button
                 onClick={logout}
                 data-testid="logout-btn"
-                className="p-2 hover:bg-destructive/10 text-destructive rounded-lg transition-colors"
+                className="p-1.5 sm:p-2 hover:bg-destructive/10 text-destructive rounded-lg transition-colors"
                 title="Logout"
               >
-                <LogOut className="w-5 h-5" />
+                <LogOut className="w-4 h-4 sm:w-5 sm:h-5" />
               </button>
             </div>
           )}

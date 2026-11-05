@@ -100,7 +100,7 @@ export function CategoryManagerModal({
     if (!editingCategory) {
       const isDup = categories.some(c => c.id === catId || c.name.toLowerCase() === catName.trim().toLowerCase());
       if (isDup) {
-        setError('A category with this name already exists');
+        setError('Category already exists');
         return;
       }
     }
@@ -190,7 +190,7 @@ export function CategoryManagerModal({
                 <button type="button" onClick={resetForm} className="text-xs text-muted-foreground hover:text-foreground">Cancel</button>
               </div>
 
-              {error && <p className="text-xs text-destructive font-bold">{error}</p>}
+              {error && <p data-testid="category-modal-error" className="text-xs text-destructive font-bold">{error}</p>}
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="sm:col-span-2">

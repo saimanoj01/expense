@@ -62,6 +62,7 @@ function isExpiredSessionToken(token: string): boolean {
  * Checks if a token is null/empty, explicitly flagged expired in mock OAuth simulator,
  * or has an invalid/expired JWT structure.
  */
+// eslint-disable-next-line react-refresh/only-export-components
 export function isInvalidOrExpiredToken(token: string | null): boolean {
   if (!token || token.trim() === '') {
     return true;
@@ -128,9 +129,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return true;
   });
 
+  interface CustomWindow extends Window {
+    VITE_GOOGLE_CLIENT_ID?: string;
+    __PLAYWRIGHT__?: boolean;
+  }
+
   const getClientId = () => 
     import.meta.env.VITE_GOOGLE_CLIENT_ID || 
-    (typeof window !== 'undefined' ? (window as any).VITE_GOOGLE_CLIENT_ID : undefined) ||
+    (typeof window !== 'undefined' ? (window as unknown as CustomWindow).VITE_GOOGLE_CLIENT_ID : undefined) ||
     localStorage.getItem('custom_google_client_id') ||
     undefined;
   const googleClientIdExists = !!getClientId();
@@ -318,10 +324,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         prompt: 'select_account'
       }).toString();
 
-      const isPlaywrightTest = typeof window !== 'undefined' && (
-        (window as any).__PLAYWRIGHT__ === true ||
+      const win = typeof window !== 'undefined' ? (window as unknown as CustomWindow) : undefined;
+      const isPlaywrightTest = !!win && (
+        win.__PLAYWRIGHT__ === true ||
         (typeof navigator !== 'undefined' && navigator.userAgent.includes('Playwright')) ||
-        (window as any).VITE_GOOGLE_CLIENT_ID !== undefined
+        win.VITE_GOOGLE_CLIENT_ID !== undefined
       );
 
       if (isPlaywrightTest) {
@@ -336,8 +343,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const loginAsMock = () => {
-    if (!navigator.onLine) {
+  useEffect(() => {
+    const handleOffline = () => {
+      showToast('You are currently offline', 'error');
+    };
+    window.addEventListener('offline', handleOffline);
+    return () => window.removeEventListener('offline', handleOffline);
+  }, []);
+
+  const loginAsMock = async () => {
+    let isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
+    if (!isOffline && typeof fetch !== 'undefined') {
+      try {
+        await fetch(window.location.origin + window.location.pathname, { method: 'HEAD', cache: 'no-store' });
+      } catch {
+        isOffline = true;
+      }
+    }
+    if (isOffline) {
       setAuthErrorToast('You are currently offline');
       showToast('You are currently offline', 'error');
     }
@@ -407,6 +430,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   );
 };
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (!context) throw new Error('useAuth must be used within an AuthProvider');

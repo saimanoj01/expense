@@ -22,7 +22,7 @@ interface WaterfallChartProps {
   data: WaterfallItem[];
 }
 
-function CustomWaterfallTooltip({ active, payload }: any) {
+function CustomWaterfallTooltip({ active, payload }: { active?: boolean; payload?: Array<{ payload: WaterfallItem }> }) {
   if (active && payload && payload.length) {
     const item: WaterfallItem = payload[0]?.payload;
     if (!item) return null;

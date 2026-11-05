@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback } from 'react';
-import { Budget, Category, Transaction, BudgetNote } from '../services/storage';
+import { Budget, Category, Transaction, BudgetNote, Project, StorageAdapter } from '../services/storage';
 
 export function deriveCategoryBucket(catIdOrName: string, catObj?: Category): 'fixed' | 'flexible' | 'non-monthly' {
   if (catObj?.defaultBucket) {
@@ -20,8 +20,8 @@ export function isNonBudgetableCategory(catIdOrName?: string): boolean {
 }
 
 export function useBudgets(
-  storageAdapter: any,
-  activeProject: any,
+  storageAdapter: StorageAdapter | null,
+  activeProject: Project | null,
   monthTransactions: Transaction[],
   allTransactions: Transaction[] = [],
   selectedMonth: string = '',
@@ -290,11 +290,12 @@ export function useBudgets(
     try {
       await storageAdapter.saveBudgets(activeProject.id, budgets);
       showToast('Budgets saved successfully');
-    } catch (err: any) {
-      if (err.name === 'QuotaExceededError' || /quota/i.test(err.message || '')) {
+    } catch (err: unknown) {
+      const e = err as { name?: string; message?: string };
+      if (e.name === 'QuotaExceededError' || /quota/i.test(e.message || '')) {
         setAuthErrorToast('Storage quota exceeded. Session is now read-only.');
       } else {
-        showToast(err.message || 'Failed to save budgets', 'error');
+        showToast(e.message || 'Failed to save budgets', 'error');
       }
     }
   };
@@ -324,8 +325,8 @@ export function useBudgets(
       await refreshBudgetsAndCategories();
       showToast(isEdit ? 'Category edited successfully' : 'Category added successfully');
       return true;
-    } catch (err: any) {
-      showToast(err.message || 'Failed to save category', 'error');
+    } catch (err: unknown) {
+      showToast(err instanceof Error ? err.message : 'Failed to save category', 'error');
       return false;
     }
   };
@@ -338,8 +339,8 @@ export function useBudgets(
       }
       await refreshBudgetsAndCategories();
       showToast('Category deleted');
-    } catch (err: any) {
-      showToast(err.message || 'Failed to delete category', 'error');
+    } catch (err: unknown) {
+      showToast(err instanceof Error ? err.message : 'Failed to delete category', 'error');
     }
   };
 
@@ -355,8 +356,8 @@ export function useBudgets(
       await storageAdapter.saveBudgetNote(activeProject.id, key, noteObj);
       setBudgetNotes(prev => ({ ...prev, [key]: noteObj }));
       showToast('Note saved');
-    } catch (err: any) {
-      showToast(err.message || 'Failed to save note', 'error');
+    } catch (err: unknown) {
+      showToast(err instanceof Error ? err.message : 'Failed to save note', 'error');
     }
   }, [activeProject, storageAdapter, showToast]);
 
@@ -371,8 +372,8 @@ export function useBudgets(
         return next;
       });
       showToast('Note removed');
-    } catch (err: any) {
-      showToast(err.message || 'Failed to delete note', 'error');
+    } catch (err: unknown) {
+      showToast(err instanceof Error ? err.message : 'Failed to delete note', 'error');
     }
   }, [activeProject, storageAdapter, showToast]);
 

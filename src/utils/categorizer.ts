@@ -1,4 +1,4 @@
-import { Category } from '../services/storage';
+import { Category, SpendingBucket } from '../services/storage';
 
 // Dictionary of keyword patterns mapped to category IDs
 const CATEGORY_KEYWORDS: Record<string, string[]> = {
@@ -150,9 +150,9 @@ export function suggestSpendingBucket(
  * 4. Defaults to 'flexible'
  */
 export function bucketOf(
-  transaction: { spendingBucket?: any; labels?: string[]; category?: string; subCategory?: string | null },
+  transaction: { spendingBucket?: SpendingBucket; labels?: string[]; category?: string; subCategory?: string | null },
   categoryDefaults?: Category[] | Record<string, string>
-): 'fixed' | 'flexible' | 'non-monthly' {
+): SpendingBucket {
   if (transaction.spendingBucket === 'fixed' || transaction.spendingBucket === 'flexible' || transaction.spendingBucket === 'non-monthly') {
     return transaction.spendingBucket;
   }
@@ -168,18 +168,20 @@ export function bucketOf(
     if (Array.isArray(categoryDefaults)) {
       if (transaction.subCategory) {
         const subCat = categoryDefaults.find(c => c.id.toLowerCase() === transaction.subCategory?.toLowerCase());
-        if (subCat?.defaultBucket) return subCat.defaultBucket as any;
+        if (subCat?.defaultBucket) return subCat.defaultBucket;
       }
       if (transaction.category) {
         const parentCat = categoryDefaults.find(c => c.id.toLowerCase() === transaction.category?.toLowerCase() || c.name.toLowerCase() === transaction.category?.toLowerCase());
-        if (parentCat?.defaultBucket) return parentCat.defaultBucket as any;
+        if (parentCat?.defaultBucket) return parentCat.defaultBucket;
       }
     } else {
       if (transaction.subCategory && categoryDefaults[transaction.subCategory]) {
-        return categoryDefaults[transaction.subCategory] as any;
+        const val = categoryDefaults[transaction.subCategory];
+        if (val === 'fixed' || val === 'flexible' || val === 'non-monthly') return val;
       }
       if (transaction.category && categoryDefaults[transaction.category]) {
-        return categoryDefaults[transaction.category] as any;
+        const val = categoryDefaults[transaction.category];
+        if (val === 'fixed' || val === 'flexible' || val === 'non-monthly') return val;
       }
     }
   }

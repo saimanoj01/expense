@@ -4,7 +4,7 @@ import { Sparkles, Loader2 } from 'lucide-react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { AppProvider, useApp } from './context/AppContext';
 import { useHashRouting } from './hooks/useHashRouting';
-import { Transaction, SpendingBucket, Category } from './services/storage';
+import { Transaction, SpendingBucket, Category, MonthlyLock } from './services/storage';
 import { classifyTransactionsWithLLM } from './services/llmCategorizer';
 import { hasGeminiApiKey } from './services/ai/geminiClient';
 import { suggestSpendingBucket } from './utils/categorizer';
@@ -87,7 +87,7 @@ function AppInner() {
   const [showManageProjectsModal, setShowManageProjectsModal] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
   const [showGeminiKeyModal, setShowGeminiKeyModal] = useState(false);
-  const [locks, setLocks] = useState<any[]>([]);
+  const [locks, setLocks] = useState<MonthlyLock[]>([]);
   const [isBackfilling, setIsBackfilling] = useState(false);
 
   // Modals
@@ -163,6 +163,7 @@ function AppInner() {
 
   useEffect(() => {
     refreshProjectData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated, activeProject, storageAdapter]);
 
   const isCurrentMonthLocked = locks.some(lk => lk.month === txnHooks.selectedMonth && lk.locked);
@@ -216,8 +217,8 @@ function AppInner() {
         if (gmailRes && (gmailRes.status === 408 || gmailRes.status === 504)) {
           throw new Error('Lock failed: email report could not send');
         }
-      } catch (e: any) {
-        if (e.message?.includes('Lock failed')) {
+      } catch (e: unknown) {
+        if (e instanceof Error && e.message?.includes('Lock failed')) {
           showToast('Lock failed: email report could not send', 'error');
           return;
         }
@@ -226,8 +227,8 @@ function AppInner() {
       await storageAdapter.saveLock(activeProject.id, { month: txnHooks.selectedMonth, locked: true, lockedAt: new Date().toISOString() });
       showToast(`Month ${txnHooks.selectedMonth} locked. Report generated.`);
       refreshProjectData();
-    } catch (err: any) {
-      showToast(err.message || 'Failed to lock month', 'error');
+    } catch (err: unknown) {
+      showToast(err instanceof Error ? err.message : 'Failed to lock month', 'error');
     }
   };
 
@@ -237,8 +238,8 @@ function AppInner() {
       await storageAdapter.saveLock(activeProject.id, { month: txnHooks.selectedMonth, locked: false });
       showToast(`Month ${txnHooks.selectedMonth} unlocked.`);
       refreshProjectData();
-    } catch (err: any) {
-      showToast(err.message || 'Failed to unlock month', 'error');
+    } catch (err: unknown) {
+      showToast(err instanceof Error ? err.message : 'Failed to unlock month', 'error');
     }
   };
 
@@ -250,8 +251,8 @@ function AppInner() {
       await storageAdapter.saveBudgets(activeProject.id, sample.budgets);
       await refreshProjectData();
       showToast('Sample data loaded for the past 4 months!');
-    } catch (e: any) {
-      showToast(`Failed to load sample data: ${e.message}`, 'error');
+    } catch (e: unknown) {
+      showToast(`Failed to load sample data: ${e instanceof Error ? e.message : 'Unknown error'}`, 'error');
     }
   };
 
@@ -348,8 +349,8 @@ function AppInner() {
 
                         await txnHooks.backfillSpendingBuckets(classificationMap);
                         showToast(`Successfully classified ${Object.keys(classificationMap).length} expenses!`);
-                      } catch (err: any) {
-                        showToast(err.message || 'Backfill classification failed');
+                      } catch (err: unknown) {
+                        showToast(err instanceof Error ? err.message : 'Backfill classification failed');
                       } finally {
                         setIsBackfilling(false);
                       }
@@ -400,16 +401,18 @@ function AppInner() {
             />
 
             <div className="flex flex-col lg:flex-row items-start gap-6 mb-8">
-              <TrendChart
-                trendDetails={txnHooks.trendDetails}
-                totalBudget={budgetHooks.totalBudget}
-                budgets={budgetHooks.budgets}
-                categories={budgetHooks.categories}
-                transactions={txnHooks.transactions}
-                selectedMonth={txnHooks.selectedMonth}
-                onSelectMonth={txnHooks.setSelectedMonth}
-                onRequestGeminiKey={() => setShowGeminiKeyModal(true)}
-              />
+              <div className="w-full lg:flex-1 lg:sticky lg:top-6">
+                <TrendChart
+                  trendDetails={txnHooks.trendDetails}
+                  totalBudget={budgetHooks.totalBudget}
+                  budgets={budgetHooks.budgets}
+                  categories={budgetHooks.categories}
+                  transactions={txnHooks.transactions}
+                  selectedMonth={txnHooks.selectedMonth}
+                  onSelectMonth={txnHooks.setSelectedMonth}
+                  onRequestGeminiKey={() => setShowGeminiKeyModal(true)}
+                />
+              </div>
               <BudgetUtilization
                 categorySummary={budgetHooks.categorySummary}
                 piePaths={budgetHooks.piePaths}
@@ -566,8 +569,8 @@ function AppInner() {
                 showToast('Collaborator added');
                 await loadProjects();
                 refreshProjectData();
-              } catch (err: any) {
-                showToast(err.message || 'Failed to share project', 'error');
+              } catch (err: unknown) {
+                showToast(err instanceof Error ? err.message : 'Failed to share project', 'error');
               }
             }}
           />
