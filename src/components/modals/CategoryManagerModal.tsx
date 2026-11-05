@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { X, Plus, Edit2, Trash2, Save, ChevronDown, ChevronRight, Sparkles } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Modal } from '../common/Modal';
-import { Category, Transaction } from '../../services/storage';
+import { Category, Transaction, SpendingBucket } from '../../services/storage';
 
 interface CategoryManagerModalProps {
   showModal: boolean;
@@ -32,6 +32,7 @@ export function CategoryManagerModal({
   const [catName, setCatName] = useState('');
   const [catEmoji, setCatEmoji] = useState('📦');
   const [catColor, setCatColor] = useState('#38bdf8');
+  const [catDefaultBucket, setCatDefaultBucket] = useState<SpendingBucket | ''>('');
   const [error, setError] = useState<string | null>(null);
 
   if (!showModal) return null;
@@ -51,6 +52,7 @@ export function CategoryManagerModal({
     setCatName('');
     setCatEmoji('📦');
     setCatColor('#38bdf8');
+    setCatDefaultBucket('');
     setError(null);
     setIsAddingParent(false);
     setAddingSubParentId(null);
@@ -67,7 +69,10 @@ export function CategoryManagerModal({
     setAddingSubParentId(parentId);
     // Inherit parent color default
     const parent = categories.find(c => c.id === parentId);
-    if (parent) setCatColor(parent.color);
+    if (parent) {
+      setCatColor(parent.color);
+      if (parent.defaultBucket) setCatDefaultBucket(parent.defaultBucket);
+    }
   };
 
   const handleStartEdit = (cat: Category) => {
@@ -76,6 +81,7 @@ export function CategoryManagerModal({
     setCatName(cat.name);
     setCatEmoji(cat.emoji);
     setCatColor(cat.color);
+    setCatDefaultBucket(cat.defaultBucket || '');
   };
 
   const handleSubmitForm = async (e: React.FormEvent) => {
@@ -104,7 +110,8 @@ export function CategoryManagerModal({
       name: catName.trim(),
       emoji: catEmoji || '📦',
       color: /^#[0-9A-Fa-f]{6}$/i.test(catColor) ? catColor : '#38bdf8',
-      parentId
+      parentId,
+      defaultBucket: catDefaultBucket ? (catDefaultBucket as SpendingBucket) : undefined
     };
 
     const success = await handleSaveCategory(categoryToSave, !!editingCategory);
@@ -215,6 +222,21 @@ export function CategoryManagerModal({
                       className="w-full h-[34px] bg-background border border-border rounded-lg p-0.5 cursor-pointer outline-none"
                     />
                   </div>
+                </div>
+
+                <div className="mt-2">
+                  <label className="block text-xs font-bold text-muted-foreground mb-1">Default Spending Bucket</label>
+                  <select
+                    data-testid="category-default-bucket-select"
+                    value={catDefaultBucket}
+                    onChange={e => setCatDefaultBucket(e.target.value as SpendingBucket | '')}
+                    className="w-full bg-background border border-border rounded-lg px-3 py-1.5 text-xs font-semibold focus:ring-1 focus:ring-primary outline-none cursor-pointer"
+                  >
+                    <option value="">None (detect from description)</option>
+                    <option value="fixed">Fixed Commitment</option>
+                    <option value="flexible">Variable (Flexible)</option>
+                    <option value="non-monthly">Non-Monthly</option>
+                  </select>
                 </div>
               </div>
 

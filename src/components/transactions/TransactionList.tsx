@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { Search, Filter, Trash2, X, Tag } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { Transaction, Category, DEFAULT_CATEGORIES } from '../../services/storage';
+import { Transaction, Category, DEFAULT_CATEGORIES, SpendingBucket } from '../../services/storage';
 import { TransactionItem } from './TransactionItem';
 import { TagInputPopover } from '../common/TagInputPopover';
 
@@ -19,7 +19,9 @@ interface TransactionListProps {
   handleEditTxn: (txn: Transaction) => void;
   handleDeleteTxn: (id: string) => void;
   handleCategoryChange?: (txn: Transaction, newCatId: string, newSubCatId?: string | null) => void;
+  handleBucketChange?: (txn: Transaction, newBucket: SpendingBucket) => void;
   handleExecuteBulkCategoryUpdate?: (selectedTxnIds: Set<string>, categoryId: string, subCategoryId?: string | null) => void;
+  handleExecuteBulkBucketUpdate?: (selectedTxnIds: Set<string>, bucket: SpendingBucket) => void;
   setShowBulkDeleteConfirmModal: (v: boolean) => void;
   handleAddTag?: (txnId: string, tags: string[]) => void;
   handleRemoveTag?: (txnId: string, tag: string) => void;
@@ -41,7 +43,9 @@ export function TransactionList({
   handleEditTxn,
   handleDeleteTxn,
   handleCategoryChange,
+  handleBucketChange,
   handleExecuteBulkCategoryUpdate,
+  handleExecuteBulkBucketUpdate,
   setShowBulkDeleteConfirmModal,
   handleAddTag,
   handleRemoveTag,
@@ -125,6 +129,28 @@ export function TransactionList({
                         </optgroup>
                       );
                     })}
+                  </select>
+                </div>
+              )}
+
+              {/* Bulk Bucket Assignment */}
+              {handleExecuteBulkBucketUpdate && (
+                <div className="relative flex items-center">
+                  <select
+                    data-testid="bulk-bucket-select"
+                    defaultValue=""
+                    onChange={(e) => {
+                      if (e.target.value) {
+                        handleExecuteBulkBucketUpdate(selectedTxnIds, e.target.value as SpendingBucket);
+                        e.target.value = '';
+                      }
+                    }}
+                    className="px-3 py-1.5 bg-card/80 border border-border text-foreground hover:bg-card rounded-lg text-xs sm:text-sm font-bold transition-colors cursor-pointer outline-none shadow-sm"
+                  >
+                    <option value="" disabled className="bg-card text-card-foreground">Set Bucket ({selectedTxnIds.size})...</option>
+                    <option value="fixed" className="bg-card text-card-foreground">Fixed Commitment</option>
+                    <option value="flexible" className="bg-card text-card-foreground">Variable (Flexible)</option>
+                    <option value="non-monthly" className="bg-card text-card-foreground">Non-Monthly</option>
                   </select>
                 </div>
               )}
@@ -226,6 +252,7 @@ export function TransactionList({
                 handleEditTxn={handleEditTxn}
                 handleDeleteTxn={handleDeleteTxn}
                 handleCategoryChange={handleCategoryChange}
+                handleBucketChange={handleBucketChange}
                 setSelectedTagFilter={setSelectedTagFilter}
                 handleAddTag={handleAddTag}
                 handleRemoveTag={handleRemoveTag}

@@ -17,7 +17,7 @@ import { Modal } from './components/common/Modal';
 
 // Dashboard
 import { PeriodController } from './components/dashboard/PeriodController';
-import { KpiGrid } from './components/dashboard/KpiGrid';
+import { MonthlyFinancialStory } from './components/dashboard/MonthlyFinancialStory';
 import { TrendChart } from './components/dashboard/TrendChart';
 import { BudgetUtilization } from './components/dashboard/BudgetUtilization';
 
@@ -350,18 +350,23 @@ function AppInner() {
               </div>
             )}
 
-            <KpiGrid
+            <MonthlyFinancialStory
+              selectedMonth={txnHooks.selectedMonth}
+              activeProject={activeProject}
               totalBudget={budgetHooks.totalBudget}
               totalExpenses={txnHooks.totalExpenses}
               totalIncome={txnHooks.totalIncome}
               totalTransfers={txnHooks.totalTransfers}
-              budgetRemaining={budgetHooks.totalBudget - txnHooks.totalExpenses}
               fixedExpenses={txnHooks.fixedExpenses}
               flexibleExpenses={txnHooks.flexibleExpenses}
               nonMonthlyExpenses={txnHooks.nonMonthlyExpenses}
+              unclassifiedExpenses={txnHooks.unclassifiedExpenses}
+              unclassifiedCount={txnHooks.unclassifiedCount}
               flexNumber={txnHooks.flexNumber}
               savingsAmount={txnHooks.savingsAmount}
               savingsRate={txnHooks.savingsRate}
+              allTransactions={txnHooks.transactions}
+              categories={budgetHooks.categories}
               selectedBucket={txnHooks.selectedBucket}
               onSelectBucket={txnHooks.setSelectedBucket}
             />
@@ -426,7 +431,9 @@ function AppInner() {
               handleEditTxn={handleEditTxn}
               handleDeleteTxn={id => txnHooks.handleDeleteTxn(id, () => setSelectedTxnIds(prev => { const n = new Set(prev); n.delete(id); return n; }))}
               handleCategoryChange={(txn, newCatId, newSubCatId) => txnHooks.executeSaveTransaction({ ...txn, category: newCatId, subCategory: newSubCatId || null }, true)}
+              handleBucketChange={(txn, newBucket) => txnHooks.executeSaveTransaction({ ...txn, spendingBucket: newBucket }, true)}
               handleExecuteBulkCategoryUpdate={(selectedIds, catId, subCatId) => txnHooks.handleExecuteBulkCategoryUpdate(selectedIds, catId, subCatId, () => setSelectedTxnIds(new Set()))}
+              handleExecuteBulkBucketUpdate={(selectedIds, bucket) => txnHooks.handleExecuteBulkBucketUpdate(selectedIds, bucket, () => setSelectedTxnIds(new Set()))}
               setShowBulkDeleteConfirmModal={setShowBulkDeleteConfirmModal}
               handleAddTag={txnHooks.handleAddTagToTxn}
               handleRemoveTag={txnHooks.handleRemoveTagFromTxn}

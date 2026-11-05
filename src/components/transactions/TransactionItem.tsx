@@ -1,6 +1,6 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, forwardRef } from 'react';
 import { Edit2, Trash2, Plus, X } from 'lucide-react';
-import { Transaction, Category, DEFAULT_CATEGORIES } from '../../services/storage';
+import { Transaction, Category, DEFAULT_CATEGORIES, SpendingBucket } from '../../services/storage';
 import { formatTransactionAmount } from '../../utils/formatters';
 import { TagInputPopover } from '../common/TagInputPopover';
 
@@ -15,12 +15,13 @@ interface TransactionItemProps {
   handleEditTxn: (txn: Transaction) => void;
   handleDeleteTxn: (id: string) => void;
   handleCategoryChange?: (txn: Transaction, newCatId: string, newSubCatId?: string | null) => void;
+  handleBucketChange?: (txn: Transaction, newBucket: SpendingBucket) => void;
   setSelectedTagFilter: (tag: string | null) => void;
   handleAddTag?: (txnId: string, tags: string[]) => void;
   handleRemoveTag?: (txnId: string, tag: string) => void;
 }
 
-export function TransactionItem({
+export const TransactionItem = forwardRef<HTMLDivElement, TransactionItemProps>(function TransactionItem({
   transaction,
   categories,
   availableTags = [],
@@ -31,10 +32,11 @@ export function TransactionItem({
   handleEditTxn,
   handleDeleteTxn,
   handleCategoryChange,
+  handleBucketChange,
   setSelectedTagFilter,
   handleAddTag,
   handleRemoveTag
-}: TransactionItemProps) {
+}, ref) {
   const [showTagPopover, setShowTagPopover] = useState(false);
 
   const allCategories = useMemo(() => {
@@ -55,6 +57,7 @@ export function TransactionItem({
 
   return (
     <div 
+      ref={ref}
       data-testid="transaction-row"
       className={`group flex items-center justify-between p-4 bg-card/40 hover:bg-card/80 border-b border-border/50 last:border-0 transition-all rounded-xl ${
         isSelected ? 'bg-primary/5' : ''
@@ -126,6 +129,54 @@ export function TransactionItem({
                   );
                 })}
               </select>
+            )}
+
+            {/* Inline Bucket Switcher Pills */}
+            {!isLockedMonth && handleBucketChange && transaction.type === 'expense' && (
+              <>
+                <span className="w-1 h-1 rounded-full bg-border shrink-0" />
+                <div 
+                  className="inline-flex items-center rounded-lg bg-card/60 border border-border/60 p-0.5 text-[10px] font-bold" 
+                  data-testid={`bucket-switcher-${transaction.id}`}
+                >
+                  <button
+                    type="button"
+                    title="Fixed Commitment"
+                    aria-label="Set Fixed"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleBucketChange(transaction, 'fixed');
+                    }}
+                    className={`px-1.5 py-0.5 rounded transition-colors ${transaction.spendingBucket === 'fixed' ? 'bg-blue-500 text-white shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                  >
+                    Fixed
+                  </button>
+                  <button
+                    type="button"
+                    title="Variable / Flexible Spend"
+                    aria-label="Set Variable"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleBucketChange(transaction, 'flexible');
+                    }}
+                    className={`px-1.5 py-0.5 rounded transition-colors ${transaction.spendingBucket === 'flexible' ? 'bg-violet-500 text-white shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                  >
+                    Variable
+                  </button>
+                  <button
+                    type="button"
+                    title="Non-Monthly Expense"
+                    aria-label="Set Non-Monthly"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleBucketChange(transaction, 'non-monthly');
+                    }}
+                    className={`px-1.5 py-0.5 rounded transition-colors ${transaction.spendingBucket === 'non-monthly' ? 'bg-amber-500 text-white shadow-sm' : 'text-muted-foreground hover:text-foreground'}`}
+                  >
+                    Non-Monthly
+                  </button>
+                </div>
+              </>
             )}
 
             {/* Tag Pills */}
@@ -233,4 +284,4 @@ export function TransactionItem({
       </div>
     </div>
   );
-}
+});

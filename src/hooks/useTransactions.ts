@@ -374,6 +374,10 @@ export function useTransactions(
   const unclassifiedCount = useMemo(() => monthTransactions
     .filter(t => t.type === 'expense' && (bucketOf(t, categories) as string) === 'unclassified').length, [monthTransactions, categories]);
 
+  const unclassifiedExpenses = useMemo(() => monthTransactions
+    .filter(t => t.type === 'expense' && (bucketOf(t, categories) as string) === 'unclassified')
+    .reduce((sum, t) => sum + (typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount || 0)) || 0), 0), [monthTransactions, categories]);
+
   const availableMonths = useMemo(() => {
     const monthsSet = new Set<string>();
     if (selectedMonth && selectedMonth !== 'all') {
@@ -792,6 +796,25 @@ export function useTransactions(
     }
   };
 
+  const handleExecuteBulkBucketUpdate = async (selectedTxnIds: Set<string>, bucket: SpendingBucket, onComplete?: () => void) => {
+    if (!activeProject || !storageAdapter || selectedTxnIds.size === 0 || !bucket) return;
+    const updatedTxns: Transaction[] = [];
+    for (const t of transactions) {
+      if (selectedTxnIds.has(t.id)) {
+        updatedTxns.push({ ...t, spendingBucket: bucket });
+      }
+    }
+    if (updatedTxns.length === 0) return;
+    try {
+      await storageAdapter.saveTransactions(activeProject.id, updatedTxns);
+      await refreshTransactions();
+      if (onComplete) onComplete();
+      showToast(`Updated spending bucket for ${updatedTxns.length} transaction${updatedTxns.length > 1 ? 's' : ''}`);
+    } catch (err: any) {
+      showToast(err.message || 'Failed to update spending buckets', 'error');
+    }
+  };
+
   const handleAddTagToTxn = async (txnId: string, tagsToAdd: string[]) => {
     if (!activeProject || !storageAdapter || tagsToAdd.length === 0) return;
     const target = transactions.find(t => t.id === txnId);
@@ -987,6 +1010,7 @@ export function useTransactions(
     savingsAmount,
     savingsRate,
     unclassifiedCount,
+    unclassifiedExpenses,
     backfillSpendingBuckets,
     availableMonths,
     availableTags,
@@ -998,6 +1022,7 @@ export function useTransactions(
     handleDeleteTxn,
     handleExecuteBulkDelete,
     handleExecuteBulkCategoryUpdate,
+    handleExecuteBulkBucketUpdate,
     handleAddTagToTxn,
     handleRemoveTagFromTxn,
     handleExecuteBulkAddTag,
