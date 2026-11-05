@@ -1,9 +1,7 @@
-import React, { useMemo, useState } from 'react';
-import { Printer, MoreHorizontal } from 'lucide-react';
+import React, { useMemo } from 'react';
 import { Project, Transaction, Category, Budget } from '../../services/storage';
 import { formatCurrency, splitMoneyParts } from '../../utils/formatters';
 import { bucketOf } from '../../utils/categorizer';
-import { MonthSwitcher } from './MonthSwitcher';
 import { OverviewHero } from '../overview/OverviewHero';
 import { IncomeRibbon } from '../overview/IncomeRibbon';
 import { BucketStats } from '../overview/BucketStats';
@@ -45,32 +43,8 @@ function getPriorMonthKey(monthStr: string): string | null {
   return `${prev.getUTCFullYear()}-${String(prev.getUTCMonth() + 1).padStart(2, '0')}`;
 }
 
-function formatEyebrow(monthStr: string): string {
-  if (!monthStr || monthStr === 'all') return 'ALL TIME';
-  if (/^\d{4}-\d{2}$/.test(monthStr)) {
-    const [yStr, mStr] = monthStr.split('-');
-    const y = parseInt(yStr, 10);
-    const m = parseInt(mStr, 10);
-    const date = new Date(Date.UTC(y, m - 1, 1));
-    const label = date
-      .toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' })
-      .toUpperCase();
-    const now = new Date();
-    const currKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    if (monthStr === currKey) {
-      const daysInMonth = new Date(y, m, 0).getDate();
-      const daysLeft = Math.max(0, daysInMonth - now.getDate());
-      return `${label} · ${daysLeft} DAY${daysLeft === 1 ? '' : 'S'} LEFT`;
-    }
-    return label;
-  }
-  return monthStr.toUpperCase();
-}
-
 export const Level1MonthOverview: React.FC<Level1MonthOverviewProps> = ({
   selectedMonth,
-  availableMonths,
-  onSelectMonth,
   totalBudget = 0,
   totalExpenses,
   totalIncome,
@@ -84,11 +58,9 @@ export const Level1MonthOverview: React.FC<Level1MonthOverviewProps> = ({
   allTransactions = [],
   categories = [],
   budgets = [],
-  onOpenReport,
   onOpenAddTxn,
   className = '',
 }) => {
-  const [menuOpen, setMenuOpen] = useState(false);
 
   const priorMonthKey = getPriorMonthKey(selectedMonth);
   const priorTxns = useMemo(() => {
@@ -212,63 +184,6 @@ export const Level1MonthOverview: React.FC<Level1MonthOverviewProps> = ({
             </tr>
           </tbody>
         </table>
-      </div>
-
-      {/* Top Row: Eyebrow + Month Pill + Report / Overflow */}
-      <div className="flex items-center justify-between gap-3">
-        <span className="text-eyebrow uppercase text-muted-foreground">
-          {formatEyebrow(selectedMonth)}
-        </span>
-
-        <div className="flex items-center gap-2">
-          <MonthSwitcher
-            selectedMonth={selectedMonth}
-            availableMonths={availableMonths}
-            onSelectMonth={onSelectMonth}
-            className="border-0 shadow-none bg-transparent p-0"
-          />
-
-          {onOpenReport && (
-            <button
-              type="button"
-              onClick={onOpenReport}
-              data-testid="story-print-report-btn"
-              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-[10px] hover:bg-surface2 text-label text-muted-foreground hover:text-foreground transition-colors"
-              title="Monthly financial report"
-            >
-              <Printer className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Report</span>
-            </button>
-          )}
-
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => setMenuOpen(prev => !prev)}
-              aria-label="More options"
-              className="w-8 h-8 rounded-[10px] hover:bg-surface2 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
-            >
-              <MoreHorizontal className="w-4 h-4" />
-            </button>
-            {menuOpen && (
-              <div className="absolute right-0 mt-1 w-44 rounded-[14px] bg-popover border border-border p-1.5 shadow-lg z-30">
-                {onOpenReport && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMenuOpen(false);
-                      onOpenReport();
-                    }}
-                    className="w-full px-3 py-2 text-left text-body text-foreground hover:bg-surface2 rounded-[10px] flex items-center gap-2"
-                  >
-                    <Printer className="w-4 h-4 text-muted-foreground" />
-                    <span>Monthly Report</span>
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
       </div>
 
       {/* Section 1: Statement Hero */}

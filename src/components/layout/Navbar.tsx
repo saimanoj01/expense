@@ -1,6 +1,6 @@
-import { Shield, Sun, Moon, LogOut, Sparkles, FolderKanban, Search } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { Sun, Moon, Search } from 'lucide-react';
 import { Project } from '../../services/storage';
+import { useNavigation } from '../../hooks/useNavigation';
 
 interface UserProfile {
   name?: string;
@@ -27,162 +27,63 @@ interface NavbarProps {
 
 export function Navbar({
   user,
-  isMockMode,
-  projects,
   activeProject,
   theme,
-  isLoading,
   toggleTheme,
-  selectProject,
-  setShowCreateModal,
-  onManageProjects,
-  onOpenGeminiKeyModal,
-  onLoadSampleData: _onLoadSampleData,
   onOpenCommandPalette,
-  logout
 }: NavbarProps) {
+  const { navigate } = useNavigation();
+  const isAuthenticated = !!user;
+
+  // On desktop (>=768px), Sidebar is the sole chrome when authenticated.
+  // On mobile (<768px), render a clean 52px top bar with zero overflow.
   return (
-    <motion.header 
-      initial={{ y: -20, opacity: 0 }}
-      animate={{ y: 0, opacity: 1 }}
-      className="sticky top-0 z-40 border-b border-border/40 backdrop-blur-md bg-background/70"
+    <header
+      className={`sticky top-0 z-30 h-[52px] border-b border-border bg-background/85 backdrop-blur-md px-4 flex items-center justify-between gap-2 ${
+        isAuthenticated ? 'md:hidden' : ''
+      }`}
     >
-      <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between gap-2 sm:gap-4">
-        {/* Left: Brand & Mock Mode */}
-        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-          <div className="p-2 rounded-xl bg-primary/10 text-primary ring-1 ring-primary/30 shrink-0">
-            <Shield className="w-5 h-5" />
-          </div>
-          <h1 className="font-bold text-lg tracking-tight hidden lg:block">Nebula</h1>
-          {isMockMode && (
-            <span 
-              data-testid="mock-banner" 
-              className="mock-mode-banner px-2.5 py-0.5 rounded-full text-[10px] font-semibold bg-primary/10 text-primary uppercase tracking-wider border border-primary/20 shadow-sm"
-            >
-              Mock Mode
-            </span>
-          )}
+      {/* Left: Workspace initial + name */}
+      <button
+        type="button"
+        onClick={() => isAuthenticated && navigate('#/settings')}
+        className="flex items-center gap-2 min-w-0 text-left focus-visible:ring-2 ring-ring/40 rounded-[10px]"
+      >
+        <div className="w-7 h-7 rounded-[8px] bg-surface2 border border-border text-foreground flex items-center justify-center font-semibold text-label shrink-0">
+          {(activeProject?.name || 'N').charAt(0).toUpperCase()}
         </div>
+        <span className="font-semibold text-body text-foreground truncate max-w-[180px]">
+          {isAuthenticated ? activeProject?.name || 'Workspace' : 'Nebula'}
+        </span>
+      </button>
 
-        {/* Center: Command Palette Trigger Button */}
-        {onOpenCommandPalette && (
-          <div className="flex-1 max-w-md mx-2 sm:mx-4">
-            <button
-              type="button"
-              data-testid="command-palette-trigger"
-              onClick={onOpenCommandPalette}
-              className="w-full flex items-center justify-between px-3 py-1.5 rounded-xl bg-card/60 hover:bg-card border border-border/60 hover:border-primary/40 text-xs text-muted-foreground transition-all shadow-sm group"
-              title="Search views, buckets, categories, or actions (⌘K)"
-            >
-              <div className="flex items-center gap-2 truncate">
-                <Search className="w-3.5 h-3.5 text-muted-foreground group-hover:text-primary transition-colors shrink-0" />
-                <span className="truncate">Search or jump to...</span>
-              </div>
-              <div className="flex items-center gap-1 shrink-0">
-                <kbd className="hidden sm:inline-flex items-center px-1.5 py-0.5 text-[10px] font-mono rounded bg-secondary text-muted-foreground border border-border/40">
-                  ⌘K
-                </kbd>
-              </div>
-            </button>
-          </div>
-        )}
-
-        {/* Right: Project selector, Theme, Gemini, Auth */}
-        <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
-          {projects.length > 0 && (
-            <div className="flex items-center gap-1">
-              <select
-                disabled={isLoading}
-                data-testid="project-selector"
-                className="bg-card/50 border border-border rounded-lg px-2 sm:px-3 py-1.5 text-xs sm:text-sm max-w-[110px] sm:max-w-[180px] truncate focus:ring-2 focus:ring-primary outline-none transition-all cursor-pointer"
-                value={activeProject?.id || ''}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  if (val === 'new') {
-                    setShowCreateModal(true);
-                    e.target.value = activeProject?.id || '';
-                  } else if (val === 'manage') {
-                    onManageProjects?.();
-                    e.target.value = activeProject?.id || '';
-                  } else {
-                    selectProject(val);
-                  }
-                }}
-              >
-                {projects.map(p => (
-                  <option key={p.id} value={p.id} data-testid={`project-item-${p.id}`} className="bg-card text-card-foreground">{p.name}</option>
-                ))}
-                <option value="new" data-testid="create-project-option" className="bg-card text-card-foreground">+ New Project</option>
-                <option value="manage" data-testid="manage-projects-btn" className="bg-card text-card-foreground">⚙️ Manage Projects...</option>
-              </select>
-
-              {onManageProjects && (
-                <button
-                  type="button"
-                  onClick={onManageProjects}
-                  data-testid="manage-projects-icon-btn"
-                  className="hidden sm:inline-flex p-1.5 hover:bg-card/50 rounded-lg transition-colors border border-transparent hover:border-border text-muted-foreground hover:text-foreground"
-                  title="Manage & Delete Projects"
-                  aria-label="Manage & Delete Projects"
-                >
-                  <FolderKanban className="w-4 h-4" />
-                </button>
-              )}
-            </div>
-          )}
-
+      {/* Right: Search & Theme (only expose theme-toggle-btn testId when unauthenticated so Sidebar owns it when authenticated) */}
+      <div className="flex items-center gap-1 shrink-0">
+        {isAuthenticated && onOpenCommandPalette && (
           <button
             type="button"
-            onClick={toggleTheme}
-            data-testid="theme-toggle-btn"
-            className="p-1.5 sm:p-2 hover:bg-card/50 rounded-lg transition-colors border border-transparent hover:border-border"
-            title="Toggle Light/Dark Theme"
-            aria-label="Toggle Light/Dark Theme"
+            onClick={onOpenCommandPalette}
+            className="w-9 h-9 rounded-[10px] flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-surface2 transition-colors focus-visible:ring-2 ring-ring/40"
+            aria-label="Search"
           >
-            {theme === 'dark' ? <Sun className="w-4 h-4 sm:w-5 sm:h-5" /> : <Moon className="w-4 h-4 sm:w-5 sm:h-5" />}
+            <Search className="w-4 h-4" />
           </button>
+        )}
 
-          {onOpenGeminiKeyModal && (
-            <button
-              type="button"
-              onClick={onOpenGeminiKeyModal}
-              data-testid="ai-settings-btn"
-              className="p-1.5 sm:p-2 hover:bg-card/50 rounded-lg transition-colors border border-transparent hover:border-border text-primary"
-              title="Gemini AI Settings"
-              aria-label="Gemini AI Settings"
-            >
-              <Sparkles className="w-4 h-4 sm:w-5 sm:h-5" />
-            </button>
+        <button
+          type="button"
+          onClick={toggleTheme}
+          data-testid={!isAuthenticated ? 'theme-toggle-btn' : undefined}
+          className="w-9 h-9 rounded-[10px] flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-surface2 transition-colors focus-visible:ring-2 ring-ring/40"
+          aria-label="Toggle Light/Dark Theme"
+        >
+          {theme === 'dark' ? (
+            <Sun className="w-4 h-4" />
+          ) : (
+            <Moon className="w-4 h-4" />
           )}
-
-          <div className="h-6 sm:h-8 w-px bg-border mx-0.5 sm:mx-1" />
-
-          {user && (
-            <div className="flex items-center gap-1.5 sm:gap-2.5 pl-0.5 sm:pl-1">
-              <div className="hidden lg:flex flex-col items-end">
-                <span className="text-xs font-semibold leading-none">{user.name}</span>
-                <span className="text-[10px] text-muted-foreground mt-0.5">{user.email}</span>
-              </div>
-              {user.picture ? (
-                <img src={user.picture} alt="Avatar" className="w-7 h-7 sm:w-8 sm:h-8 rounded-full ring-2 ring-primary/20" />
-              ) : (
-                <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-primary/20 text-primary flex items-center justify-center font-bold text-xs">
-                  {user.name?.charAt(0) || 'U'}
-                </div>
-              )}
-              <button
-                type="button"
-                onClick={logout}
-                data-testid="logout-btn"
-                className="p-1.5 sm:p-2 hover:bg-destructive/10 text-destructive rounded-lg transition-colors"
-                title="Logout"
-              >
-                <LogOut className="w-4 h-4 sm:w-5 sm:h-5" />
-              </button>
-            </div>
-          )}
-        </div>
+        </button>
       </div>
-    </motion.header>
+    </header>
   );
 }

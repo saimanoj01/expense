@@ -1,4 +1,3 @@
-import { BreadcrumbTrail } from '../layout/BreadcrumbTrail';
 import { BudgetUtilization, CategorySummary, PieSegment } from '../dashboard/BudgetUtilization';
 import { BudgetNote } from '../../services/storage';
 import { Target } from 'lucide-react';
@@ -46,8 +45,6 @@ export function BudgetsView({
 
   return (
     <div className="space-y-4" data-testid="budgets-workspace">
-      <BreadcrumbTrail className="mb-2" />
-
       {/* Hero Header */}
       <div className="p-6 rounded-2xl bg-gradient-to-br from-card/80 to-card/40 border border-border backdrop-blur-md shadow-sm">
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">

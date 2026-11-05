@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { BreadcrumbTrail } from '../layout/BreadcrumbTrail';
 import { 
   Settings, 
   FolderGit2, 
@@ -98,8 +97,6 @@ export function SettingsView({
 
   return (
     <div className="space-y-6" data-testid="settings-workspace">
-      <BreadcrumbTrail className="mb-2" />
-
       {/* Hero Header */}
       <div className="p-6 rounded-2xl bg-gradient-to-br from-card/80 to-card/40 border border-border backdrop-blur-md shadow-sm">
         <div className="flex items-center gap-2">

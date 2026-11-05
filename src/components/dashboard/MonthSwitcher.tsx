@@ -1,5 +1,5 @@
 import React, { useEffect, useCallback } from 'react';
-import { ChevronLeft, ChevronRight, Calendar } from 'lucide-react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { formatMonthLabel } from '../../utils/navigation';
 
@@ -14,7 +14,7 @@ export const MonthSwitcher: React.FC<MonthSwitcherProps> = ({
   selectedMonth,
   availableMonths,
   onSelectMonth,
-  className = ''
+  className = '',
 }) => {
   const handlePrev = useCallback(() => {
     if (selectedMonth === 'all') {
@@ -50,7 +50,13 @@ export const MonthSwitcher: React.FC<MonthSwitcherProps> = ({
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
-      const isInput = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable);
+      const isInput =
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT' ||
+          target.isContentEditable ||
+          !!target.closest('[data-own-arrows]'));
       const hasModal = !!document.querySelector('[role="dialog"], .fixed.inset-0.z-50');
 
       if (!isInput && !hasModal) {
@@ -71,74 +77,62 @@ export const MonthSwitcher: React.FC<MonthSwitcherProps> = ({
   return (
     <div
       data-testid="month-switcher"
-      className={`inline-flex items-center gap-1.5 p-1 rounded-2xl glass-card border border-border/60 bg-card/60 backdrop-blur-md shadow-sm ${className}`}
+      className={`inline-flex items-center gap-0.5 rounded-[10px] bg-surface2/80 border border-border p-0.5 ${className}`}
     >
-      <nav aria-label="Breadcrumb" data-testid="breadcrumb-trail" className="flex items-center gap-1.5">
-        {/* Calendar visual icon */}
-        <div className="hidden sm:flex items-center justify-center p-1.5 rounded-xl bg-primary/10 text-primary shrink-0">
-          <Calendar className="w-3.5 h-3.5" />
-        </div>
+      <button
+        type="button"
+        data-testid="btn-prev-month"
+        onClick={handlePrev}
+        title="Previous Month (ArrowLeft)"
+        aria-label="Previous Month"
+        className="w-8 h-8 rounded-[8px] flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-card transition-colors focus-visible:ring-2 ring-ring/40"
+      >
+        <ChevronLeft className="w-4 h-4" />
+      </button>
 
-        {/* Prev Month Button */}
-        <button
-          type="button"
-          data-testid="btn-prev-month"
-          onClick={handlePrev}
-          title="Previous Month (ArrowLeft)"
-          aria-label="Previous Month"
-          className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl hover:bg-card border border-border/40 text-xs font-semibold text-muted-foreground hover:text-foreground transition-all active:scale-95"
-        >
-          <ChevronLeft className="w-4 h-4" />
-          <span className="hidden xs:inline text-[11px]">Prev</span>
-        </button>
-
-        {/* Central Switcher with animated label & underlying accessible select */}
-        <div className="relative flex items-center justify-center min-w-[130px] sm:min-w-[150px] px-3 py-1.5 rounded-xl bg-card border border-border/70 shadow-sm overflow-hidden">
-          <AnimatePresence mode="wait" initial={false}>
-            <motion.span
-              key={selectedMonth}
-              data-testid="breadcrumb-item-month-overview"
-              initial={{ opacity: 0, y: 4 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -4 }}
-              transition={{ duration: 0.15 }}
-              className="font-bold text-xs sm:text-sm text-foreground select-none pointer-events-none truncate tracking-tight"
-            >
-              {monthDisplay}
-            </motion.span>
-          </AnimatePresence>
-
-          {/* Accessible Select Element (Preserves Test & Accessibility contracts) */}
-          <select
-            data-testid="month-selector"
-            className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
-            value={selectedMonth}
-            onChange={(e) => onSelectMonth(e.target.value)}
-            aria-label="Select Financial Period"
+      <div className="relative flex items-center justify-center min-w-[112px] sm:min-w-[128px] h-8 px-2.5 rounded-[8px] hover:bg-card transition-colors overflow-hidden">
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.span
+            key={selectedMonth}
+            initial={{ opacity: 0, y: 3 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -3 }}
+            transition={{ duration: 0.12 }}
+            className="font-medium text-label sm:text-body text-foreground select-none pointer-events-none truncate tabular-nums num"
           >
-            <option value="all">All Time</option>
-            {availableMonths.map(m => (
-              <option key={m} value={m}>{m}</option>
-            ))}
-            {selectedMonth && !availableMonths.includes(selectedMonth) && selectedMonth !== 'all' && (
-              <option value={selectedMonth}>{selectedMonth}</option>
-            )}
-          </select>
-        </div>
+            {monthDisplay}
+          </motion.span>
+        </AnimatePresence>
 
-        {/* Next Month Button */}
-        <button
-          type="button"
-          data-testid="btn-next-month"
-          onClick={handleNext}
-          title="Next Month (ArrowRight)"
-          aria-label="Next Month"
-          className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl hover:bg-card border border-border/40 text-xs font-semibold text-muted-foreground hover:text-foreground transition-all active:scale-95"
+        <select
+          data-testid="month-selector"
+          className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+          value={selectedMonth}
+          onChange={e => onSelectMonth(e.target.value)}
+          aria-label="Select Financial Period"
         >
-          <span className="hidden xs:inline text-[11px]">Next</span>
-          <ChevronRight className="w-4 h-4" />
-        </button>
-      </nav>
+          <option value="all">All Time</option>
+          {availableMonths.map(m => (
+            <option key={m} value={m}>
+              {m}
+            </option>
+          ))}
+          {selectedMonth && !availableMonths.includes(selectedMonth) && selectedMonth !== 'all' && (
+            <option value={selectedMonth}>{selectedMonth}</option>
+          )}
+        </select>
+      </div>
+
+      <button
+        type="button"
+        data-testid="btn-next-month"
+        onClick={handleNext}
+        title="Next Month (ArrowRight)"
+        aria-label="Next Month"
+        className="w-8 h-8 rounded-[8px] flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-card transition-colors focus-visible:ring-2 ring-ring/40"
+      >
+        <ChevronRight className="w-4 h-4" />
+      </button>
     </div>
   );
 };

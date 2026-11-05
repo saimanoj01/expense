@@ -1,5 +1,4 @@
 import { useState, useMemo, Suspense, lazy } from 'react';
-import { BreadcrumbTrail } from '../layout/BreadcrumbTrail';
 import { TrendChart } from '../dashboard/TrendChart';
 import { TrendChartDetails } from '../../hooks/useTransactions';
 import { Category, Budget, Transaction } from '../../services/storage';
@@ -112,8 +111,6 @@ export function TrendsView({
 
   return (
     <div className="space-y-4" data-testid="trends-workspace">
-      <BreadcrumbTrail className="mb-2" />
-
       {/* Hero Header */}
       <div className="p-6 rounded-2xl bg-gradient-to-br from-card/80 to-card/40 border border-border backdrop-blur-md shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div>

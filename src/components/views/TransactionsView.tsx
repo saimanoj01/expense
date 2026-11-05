@@ -1,5 +1,4 @@
 import React, { useState, useMemo } from 'react';
-import { BreadcrumbTrail } from '../layout/BreadcrumbTrail';
 import { TransactionToolbar } from '../transactions/TransactionToolbar';
 import { TransactionList } from '../transactions/TransactionList';
 import { Transaction, Category, SpendingBucket } from '../../services/storage';
@@ -134,8 +133,6 @@ export function TransactionsView({
 
   return (
     <div className="space-y-4" data-testid="level4-transactions-workspace">
-      <BreadcrumbTrail className="mb-2" />
-
       {/* Header Banner */}
       <div className="p-5 rounded-2xl bg-card/60 border border-border backdrop-blur-md flex flex-col md:flex-row items-start md:items-center justify-between gap-4 shadow-sm">
         <div>

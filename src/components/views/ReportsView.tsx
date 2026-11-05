@@ -1,4 +1,3 @@
-import { BreadcrumbTrail } from '../layout/BreadcrumbTrail';
 import { Printer, Download, Mail, ShieldCheck, Lock } from 'lucide-react';
 import { formatCurrency } from '../../utils/formatters';
 import { formatMonthLabel } from '../../utils/navigation';
@@ -87,10 +86,6 @@ export function ReportsView({
 
   return (
     <div className="space-y-4" data-testid="reports-workspace">
-      <div className="print:hidden">
-        <BreadcrumbTrail className="mb-2" />
-      </div>
-
       {/* Action Header Banner */}
       <div className="p-6 rounded-2xl bg-card/80 border border-border backdrop-blur-md shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4 print:hidden">
         <div>

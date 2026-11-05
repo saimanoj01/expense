@@ -1,7 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import {
-  ArrowLeft,
   ArrowRight,
   Search,
   Plus,
@@ -149,19 +148,6 @@ export const Level3CategoryView: React.FC<Level3CategoryViewProps> = ({
       data-testid="level3-category-view"
       className={`space-y-6 ${className}`}
     >
-      {/* Top Navigation & Return */}
-      <div className="flex items-center justify-between gap-3">
-        <button
-          type="button"
-          data-testid="back-to-bucket-btn"
-          onClick={() => navigate(`#/month/${month}/bucket/${bucketId === 'flexible' ? 'variable' : bucketId}`)}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-card hover:bg-secondary border border-border/60 text-xs font-semibold text-muted-foreground hover:text-foreground transition-all active:scale-95 shadow-sm"
-        >
-          <ArrowLeft className="w-3.5 h-3.5" />
-          <span>Back to {bucketId === 'flexible' ? 'Variable Spending' : bucketId.charAt(0).toUpperCase() + bucketId.slice(1)}</span>
-        </button>
-      </div>
-
       {/* Hero Category Header Card */}
       <motion.div
         layoutId={`category-row-${category.id}`}
@@ -174,9 +160,14 @@ export const Level3CategoryView: React.FC<Level3CategoryViewProps> = ({
             </span>
             <div>
               <div className="flex items-center gap-2">
-                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-primary/15 text-primary border border-primary/20">
-                  {bucketId === 'flexible' ? 'Variable Spending' : bucketId.charAt(0).toUpperCase() + bucketId.slice(1)}
-                </span>
+                <button
+                  type="button"
+                  data-testid="back-to-bucket-btn"
+                  onClick={() => navigate(`#/month/${month}/bucket/${bucketId === 'flexible' ? 'variable' : bucketId}`)}
+                  className="px-2.5 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider bg-surface2 text-muted-foreground hover:text-foreground border border-border transition-colors"
+                >
+                  ‹ {bucketId === 'flexible' ? 'Variable Spending' : bucketId.charAt(0).toUpperCase() + bucketId.slice(1)}
+                </button>
                 <span className="text-xs font-semibold text-muted-foreground">{month}</span>
               </div>
               <h2 className="text-2xl font-extrabold tracking-tight text-foreground mt-1">
