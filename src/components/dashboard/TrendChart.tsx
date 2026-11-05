@@ -157,7 +157,7 @@ export function TrendChart({
         );
         const b = bucketOf({ category: name }, categories);
         return {
-          name,
+          name: catObj?.name || name,
           icon: catObj?.emoji || '🏷️',
           bucket: b,
           values,

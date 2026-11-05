@@ -147,6 +147,7 @@ export function TransactionModal({
       isOpen={showTxnModal}
       onClose={() => setShowTxnModal(false)}
       title={editingTxnId ? 'Edit Record' : 'Add Record'}
+      dataTestId={editingTxnId ? 'transaction-edit-sheet' : 'transaction-modal'}
       variant={editingTxnId ? 'sheet' : 'dialog'}
       maxWidth="max-w-md"
       className="max-h-[90vh] sm:max-h-screen overflow-y-auto custom-scrollbar p-6"

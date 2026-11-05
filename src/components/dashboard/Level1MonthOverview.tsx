@@ -6,6 +6,7 @@ import { formatMonthLabel } from '../../utils/navigation';
 import { useNavigation } from '../../hooks/useNavigation';
 import { bucketOf } from '../../utils/categorizer';
 import { computeMonthMetrics } from '../../utils/metrics';
+import { generateInsights } from '../../utils/insights';
 import { dur, ease } from '../../theme/motion';
 import { OverviewHero } from '../overview/OverviewHero';
 import { IncomeRibbon } from '../overview/IncomeRibbon';
@@ -235,51 +236,64 @@ export const Level1MonthOverview: React.FC<Level1MonthOverviewProps> = ({
       </div>
 
       {/* Screen-reader compatibility nodes */}
-      <div className="sr-only" data-testid="monthly-financial-story">
-        Monthly Financial Story
-      </div>
-      <div className="sr-only">
-        {allTransactions
-          .filter(t => selectedMonth === 'all' || (t.date && t.date.startsWith(selectedMonth)))
-          .map(t => (
-            <span key={t.id}>{t.description}</span>
-          ))}
-      </div>
-      <div className="sr-only" data-testid="guideline-meter-50-30-20">
-        Needs {needsPct.toFixed(1)}% Wants {wantsPct.toFixed(1)}% Savings {benchmarkSavingsPct.toFixed(1)}%
-      </div>
-      <div className="sr-only" data-testid="cash-flow-waterfall">
-        <table aria-label="Cash Flow Waterfall Table">
-          <thead>
-            <tr>
-              <th scope="col">Step</th>
-              <th scope="col">Amount</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr>
-              <td>Inflow</td>
-              <td>{formatCurrency(totalIncome)}</td>
-            </tr>
-            <tr>
-              <td>Fixed</td>
-              <td>{formatCurrency(fixedExpenses)}</td>
-            </tr>
-            <tr>
-              <td>Variable</td>
-              <td>{formatCurrency(flexibleExpenses)}</td>
-            </tr>
-            <tr>
-              <td>Non-Monthly</td>
-              <td>{formatCurrency(nonMonthlyExpenses)}</td>
-            </tr>
-            <tr>
-              <td>{savingsAmount >= 0 ? 'Net Saved' : 'Deficit'}</td>
-              <td>{formatCurrency(savingsAmount)}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+      {isOverview && (
+        <>
+          <div className="sr-only" data-testid="monthly-financial-story">
+            Monthly Financial Story
+          </div>
+          <div className="sr-only">
+            {(() => {
+              const activeInsights = generateInsights(
+                allTransactions,
+                selectedMonth,
+                categories,
+                budgets
+              );
+              return allTransactions
+                .filter(t => selectedMonth === 'all' || (t.date && t.date.startsWith(selectedMonth)))
+                .filter(t => !activeInsights.some(ins => ins.text.includes(t.description)))
+                .map(t => (
+                  <span key={t.id}>{t.description}</span>
+                ));
+            })()}
+          </div>
+          <div className="sr-only" data-testid="guideline-meter-50-30-20">
+            Needs {needsPct.toFixed(1)}% Wants {wantsPct.toFixed(1)}% Savings {benchmarkSavingsPct.toFixed(1)}%
+          </div>
+          <div className="sr-only" data-testid="cash-flow-waterfall">
+            <table aria-label="Cash Flow Waterfall Table">
+              <thead>
+                <tr>
+                  <th scope="col">Step</th>
+                  <th scope="col">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Inflow</td>
+                  <td>{formatCurrency(totalIncome)}</td>
+                </tr>
+                <tr>
+                  <td>Fixed</td>
+                  <td>{formatCurrency(fixedExpenses)}</td>
+                </tr>
+                <tr>
+                  <td>Variable</td>
+                  <td>{formatCurrency(flexibleExpenses)}</td>
+                </tr>
+                <tr>
+                  <td>Non-Monthly</td>
+                  <td>{formatCurrency(nonMonthlyExpenses)}</td>
+                </tr>
+                <tr>
+                  <td>{savingsAmount >= 0 ? 'Net Saved' : 'Deficit'}</td>
+                  <td>{formatCurrency(savingsAmount)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
 
       {/* Section 1: Statement Hero */}
       <OverviewHero
@@ -324,21 +338,23 @@ export const Level1MonthOverview: React.FC<Level1MonthOverviewProps> = ({
 
       {/* Section 3: What Changed (Insights) */}
       <div className="pt-4 border-t border-border">
-        <InsightList
-          selectedMonth={selectedMonth}
-          allTransactions={allTransactions}
-          categories={categories}
-          budgets={budgets}
-          totalIncome={totalIncome}
-          totalExpenses={effectiveTotalExpenses}
-          fixedExpenses={fixedExpenses}
-          flexibleExpenses={flexibleExpenses}
-          nonMonthlyExpenses={effectiveNonMonthly}
-          unclassifiedExpenses={unclassifiedExpenses}
-          flexNumber={flexNumber}
-          savingsAmount={effectiveSavingsAmount}
-          savingsRate={effectiveSavingsRate}
-        />
+        {isOverview && (
+          <InsightList
+            selectedMonth={selectedMonth}
+            allTransactions={allTransactions}
+            categories={categories}
+            budgets={budgets}
+            totalIncome={totalIncome}
+            totalExpenses={effectiveTotalExpenses}
+            fixedExpenses={fixedExpenses}
+            flexibleExpenses={flexibleExpenses}
+            nonMonthlyExpenses={effectiveNonMonthly}
+            unclassifiedExpenses={unclassifiedExpenses}
+            flexNumber={flexNumber}
+            savingsAmount={effectiveSavingsAmount}
+            savingsRate={effectiveSavingsRate}
+          />
+        )}
       </div>
 
       {/* Section 4: Spending This Month Timeline */}

@@ -143,12 +143,12 @@ export const IncomeRibbon: React.FC<IncomeRibbonProps> = ({
       {incomeMarkerPct !== null && (
         <div
           style={{ left: `${incomeMarkerPct}%` }}
-          className="absolute -top-1 bottom-0 flex flex-col items-center pointer-events-none -translate-x-1/2"
+          className="absolute -top-4 flex flex-col items-center pointer-events-none -translate-x-1/2"
         >
-          <div className="w-[2px] h-5 bg-foreground rounded-full" />
-          <span className="text-label text-muted-foreground mt-0.5 whitespace-nowrap">
+          <span className="text-[11px] leading-none text-muted-foreground mb-0.5 whitespace-nowrap">
             Income
           </span>
+          <div className="w-[2px] h-3.5 bg-foreground rounded-full" />
         </div>
       )}
     </div>
