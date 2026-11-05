@@ -121,9 +121,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     const found = projects.find(p => p.id === projectId);
     if (found) {
+      const isSwitchingProject = activeProject && activeProject.id !== projectId;
       setActiveProject(found);
       setCurrentView('dashboard');
       localStorage.setItem('expense_active_project_id', projectId);
+      if (isSwitchingProject) {
+        const hash = window.location.hash || '';
+        if (hash.includes('/category/') || hash.includes('/bucket/')) {
+          window.location.hash = `#/month/${getCurrentLocalMonth()}`;
+        }
+      }
     } else if (projects.length === 0) {
       // Cold-load before loadProjects() resolves: persist requested projectId so loadProjects() picks it up
       localStorage.setItem('expense_active_project_id', projectId);

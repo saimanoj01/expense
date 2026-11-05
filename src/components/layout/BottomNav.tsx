@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigation } from '../../hooks/useNavigation';
+import { getCurrentLocalMonth } from '../../utils/navigation';
 
 interface BottomNavProps {
   onOpenAddTxn: () => void;
@@ -25,7 +26,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
   const { currentRoute, navigate } = useNavigation();
   const [showMoreMenu, setShowMoreMenu] = useState(false);
 
-  const activeMonth = currentRoute.month || new Date().toISOString().substring(0, 7);
+  const activeMonth = currentRoute.month || getCurrentLocalMonth();
 
   const isOverview = currentRoute.view === 'overview' || currentRoute.view === 'bucket' || currentRoute.view === 'category';
 
@@ -59,7 +60,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
             data-testid="bottom-nav-transactions"
             onClick={() => {
               setShowMoreMenu(false);
-              navigate('#/transactions');
+              navigate(`#/transactions?month=${activeMonth}`);
             }}
             className={`flex flex-col items-center justify-center flex-1 py-1 text-[10px] font-semibold transition-colors ${
               currentRoute.view === 'transactions' ? 'text-primary' : 'text-muted-foreground hover:text-foreground'
@@ -89,7 +90,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
             data-testid="bottom-nav-budgets"
             onClick={() => {
               setShowMoreMenu(false);
-              navigate('#/budgets');
+              navigate(`#/budgets?month=${activeMonth}`);
             }}
             className={`flex flex-col items-center justify-center flex-1 py-1 text-[10px] font-semibold transition-colors ${
               currentRoute.view === 'budgets' ? 'text-primary' : 'text-muted-foreground hover:text-foreground'
@@ -152,7 +153,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
                   data-testid="drawer-nav-trends"
                   onClick={() => {
                     setShowMoreMenu(false);
-                    navigate('#/trends');
+                    navigate(`#/trends?month=${activeMonth}`);
                   }}
                   className="flex flex-col items-center justify-center p-3 rounded-xl bg-secondary/50 hover:bg-secondary text-foreground text-xs font-semibold gap-1.5 transition-colors"
                 >
@@ -164,7 +165,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
                   data-testid="drawer-nav-reports"
                   onClick={() => {
                     setShowMoreMenu(false);
-                    navigate('#/reports');
+                    navigate(`#/reports?month=${activeMonth}`);
                   }}
                   className="flex flex-col items-center justify-center p-3 rounded-xl bg-secondary/50 hover:bg-secondary text-foreground text-xs font-semibold gap-1.5 transition-colors"
                 >
@@ -176,7 +177,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
                   data-testid="drawer-nav-settings"
                   onClick={() => {
                     setShowMoreMenu(false);
-                    navigate('#/settings');
+                    navigate(`#/settings?month=${activeMonth}`);
                   }}
                   className="flex flex-col items-center justify-center p-3 rounded-xl bg-secondary/50 hover:bg-secondary text-foreground text-xs font-semibold gap-1.5 transition-colors"
                 >

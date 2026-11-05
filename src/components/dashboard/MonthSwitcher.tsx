@@ -92,8 +92,8 @@ export const MonthSwitcher: React.FC<MonthSwitcherProps> = ({
           <span className="hidden xs:inline text-[11px]">Prev</span>
         </button>
 
-        {/* Central Switcher with animated label & underlying accessible select */}
-        <div className="relative flex items-center justify-center min-w-[130px] sm:min-w-[150px] px-3 py-1.5 rounded-xl bg-card border border-border/70 shadow-sm overflow-hidden">
+        {/* Central Switcher with animated label & visible accessible select */}
+        <div className="relative flex items-center justify-center gap-1 min-w-[130px] sm:min-w-[150px] px-3 py-1.5 rounded-xl bg-card border border-border/70 shadow-sm">
           <AnimatePresence mode="wait" initial={false}>
             <motion.span
               key={selectedMonth}
@@ -108,10 +108,9 @@ export const MonthSwitcher: React.FC<MonthSwitcherProps> = ({
             </motion.span>
           </AnimatePresence>
 
-          {/* Accessible Select Element (Preserves Test & Accessibility contracts) */}
           <select
             data-testid="month-selector"
-            className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+            className="bg-transparent text-xs font-semibold text-muted-foreground hover:text-foreground cursor-pointer focus-visible:ring-2 focus-visible:ring-primary/40 rounded outline-none"
             value={selectedMonth}
             onChange={(e) => onSelectMonth(e.target.value)}
             aria-label="Select Financial Period"

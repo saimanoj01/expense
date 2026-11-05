@@ -13,6 +13,7 @@ import {
   Sparkles
 } from 'lucide-react';
 import { useNavigation } from '../../hooks/useNavigation';
+import { getCurrentLocalMonth } from '../../utils/navigation';
 import { Project } from '../../services/storage';
 
 interface SidebarProps {
@@ -45,7 +46,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     }
   }, [collapsed]);
 
-  const activeMonth = currentRoute.month || new Date().toISOString().substring(0, 7);
+  const activeMonth = currentRoute.month || getCurrentLocalMonth();
 
   const navItems = [
     {
@@ -59,35 +60,35 @@ export const Sidebar: React.FC<SidebarProps> = ({
       id: 'transactions',
       label: 'Transactions',
       icon: Receipt,
-      route: '#/transactions',
+      route: `#/transactions?month=${activeMonth}`,
       isActive: currentRoute.view === 'transactions'
     },
     {
       id: 'budgets',
       label: 'Budgets & Planning',
       icon: Target,
-      route: '#/budgets',
+      route: `#/budgets?month=${activeMonth}`,
       isActive: currentRoute.view === 'budgets'
     },
     {
       id: 'trends',
       label: 'Trends & Analytics',
       icon: BarChart3,
-      route: '#/trends',
+      route: `#/trends?month=${activeMonth}`,
       isActive: currentRoute.view === 'trends'
     },
     {
       id: 'reports',
       label: 'Reports & Statement',
       icon: FileText,
-      route: '#/reports',
+      route: `#/reports?month=${activeMonth}`,
       isActive: currentRoute.view === 'reports'
     },
     {
       id: 'settings',
       label: 'Settings & Projects',
       icon: Settings,
-      route: '#/settings',
+      route: `#/settings?month=${activeMonth}`,
       isActive: currentRoute.view === 'settings'
     }
   ];

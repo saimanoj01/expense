@@ -49,7 +49,7 @@ export const DailySpendTimeline: React.FC<DailySpendTimelineProps> = ({
       if (t.type === 'expense' && t.date) {
         const day = parseInt(t.date.split('-')[2] || '0', 10);
         if (day >= 1 && day <= daysInMonth) {
-          dailyMap[day].amount += t.amount;
+          dailyMap[day].amount += Number(t.amount) || 0;
           dailyMap[day].txnCount += 1;
         }
       }

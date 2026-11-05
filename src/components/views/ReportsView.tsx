@@ -2,6 +2,7 @@ import { BreadcrumbTrail } from '../layout/BreadcrumbTrail';
 import { Printer, Download, Mail, ShieldCheck, Lock } from 'lucide-react';
 import { formatCurrency } from '../../utils/formatters';
 import { formatMonthLabel } from '../../utils/navigation';
+import { escapeCsvCell } from '../../utils/csv';
 import { CategorySummary } from '../dashboard/BudgetUtilization';
 import { Transaction, Project } from '../../services/storage';
 
@@ -57,8 +58,8 @@ export function ReportsView({
       .map(c => {
         const remaining = c.budget - c.spent;
         return [
-          `"${c.name}"`,
-          `"${c.bucket || 'flexible'}"`,
+          escapeCsvCell(c.name),
+          escapeCsvCell(c.bucket || 'flexible'),
           c.budget.toFixed(2),
           c.spent.toFixed(2),
           remaining.toFixed(2),

@@ -111,7 +111,7 @@ export function TransactionList({
                         e.target.value = '';
                       }
                     }}
-                    className="px-3 py-1.5 bg-card/80 border border-border text-foreground hover:bg-card rounded-lg text-xs sm:text-sm font-bold transition-colors cursor-pointer outline-none shadow-sm"
+                    className="px-3 py-1.5 bg-card/80 border border-border text-foreground hover:bg-card rounded-lg text-xs sm:text-sm font-bold transition-colors cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-primary/40 shadow-sm"
                   >
                     <option value="" disabled className="bg-card text-card-foreground">Set Category ({selectedTxnIds.size})...</option>
                     {parentCats.map(p => {
@@ -145,7 +145,7 @@ export function TransactionList({
                         e.target.value = '';
                       }
                     }}
-                    className="px-3 py-1.5 bg-card/80 border border-border text-foreground hover:bg-card rounded-lg text-xs sm:text-sm font-bold transition-colors cursor-pointer outline-none shadow-sm"
+                    className="px-3 py-1.5 bg-card/80 border border-border text-foreground hover:bg-card rounded-lg text-xs sm:text-sm font-bold transition-colors cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-primary/40 shadow-sm"
                   >
                     <option value="" disabled className="bg-card text-card-foreground">Set Bucket ({selectedTxnIds.size})...</option>
                     <option value="fixed" className="bg-card text-card-foreground">Fixed Commitment</option>
@@ -191,7 +191,7 @@ export function TransactionList({
                       e.target.value = '';
                     }
                   }}
-                  className="px-3 py-1.5 bg-card/80 border border-border text-foreground hover:bg-card rounded-lg text-xs sm:text-sm font-bold transition-colors cursor-pointer outline-none shadow-sm"
+                  className="px-3 py-1.5 bg-card/80 border border-border text-foreground hover:bg-card rounded-lg text-xs sm:text-sm font-bold transition-colors cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-primary/40 shadow-sm"
                 >
                   <option value="" disabled className="bg-card text-card-foreground">Remove Tag ({selectedTxnIds.size})...</option>
                   {selectedTxnTags.map(tag => (

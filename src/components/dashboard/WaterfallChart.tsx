@@ -50,25 +50,7 @@ export function WaterfallChart({ data }: WaterfallChartProps) {
   ];
 
   return (
-    <div className="w-full relative select-none" data-testid="cash-flow-waterfall">
-      {/* Screen-reader accessible data table for compliance */}
-      <table className="sr-only" aria-label="Cash Flow Waterfall Table">
-        <thead>
-          <tr>
-            <th scope="col">Step</th>
-            <th scope="col">Amount</th>
-          </tr>
-        </thead>
-        <tbody>
-          {data.map(item => (
-            <tr key={item.name}>
-              <td>{item.name}</td>
-              <td>{formatCurrency(item.displayValue)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-
+    <div className="w-full relative select-none space-y-4" data-testid="cash-flow-waterfall">
       {/* SVG Visualization (Zero-recharts, pure SVG for high-perf and instant paint) */}
       <div className="w-full h-[220px]">
         <svg
@@ -96,7 +78,7 @@ export function WaterfallChart({ data }: WaterfallChartProps) {
                   x={paddingLeft - 8}
                   y={y + 3}
                   textAnchor="end"
-                  className="text-[10px] fill-muted-foreground font-mono tabular-nums"
+                  className="text-xs fill-muted-foreground tabular-nums num"
                 >
                   ${tick >= 1000 ? `${(tick / 1000).toFixed(0)}k` : tick.toFixed(0)}
                 </text>
@@ -166,7 +148,7 @@ export function WaterfallChart({ data }: WaterfallChartProps) {
                   x={barX + barWidth / 2}
                   y={topY - 6}
                   textAnchor="middle"
-                  className="text-[10px] font-bold font-mono tabular-nums fill-foreground"
+                  className="text-xs font-semibold tabular-nums num fill-foreground"
                 >
                   ${item.displayValue >= 1000 ? `${(item.displayValue / 1000).toFixed(1)}k` : item.displayValue.toFixed(0)}
                 </text>
@@ -176,7 +158,7 @@ export function WaterfallChart({ data }: WaterfallChartProps) {
                   x={barX + barWidth / 2}
                   y={chartHeight - 12}
                   textAnchor="middle"
-                  className={`text-[11px] font-semibold transition-colors ${
+                  className={`text-label font-semibold transition-colors ${
                     isHovered ? 'fill-foreground font-bold' : 'fill-muted-foreground'
                   }`}
                 >
@@ -186,6 +168,26 @@ export function WaterfallChart({ data }: WaterfallChartProps) {
             );
           })}
         </svg>
+      </div>
+
+      {/* Visible data table for allocation steps */}
+      <div className="border-t border-border/60 pt-3">
+        <table className="w-full text-xs text-left" aria-label="Cash Flow Waterfall Table">
+          <thead>
+            <tr className="text-muted-foreground border-b border-border/40">
+              <th scope="col" className="pb-1.5 font-medium">Step</th>
+              <th scope="col" className="pb-1.5 font-medium text-right">Amount</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border/30">
+            {data.map(item => (
+              <tr key={item.name}>
+                <td className="py-1.5 text-foreground font-medium">{item.name}</td>
+                <td className="py-1.5 text-right tabular-nums num text-foreground">{formatCurrency(item.displayValue)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
 
       {/* Floating Hover Tooltip */}
@@ -201,7 +203,7 @@ export function WaterfallChart({ data }: WaterfallChartProps) {
           <p className="font-extrabold text-sm" style={{ color: data[hoveredIndex].color }}>
             {formatCurrency(data[hoveredIndex].displayValue)}
           </p>
-          <p className="text-[10px] text-muted-foreground mt-0.5 capitalize">
+          <p className="text-label text-muted-foreground mt-0.5 capitalize">
             {data[hoveredIndex].stepType === 'inflow'
               ? 'Starting Inflow'
               : data[hoveredIndex].stepType === 'outflow'

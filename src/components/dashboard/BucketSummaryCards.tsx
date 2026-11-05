@@ -2,6 +2,7 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { TrendingUp, Shield, ShoppingBag, Calendar, ArrowRight } from 'lucide-react';
 import { useNavigation } from '../../hooks/useNavigation';
+import { getCurrentLocalMonth } from '../../utils/navigation';
 import { formatCurrency, formatExpenseCurrency } from '../../utils/formatters';
 
 export interface BucketSummaryCardsProps {
@@ -52,11 +53,21 @@ function renderMomDeltaBadge(
     return <span className="text-muted-foreground text-[10px]">{fallbackText}</span>;
   }
   if (prior <= 0) {
-    return <span className="text-muted-foreground text-[10px]">{fallbackText}</span>;
+    if (current > 0) {
+      const toneClasses = isExpense
+        ? 'text-rose-400 bg-rose-500/10'
+        : 'text-emerald-400 bg-emerald-500/10';
+      return (
+        <span className={`${toneClasses} px-1.5 py-0.5 rounded font-semibold tabular-nums font-sans`}>
+          New MoM
+        </span>
+      );
+    }
+    return <span className="text-muted-foreground text-[10px]">0.0% MoM</span>;
   }
   const deltaPct = ((current - prior) / prior) * 100;
   if (Math.abs(deltaPct) < 0.05) {
-    return <span className="text-muted-foreground text-[10px]">{fallbackText}</span>;
+    return <span className="text-muted-foreground text-[10px]">0.0% MoM</span>;
   }
   const isPositiveTone = isExpense ? deltaPct < 0 : deltaPct > 0;
   const toneClasses = isPositiveTone
@@ -83,7 +94,7 @@ export const BucketSummaryCards: React.FC<BucketSummaryCardsProps> = ({
   className = ''
 }) => {
   const { currentRoute, navigate } = useNavigation();
-  const activeMonth = currentRoute.month || new Date().toISOString().substring(0, 7);
+  const activeMonth = currentRoute.month || getCurrentLocalMonth();
 
   const denom = Math.max(totalIncome, totalExpenses, 1);
   const fixedPct = Math.min(100, Math.max(0, (fixedExpenses / denom) * 100));

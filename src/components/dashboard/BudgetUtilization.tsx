@@ -485,7 +485,7 @@ export function BudgetUtilization({
                     <span>{item.emoji}</span>
                     <span className="truncate">{item.name}</span>
                   </span>
-                  <div className="flex items-center gap-1 bg-card border border-border/80 rounded px-2 py-0.5 shrink-0">
+                  <div className="flex items-center gap-1 bg-card border border-border/80 focus-within:ring-2 focus-within:ring-primary/40 rounded px-2 py-0.5 shrink-0">
                     <span className="text-[10px] text-muted-foreground">$</span>
                     <input
                       disabled={isLockedMonth}
@@ -493,7 +493,7 @@ export function BudgetUtilization({
                       min="0"
                       value={item.budget === 0 ? '0' : (item.budget || '')}
                       onChange={e => handleBudgetInputChange?.(item.id, e.target.value)}
-                      className="w-14 bg-transparent text-xs font-bold text-right outline-none"
+                      className="w-14 bg-transparent text-xs font-bold text-right outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded"
                     />
                   </div>
                 </div>
@@ -640,7 +640,7 @@ export function BudgetUtilization({
                           value={item.budget === 0 ? '0' : (item.budget || '')}
                           placeholder="0"
                           onChange={e => handleBudgetInputChange(item.id, e.target.value)}
-                          className="w-16 bg-transparent text-sm font-bold text-foreground tabular-nums outline-none text-right disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="w-16 bg-transparent text-sm font-bold text-foreground tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded text-right disabled:opacity-50 disabled:cursor-not-allowed"
                         />
                       </div>
                     ) : (
@@ -817,7 +817,7 @@ export function BudgetUtilization({
                                   <div className="flex justify-between items-center pt-1 border-t border-border/20">
                                     <span className="text-muted-foreground">Budget</span>
                                     {handleBudgetInputChange ? (
-                                      <div className="flex items-center gap-1 bg-card border border-border/70 rounded px-2 py-0.5">
+                                      <div className="flex items-center gap-1 bg-card border border-border/70 focus-within:ring-2 focus-within:ring-primary/40 rounded px-2 py-0.5">
                                         <span className="text-[10px] text-muted-foreground">$</span>
                                         <input
                                           disabled={isLockedMonth}
@@ -827,7 +827,7 @@ export function BudgetUtilization({
                                           value={sub.budget === 0 ? '0' : (sub.budget || '')}
                                           placeholder="0"
                                           onChange={e => handleBudgetInputChange(sub.id, e.target.value)}
-                                          className="w-14 bg-transparent text-xs text-right font-bold tabular-nums outline-none text-foreground disabled:opacity-50 disabled:cursor-not-allowed"
+                                          className="w-14 bg-transparent text-xs text-right font-bold tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded text-foreground disabled:opacity-50 disabled:cursor-not-allowed"
                                         />
                                       </div>
                                     ) : (

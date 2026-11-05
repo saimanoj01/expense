@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { Transaction, MonthlyLock, Category, DEFAULT_CATEGORIES, SpendingBucket, Project, StorageAdapter } from '../services/storage';
-import { bucketOf } from '../utils/categorizer';
+import { bucketOf, bucketSource } from '../utils/categorizer';
+import { computeMonthMetrics, isRefundTransaction } from '../utils/metrics';
 
 export interface TrendPoint {
   date: string;
@@ -213,6 +214,14 @@ export function useTransactions(
 
     if (latest && latest !== selectedMonth) {
       setSelectedMonthState(latest);
+      try {
+        const hash = window.location.hash;
+        if (!hash || hash === '#' || hash === '#/' || hash === `#/month/${selectedMonth}`) {
+          window.history.replaceState(null, '', `#/month/${latest}`);
+        }
+      } catch {
+        // Ignore history errors
+      }
     }
   }, [transactions, selectedMonth]);
 
@@ -363,40 +372,27 @@ export function useTransactions(
     return dups;
   }, [transactions]);
 
-  // KPIs
-  const totalExpenses = useMemo(() => monthTransactions
-    .filter(t => t.type === 'expense')
-    .reduce((sum, t) => sum + (typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount || 0)) || 0), 0), [monthTransactions]);
-    
-  const totalIncome = useMemo(() => monthTransactions
-    .filter(t => t.type === 'income')
-    .reduce((sum, t) => sum + (typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount || 0)) || 0), 0), [monthTransactions]);
+  // KPIs via pure computeMonthMetrics (§3.2, §3.11)
+  const monthMetrics = useMemo(
+    () => computeMonthMetrics(monthTransactions, 'all', categories),
+    [monthTransactions, categories]
+  );
 
-  const totalTransfers = useMemo(() => monthTransactions
-    .filter(t => t.type === 'transfer')
-    .reduce((sum, t) => sum + (typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount || 0)) || 0), 0), [monthTransactions]);
-
-  const fixedExpenses = useMemo(() => monthTransactions
-    .filter(t => t.type === 'expense' && bucketOf(t, categories) === 'fixed')
-    .reduce((sum, t) => sum + (typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount || 0)) || 0), 0), [monthTransactions, categories]);
-
-  const nonMonthlyExpenses = useMemo(() => monthTransactions
-    .filter(t => t.type === 'expense' && bucketOf(t, categories) === 'non-monthly')
-    .reduce((sum, t) => sum + (typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount || 0)) || 0), 0), [monthTransactions, categories]);
-
-  const flexibleExpenses = useMemo(() => monthTransactions
-    .filter(t => t.type === 'expense' && bucketOf(t, categories) === 'flexible')
-    .reduce((sum, t) => sum + (typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount || 0)) || 0), 0), [monthTransactions, categories]);
-
-  const flexNumber = useMemo(() => totalIncome - fixedExpenses - nonMonthlyExpenses, [totalIncome, fixedExpenses, nonMonthlyExpenses]);
-  const savingsAmount = useMemo(() => totalIncome - totalExpenses, [totalIncome, totalExpenses]);
-  const savingsRate = useMemo(() => totalIncome > 0 ? (savingsAmount / totalIncome) * 100 : 0, [totalIncome, savingsAmount]);
+  const totalExpenses = monthMetrics.expenses;
+  const totalIncome = monthMetrics.income;
+  const totalTransfers = monthMetrics.transfers;
+  const fixedExpenses = monthMetrics.fixed;
+  const nonMonthlyExpenses = monthMetrics.nonMonthly;
+  const flexibleExpenses = monthMetrics.flexible;
+  const flexNumber = monthMetrics.flexNumber;
+  const savingsAmount = monthMetrics.savings;
+  const savingsRate = monthMetrics.savingsRate;
 
   const unclassifiedCount = useMemo(() => monthTransactions
-    .filter(t => t.type === 'expense' && (bucketOf(t, categories) as string) === 'unclassified').length, [monthTransactions, categories]);
+    .filter(t => t.type === 'expense' && bucketSource(t, categories) === 'fallback').length, [monthTransactions, categories]);
 
   const unclassifiedExpenses = useMemo(() => monthTransactions
-    .filter(t => t.type === 'expense' && (bucketOf(t, categories) as string) === 'unclassified')
+    .filter(t => t.type === 'expense' && bucketSource(t, categories) === 'fallback')
     .reduce((sum, t) => sum + (typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount || 0)) || 0), 0), [monthTransactions, categories]);
 
   const availableMonths = useMemo(() => {
@@ -432,7 +428,8 @@ export function useTransactions(
 
   // Enhanced Trend Chart Details
   const trendDetails = useMemo<TrendChartDetails>(() => {
-    const currentMonthStr = selectedMonth === 'all' ? '2026-07' : selectedMonth;
+    const fallbackMonth = availableMonths[availableMonths.length - 1] || `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
+    const currentMonthStr = selectedMonth === 'all' ? fallbackMonth : selectedMonth;
     const [yearNum, monthNum] = currentMonthStr.split('-').map(n => parseInt(n, 10));
     const validYear = isNaN(yearNum) ? 2026 : yearNum;
     const validMonth = isNaN(monthNum) ? 7 : monthNum;
@@ -561,9 +558,10 @@ export function useTransactions(
     const scaleMax = Math.max(currentMaxCumulative, prevMaxCumulative, 100);
     const range = scaleMax * 1.1;
 
-    // Build SVG points for Current Month Cumulative
+    // Build SVG points for Current Month Cumulative (strictly stops at today/daysElapsed for current month)
     const cumulativePoints: CumulativePacingPoint[] = [];
-    for (let d = 1; d <= daysInMonth; d++) {
+    const maxActualDay = Math.min(daysInMonth, Math.max(1, daysElapsed));
+    for (let d = 1; d <= maxActualDay; d++) {
       const dailyAmt = currentMonthDailyExpenses[d - 1];
       const cumAmt = currentCumulative[d - 1];
       const dateStr = `${currentMonthStr}-${String(d).padStart(2, '0')}`;
@@ -618,17 +616,57 @@ export function useTransactions(
 
     const idealPacingPathData = '';
 
-    // EOM Projection (smart proration: fixed & non-monthly obligations are one-time/scheduled, only flexible spend prorates)
+    // EOM Projection (§3.9: hide before day 7 of current month; use trailing 3-month variable average + max(actualFixed, priorMonthFixed))
     let eomProjection = 0;
-    if (totalExpenses === 0) {
+    if (totalExpenses === 0 || (isCurrentCalendarMonth && daysElapsed < 7)) {
       eomProjection = 0;
     } else if (daysElapsed >= daysInMonth) {
       eomProjection = Math.round(totalExpenses);
     } else {
-      const proratedFlexible = daysElapsed > 0 ? (flexibleExpenses / daysElapsed) * daysInMonth : 0;
-      eomProjection = Math.round(fixedExpenses + nonMonthlyExpenses + proratedFlexible);
+      const daysRemaining = Math.max(0, daysInMonth - daysElapsed);
+      // Compute prior-month fixed and trailing 3-month daily variable average
+      const [cy, cm] = currentMonthStr.split('-').map(Number);
+      const priorKeys: string[] = [];
+      for (let i = 1; i <= 3; i++) {
+        const pd = new Date(Date.UTC(cy, cm - 1 - i, 1));
+        priorKeys.push(`${pd.getUTCFullYear()}-${String(pd.getUTCMonth() + 1).padStart(2, '0')}`);
+      }
+      const prior1Key = priorKeys[0];
+      const priorFixed = transactions
+        .filter(t => t.type === 'expense' && t.date && t.date.startsWith(prior1Key) && bucketOf(t, categories) === 'fixed')
+        .reduce((s, t) => s + (typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount || 0)) || 0), 0);
+
+      const priorMonthsWithVar = priorKeys.filter(pk =>
+        transactions.some(t => t.type === 'expense' && t.date && t.date.startsWith(pk))
+      );
+      let avgDailyVar = daysElapsed > 0 ? flexibleExpenses / daysElapsed : 0;
+      if (priorMonthsWithVar.length > 0) {
+        const totalPriorVar = priorMonthsWithVar.reduce((sum, pk) => {
+          const mVar = transactions
+            .filter(t => t.type === 'expense' && t.date && t.date.startsWith(pk) && bucketOf(t, categories) === 'flexible')
+            .reduce((s, t) => s + (typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount || 0)) || 0), 0);
+          return sum + mVar;
+        }, 0);
+        const totalPriorDays = priorMonthsWithVar.reduce((days, pk) => {
+          const [py, pm] = pk.split('-').map(Number);
+          const dim = (!isNaN(py) && !isNaN(pm)) ? new Date(py, pm, 0).getDate() : 30;
+          return days + dim;
+        }, 0);
+        avgDailyVar = totalPriorDays > 0 ? totalPriorVar / totalPriorDays : 0;
+      }
+
+      const projectedFixed = Math.max(fixedExpenses, priorFixed);
+      const projectedVariable = flexibleExpenses + avgDailyVar * daysRemaining;
+      eomProjection = Math.round(projectedFixed + nonMonthlyExpenses + projectedVariable);
     }
-    const pacingStatus: 'under_budget' | 'on_track' | 'over_budget' = 'on_track';
+    let pacingStatus: 'under_budget' | 'on_track' | 'over_budget' = 'on_track';
+    if (prevMaxCumulative > 0 && eomProjection > 0) {
+      if (eomProjection > prevMaxCumulative * 1.05) {
+        pacingStatus = 'over_budget';
+      } else if (eomProjection < prevMaxCumulative * 0.95) {
+        pacingStatus = 'under_budget';
+      }
+    }
 
     // 4. Multi-Month Cash Flow Summaries
     const monthGroupMap: Record<string, { income: number; expense: number; fixedExpense: number; flexibleExpense: number; nonMonthlyExpense: number }> = {};
@@ -655,7 +693,18 @@ export function useTransactions(
             monthGroupMap[mKey].flexibleExpense += validAmt;
           }
         } else if (t.type === 'income') {
-          monthGroupMap[mKey].income += validAmt;
+          if (isRefundTransaction(t)) {
+            const b = bucketOf(t, categories);
+            if (b === 'fixed') {
+              monthGroupMap[mKey].fixedExpense -= validAmt;
+            } else if (b === 'non-monthly') {
+              monthGroupMap[mKey].nonMonthlyExpense -= validAmt;
+            } else {
+              monthGroupMap[mKey].flexibleExpense -= validAmt;
+            }
+          } else {
+            monthGroupMap[mKey].income += validAmt;
+          }
         }
       }
     });
@@ -664,16 +713,20 @@ export function useTransactions(
       .sort()
       .map(mKey => {
         const data = monthGroupMap[mKey];
-        const net = data.income - data.expense;
-        const savingsRate = data.income > 0 ? Math.round((net / data.income) * 100) : 0;
+        const clampedFixed = Math.max(0, data.fixedExpense);
+        const clampedFlexible = Math.max(0, data.flexibleExpense);
+        const clampedNonMonthly = Math.max(0, data.nonMonthlyExpense);
+        const totalExp = clampedFixed + clampedFlexible + clampedNonMonthly;
+        const net = data.income - totalExp;
+        const savingsRate = data.income > 0 ? Math.round((net / data.income) * 100) : (totalExp > 0 ? -100 : 0);
         return {
           month: mKey,
           formattedMonth: formatMonthLabel(mKey),
           income: Math.round(data.income),
-          expense: Math.round(data.expense),
-          fixedExpense: Math.round(data.fixedExpense),
-          flexibleExpense: Math.round(data.flexibleExpense),
-          nonMonthlyExpense: Math.round(data.nonMonthlyExpense),
+          expense: Math.round(totalExp),
+          fixedExpense: Math.round(clampedFixed),
+          flexibleExpense: Math.round(clampedFlexible),
+          nonMonthlyExpense: Math.round(clampedNonMonthly),
           net: Math.round(net),
           savingsRate
         };

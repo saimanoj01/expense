@@ -260,7 +260,7 @@ export const TransactionItem = forwardRef<HTMLDivElement, TransactionItemProps>(
         })()}
         
         {!isLockedMonth && (
-          <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
+          <div className="flex items-center gap-1">
             <button 
               onClick={() => handleEditTxn(transaction)}
               data-testid={`edit-transaction-btn-${transaction.id}`}

@@ -41,7 +41,7 @@ function getUtilizationColor(pct: number): { text: string; bg: string; border: s
 }
 
 export const Level2BucketView: React.FC<Level2BucketViewProps> = ({
-  bucketId,
+  bucketId: rawBucketId,
   month,
   totalIncome,
   transactions,
@@ -53,6 +53,7 @@ export const Level2BucketView: React.FC<Level2BucketViewProps> = ({
 }) => {
   const { navigate } = useNavigation();
   const [sortBy, setSortBy] = useState<'spend' | 'name' | 'percent'>('spend');
+  const bucketId: SpendingBucket | 'income' = (rawBucketId as string) === 'variable' ? 'flexible' : rawBucketId;
 
   // Bucket details and styling
   const bucketMeta = useMemo(() => {
@@ -116,7 +117,7 @@ export const Level2BucketView: React.FC<Level2BucketViewProps> = ({
   }, [transactions, bucketId, categories]);
 
   const totalSpent = useMemo(() => {
-    return bucketTransactions.reduce((sum, t) => sum + t.amount, 0);
+    return bucketTransactions.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
   }, [bucketTransactions]);
 
   const pctOfIncome = totalIncome > 0 ? (totalSpent / totalIncome) * 100 : 0;
@@ -139,7 +140,7 @@ export const Level2BucketView: React.FC<Level2BucketViewProps> = ({
       return t.type === 'expense' && bucketOf(t, categories) === bucketId;
     });
     if (pTxns.length === 0) return null;
-    return pTxns.reduce((sum, t) => sum + t.amount, 0);
+    return pTxns.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
   }, [allTransactions, transactions, priorMonthKey, bucketId, categories]);
 
   const momDelta = priorSpent !== null && priorSpent > 0
@@ -179,7 +180,7 @@ export const Level2BucketView: React.FC<Level2BucketViewProps> = ({
           budget: bObj?.amount || 0
         };
       }
-      map[catId].spent += t.amount;
+      map[catId].spent += Number(t.amount) || 0;
       map[catId].txnCount += 1;
     });
 
@@ -239,16 +240,17 @@ export const Level2BucketView: React.FC<Level2BucketViewProps> = ({
       data-testid="level2-bucket-view"
       className={`space-y-6 ${className}`}
     >
-      {/* Accessible test-contract alias for back to overview */}
-      <button
-        type="button"
-        data-testid="back-to-overview-btn"
-        onClick={() => navigate(`#/month/${month}`)}
-        className="sr-only"
-        aria-hidden="true"
-      >
-        Back to Overview
-      </button>
+      {/* Visible Back to Overview Action */}
+      <div className="flex items-center justify-between">
+        <button
+          type="button"
+          data-testid="back-to-overview-btn"
+          onClick={() => navigate(`#/month/${month}`)}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-card hover:bg-secondary border border-border/60 text-xs font-semibold text-muted-foreground hover:text-foreground transition-all active:scale-95 shadow-sm"
+        >
+          ← Back to Overview
+        </button>
+      </div>
 
       {/* Hero Bucket Banner (Morphed Shared Element) */}
       <motion.div

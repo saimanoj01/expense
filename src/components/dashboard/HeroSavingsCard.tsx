@@ -46,7 +46,7 @@ export const HeroSavingsCard: React.FC<HeroSavingsCardProps> = ({
     : '—';
 
   // MoM comparison for savings amount
-  const momDelta = hasPriorMonthData && priorSavingsAmount !== undefined
+  const momDelta = hasPriorMonthData && priorSavingsAmount !== undefined && Number.isFinite(priorSavingsAmount)
     ? savingsAmount - priorSavingsAmount
     : null;
 

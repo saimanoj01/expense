@@ -63,11 +63,6 @@ export function KpiGrid({
       animate="show"
       className="glass-card p-6 rounded-2xl mb-8 border border-border/80 shadow-xl relative overflow-hidden bg-gradient-to-br from-card/90 via-card/70 to-card/90 backdrop-blur-xl"
     >
-      {/* Hidden SR-only node for backward compatibility with E2E tests */}
-      <div className="sr-only" data-testid="kpi-flex-number">
-        {formatCurrency(flexNumber)}
-      </div>
-
       {/* Top Banner Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6 pb-4 border-b border-border/50">
         <div>
@@ -84,6 +79,12 @@ export function KpiGrid({
 
         {/* Savings Health Pill */}
         <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-card/80 border border-border/60 shadow-sm text-xs font-semibold">
+            <span className="text-muted-foreground">Flex Pool:</span>
+            <span className="font-bold text-foreground" data-testid="kpi-flex-number">
+              {formatCurrency(flexNumber)}
+            </span>
+          </div>
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-card/80 border border-border/60 shadow-sm text-xs font-semibold">
             <span className="text-muted-foreground">Total Budget:</span>
             <span className="font-bold text-foreground" data-testid="kpi-total-budget">

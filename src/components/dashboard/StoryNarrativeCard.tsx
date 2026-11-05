@@ -48,7 +48,11 @@ export const StoryNarrativeCard: React.FC<StoryNarrativeCardProps> = ({
   // 50/30/20 Guideline Metrics
   const needsPct = totalIncome > 0 ? ((fixedExpenses + nonMonthlyExpenses) / totalIncome) * 100 : 0;
   const wantsPct = totalIncome > 0 ? (flexibleExpenses / totalIncome) * 100 : 0;
-  const benchmarkSavingsPct = totalIncome > 0 ? (savingsAmount / totalIncome) * 100 : 0;
+  const benchmarkSavingsPct = totalIncome > 0
+    ? (savingsAmount / totalIncome) * 100
+    : totalExpenses > 0
+    ? -100
+    : 0;
 
   // Plain-Language Story Narrative
   const storyNarrative = useMemo(() => {
@@ -168,8 +172,15 @@ export const StoryNarrativeCard: React.FC<StoryNarrativeCardProps> = ({
           {/* Savings */}
           <div className="p-1.5 rounded-xl bg-secondary/40 border border-border/40 flex items-center justify-between">
             <div>
-              <div className="text-[11px] font-semibold text-muted-foreground">Savings</div>
-              <div className="text-sm font-extrabold font-sans tabular-nums text-foreground">
+              <div className="text-[11px] font-semibold text-muted-foreground flex items-center gap-1">
+                <span>Savings</span>
+                {benchmarkSavingsPct < 0 && (
+                  <span className="px-1 py-0.2 rounded text-[9px] font-bold uppercase bg-rose-500/20 text-rose-400">
+                    Deficit
+                  </span>
+                )}
+              </div>
+              <div className={`text-sm font-extrabold font-sans tabular-nums ${benchmarkSavingsPct < 0 ? 'text-rose-400' : 'text-foreground'}`}>
                 {benchmarkSavingsPct.toFixed(1)}%
               </div>
             </div>

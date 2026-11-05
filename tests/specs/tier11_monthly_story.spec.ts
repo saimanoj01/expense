@@ -220,9 +220,12 @@ test.describe('Tier 11: The Monthly Financial Story & Cash Flow Analytics', () =
   test('5. Accessible data table for Cash Flow Waterfall contains all allocation steps', async ({ page }) => {
     const monthSelect = page.getByTestId('month-selector');
     await monthSelect.selectOption('2026-07');
+    await page.evaluate(() => {
+      window.location.hash = '#/trends?month=2026-07';
+    });
 
     const waterfallTable = page.locator('table[aria-label="Cash Flow Waterfall Table"]');
-    await expect(waterfallTable).toBeAttached();
+    await expect(waterfallTable).toBeVisible();
 
     // Check row values
     await expect(waterfallTable.locator('tr:has-text("Inflow")')).toContainText('$12,000.00');
@@ -360,7 +363,10 @@ test.describe('Tier 11: The Monthly Financial Story & Cash Flow Analytics', () =
     await expect(page.getByTestId('kpi-non-monthly')).toContainText('$600.00');
     await expect(page.getByTestId('kpi-savings-amount')).toContainText('$7,800.00');
 
-    // Cash flow waterfall is visible and excludes transfers
+    // Cash flow waterfall is visible on Trends and excludes transfers
+    await page.evaluate(() => {
+      window.location.hash = '#/trends?month=2026-07';
+    });
     const waterfall = page.getByTestId('cash-flow-waterfall');
     await expect(waterfall).toBeVisible();
   });

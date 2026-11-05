@@ -14,7 +14,7 @@ import {
   Trash2,
   Tag
 } from 'lucide-react';
-import { Transaction, Category, Budget, SpendingBucket } from '../../services/storage';
+import { Transaction, Category, Budget, SpendingBucket, DEFAULT_CATEGORIES } from '../../services/storage';
 import { useNavigation } from '../../hooks/useNavigation';
 import { formatCurrency, formatExpenseCurrency } from '../../utils/formatters';
 import { suggestSpendingBucket } from '../../utils/categorizer';
@@ -57,8 +57,19 @@ export const Level3CategoryView: React.FC<Level3CategoryViewProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
 
   // Find category metadata
+  const isKnownCategory = useMemo(() => {
+    const lower = categoryId.toLowerCase();
+    return (
+      categories.some(c => c.id.toLowerCase() === lower || c.name.toLowerCase() === lower) ||
+      DEFAULT_CATEGORIES.some(c => c.id.toLowerCase() === lower || c.name.toLowerCase() === lower)
+    );
+  }, [categories, categoryId]);
+
   const category = useMemo(() => {
     const match = categories.find(c => 
+      c.id.toLowerCase() === categoryId.toLowerCase() ||
+      c.name.toLowerCase() === categoryId.toLowerCase()
+    ) || DEFAULT_CATEGORIES.find(c =>
       c.id.toLowerCase() === categoryId.toLowerCase() ||
       c.name.toLowerCase() === categoryId.toLowerCase()
     );
@@ -98,7 +109,7 @@ export const Level3CategoryView: React.FC<Level3CategoryViewProps> = ({
   }, [transactions, category]);
 
   const totalSpent = useMemo(() => {
-    return categoryTransactions.reduce((sum, t) => sum + t.amount, 0);
+    return categoryTransactions.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
   }, [categoryTransactions]);
 
   const remainingBudget = Math.max(0, budget - totalSpent);
@@ -119,7 +130,7 @@ export const Level3CategoryView: React.FC<Level3CategoryViewProps> = ({
       if (!map[payee]) {
         map[payee] = { name: payee, amount: 0, count: 0 };
       }
-      map[payee].amount += t.amount;
+      map[payee].amount += Number(t.amount) || 0;
       map[payee].count += 1;
     });
 
@@ -142,6 +153,31 @@ export const Level3CategoryView: React.FC<Level3CategoryViewProps> = ({
       (t.labels && t.labels.some(l => l.toLowerCase().includes(term)))
     );
   }, [categoryTransactions, searchTerm]);
+
+  if (!isKnownCategory && categoryTransactions.length === 0 && budget === 0) {
+    return (
+      <div
+        data-testid="level3-category-view"
+        className={`space-y-6 ${className}`}
+      >
+        <div className="p-6 rounded-2xl bg-card border border-border space-y-3">
+          <h2 className="text-xl font-bold text-foreground">Category not found</h2>
+          <p className="text-xs text-muted-foreground">
+            The category &ldquo;{categoryId}&rdquo; does not exist in this project.
+          </p>
+          <button
+            type="button"
+            data-testid="back-to-bucket-btn"
+            onClick={() => navigate(`#/month/${month}`)}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-secondary hover:bg-secondary/80 border border-border text-xs font-semibold text-foreground transition-colors"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            <span>Back to Overview</span>
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -353,7 +389,16 @@ export const Level3CategoryView: React.FC<Level3CategoryViewProps> = ({
               <div
                 key={t.id}
                 data-testid={`category-txn-${t.id}`}
-                className="p-3 flex items-center justify-between gap-3 hover:bg-secondary/40 transition-colors"
+                role={onEditTxn ? 'button' : undefined}
+                tabIndex={onEditTxn ? 0 : undefined}
+                onClick={() => onEditTxn && onEditTxn(t)}
+                onKeyDown={e => {
+                  if (onEditTxn && (e.key === 'Enter' || e.key === ' ')) {
+                    e.preventDefault();
+                    onEditTxn(t);
+                  }
+                }}
+                className="p-3 flex items-center justify-between gap-3 hover:bg-secondary/40 transition-colors focus-visible:ring-2 focus-visible:ring-primary/40 outline-none"
               >
                 <div className="flex items-center gap-3">
                   <div className="p-2 rounded-xl bg-secondary/60 text-muted-foreground shrink-0">

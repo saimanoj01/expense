@@ -43,10 +43,10 @@ export function TrendsView({
       ? transactions.filter(t => t.type !== 'transfer')
       : transactions.filter(t => t.date && t.date.startsWith(activeMonth) && t.type !== 'transfer');
 
-    const totalIncome = periodTxns.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
-    const fixedExpenses = periodTxns.filter(t => t.type === 'expense' && bucketOf(t, categories) === 'fixed').reduce((s, t) => s + t.amount, 0);
-    const flexibleExpenses = periodTxns.filter(t => t.type === 'expense' && bucketOf(t, categories) === 'flexible').reduce((s, t) => s + t.amount, 0);
-    const nonMonthlyExpenses = periodTxns.filter(t => t.type === 'expense' && bucketOf(t, categories) === 'non-monthly').reduce((s, t) => s + t.amount, 0);
+    const totalIncome = periodTxns.filter(t => t.type === 'income').reduce((s, t) => s + (Number(t.amount) || 0), 0);
+    const fixedExpenses = periodTxns.filter(t => t.type === 'expense' && bucketOf(t, categories) === 'fixed').reduce((s, t) => s + (Number(t.amount) || 0), 0);
+    const flexibleExpenses = periodTxns.filter(t => t.type === 'expense' && bucketOf(t, categories) === 'flexible').reduce((s, t) => s + (Number(t.amount) || 0), 0);
+    const nonMonthlyExpenses = periodTxns.filter(t => t.type === 'expense' && bucketOf(t, categories) === 'non-monthly').reduce((s, t) => s + (Number(t.amount) || 0), 0);
     const totalExpenses = fixedExpenses + flexibleExpenses + nonMonthlyExpenses;
     const savingsAmount = totalIncome - totalExpenses;
 

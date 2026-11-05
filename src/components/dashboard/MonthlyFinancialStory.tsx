@@ -303,19 +303,11 @@ export function MonthlyFinancialStory({
       animate="show"
       className="glass-card p-6 rounded-2xl mb-8 border border-border/80 shadow-xl relative overflow-hidden bg-gradient-to-br from-card/95 via-card/85 to-card/95 backdrop-blur-xl"
     >
-      {/* Hidden SR-only nodes for test compatibility */}
-      <div className="sr-only" data-testid="kpi-flex-number">
-        {formatCurrency(flexNumber)}
-      </div>
-      <div className="sr-only" data-testid="monthly-financial-story">
-        {monthTitle}
-      </div>
-
       {/* Header & Badges */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4 pb-4 border-b border-border/50">
         <div>
           <div className="flex items-center gap-2">
-            <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-primary/15 text-primary border border-primary/20">
+            <span data-testid="monthly-financial-story" className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-primary/15 text-primary border border-primary/20">
               Monthly Financial Story
             </span>
             <span className="text-xs font-semibold text-muted-foreground">{monthTitle}</span>
@@ -327,6 +319,12 @@ export function MonthlyFinancialStory({
 
         {/* Global Pill Stats */}
         <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-card/80 border border-border/60 shadow-sm text-xs font-semibold">
+            <span className="text-muted-foreground">Flex:</span>
+            <span className="font-bold text-foreground" data-testid="kpi-flex-number">
+              {formatCurrency(flexNumber)}
+            </span>
+          </div>
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-card/80 border border-border/60 shadow-sm text-xs font-semibold">
             <span className="text-muted-foreground">Budget:</span>
             <span className="font-bold text-foreground" data-testid="kpi-total-budget">
