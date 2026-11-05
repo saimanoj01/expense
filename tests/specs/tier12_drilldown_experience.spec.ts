@@ -341,4 +341,73 @@ test.describe('Tier 12: v3 Progressive Disclosure Drill-Down Experience', () => 
     await backBtn.click();
     await expect(page.getByTestId('level2-bucket-view')).toBeVisible();
   });
+
+  test('13. Level 4 Complete Ledger Workspace renders filtered category transactions and search input', async ({ page }) => {
+    // Navigate directly to Level 4 Category Transactions
+    await page.goto('/#month/2026-11/category/housing/transactions');
+
+    const ledgerWorkspace = page.getByTestId('level4-transactions-workspace');
+    await expect(ledgerWorkspace).toBeVisible();
+
+    // Verify search input
+    const searchInput = page.getByTestId('transaction-search-input');
+    await expect(searchInput).toBeVisible();
+    await searchInput.fill('Lease');
+    await expect(page.locator('text=Apartment Lease')).toBeVisible();
+
+    // Verify sort selector
+    await expect(page.getByTestId('transaction-sort-select')).toBeVisible();
+
+    // Verify breadcrumbs
+    await expect(page.getByTestId('breadcrumb-item-category-housing')).toBeVisible();
+  });
+
+  test('14. Budgets Workspace renders dedicated planning hub with target inputs and save controls', async ({ page }) => {
+    // Navigate to dedicated budgets route
+    await page.goto('/#/budgets');
+
+    const budgetsWorkspace = page.getByTestId('budgets-workspace');
+    await expect(budgetsWorkspace).toBeVisible();
+
+    // Verify budget grid container and save button
+    await expect(page.getByTestId('budget-grid-container')).toBeVisible();
+    await expect(page.getByTestId('save-budgets-btn')).toBeVisible();
+
+    // Verify category budget input
+    const rentInput = page.locator('[data-testid="budget-input-Rent"], [data-testid="budget-input-Housing"]');
+    await expect(rentInput).toBeVisible();
+  });
+
+  test('15. Trends Workspace renders Visual Analytics, Cumulative Pacing, and SVG Trend Chart', async ({ page }) => {
+    // Navigate to dedicated trends route
+    await page.goto('/#/trends');
+
+    const trendsWorkspace = page.getByTestId('trends-workspace');
+    await expect(trendsWorkspace).toBeVisible();
+
+    // Verify SVG trend chart
+    await expect(page.getByTestId('chart-svg-trend')).toBeVisible();
+  });
+
+  test('16. Reports and Settings Workspaces render dedicated administrative panels and action controls', async ({ page }) => {
+    // Navigate to dedicated reports route
+    await page.goto('/#/reports');
+
+    const reportsWorkspace = page.getByTestId('reports-workspace');
+    await expect(reportsWorkspace).toBeVisible();
+    await expect(page.getByTestId('print-report-btn')).toBeVisible();
+    await expect(page.getByTestId('download-csv-btn')).toBeVisible();
+    await expect(page.getByTestId('email-report-btn')).toBeVisible();
+
+    // Navigate to dedicated settings route
+    await page.goto('/#/settings');
+
+    const settingsWorkspace = page.getByTestId('settings-workspace');
+    await expect(settingsWorkspace).toBeVisible();
+    await expect(page.getByTestId('manage-projects-trigger-btn')).toBeVisible();
+    await expect(page.getByTestId('open-add-category-btn')).toBeVisible();
+    await expect(page.getByTestId('import-csv-trigger-btn')).toBeVisible();
+    await expect(page.getByTestId('gemini-api-key-input')).toBeVisible();
+  });
 });
+
