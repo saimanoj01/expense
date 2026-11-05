@@ -414,7 +414,7 @@ export class LocalStorageAdapter implements StorageAdapter {
       let needsRepair = false;
       for (const t of parsed) {
         if (!t.hash) {
-          t.hash = `${t.date}-${t.description}-${t.amount}-${t.type}`;
+          t.hash = `${t.date}-${(t.description || '').trim().toLowerCase()}-${Number(t.amount).toFixed(2)}-${(t.type || '').trim().toLowerCase()}`;
           needsRepair = true;
         }
         if (!Array.isArray(t.labels)) {

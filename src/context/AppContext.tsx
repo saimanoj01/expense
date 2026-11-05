@@ -72,7 +72,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setActiveProject(found);
         setCurrentView('dashboard');
         localStorage.setItem('expense_active_project_id', found.id);
-        window.location.hash = `#/dashboard?project=${found.id}`;
+        if (!window.location.hash || window.location.hash === '#/' || window.location.hash === '#' || window.location.hash.startsWith('#/dashboard')) {
+          window.location.hash = `#/dashboard?project=${found.id}`;
+        }
       } else {
         setActiveProject(null);
         setCurrentView('project-selector');

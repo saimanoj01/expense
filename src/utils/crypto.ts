@@ -1,5 +1,5 @@
 export async function computeTxHash(date: string, description: string, amount: number, type: string): Promise<string> {
-  const payload = `${date}|${description.trim().toLowerCase()}|${amount.toFixed(2)}|${type}`;
+  const payload = `${date}|${(description || '').trim().toLowerCase()}|${amount.toFixed(2)}|${(type || '').trim().toLowerCase()}`;
   if (typeof crypto !== 'undefined' && crypto.subtle) {
     const encoder = new TextEncoder();
     const data = encoder.encode(payload);

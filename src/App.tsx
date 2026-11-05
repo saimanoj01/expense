@@ -5,6 +5,8 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { AppProvider, useApp } from './context/AppContext';
 import { useHashRouting } from './hooks/useHashRouting';
 import { Transaction, SpendingBucket, Category } from './services/storage';
+import { NavigationProvider } from './context/NavigationContext';
+import { BreadcrumbTrail } from './components/layout/BreadcrumbTrail';
 import { classifyTransactionsWithLLM } from './services/llmCategorizer';
 import { hasGeminiApiKey } from './services/ai/geminiClient';
 import { suggestSpendingBucket } from './utils/categorizer';
@@ -256,7 +258,14 @@ function AppInner() {
   };
 
   return (
-    <AppLayout>
+    <NavigationProvider
+      activeMonth={txnHooks.selectedMonth}
+      onMonthChange={txnHooks.setSelectedMonth}
+      categories={budgetHooks.categories}
+      categoryTxnCount={txnHooks.filteredTransactions.length}
+      monthTxnCount={txnHooks.monthTransactions.length}
+    >
+      <AppLayout>
       <Navbar
         user={user}
         isMockMode={isMockMode}
@@ -297,6 +306,7 @@ function AppInner() {
           </div>
         ) : activeProject ? (
           <>
+            <BreadcrumbTrail className="mb-4" />
             <PeriodController
               selectedMonth={txnHooks.selectedMonth}
               availableMonths={txnHooks.availableMonths}
@@ -698,6 +708,7 @@ function AppInner() {
         isLocked={isCurrentMonthLocked}
       />
     </AppLayout>
+    </NavigationProvider>
   );
 }
 
