@@ -206,7 +206,7 @@ export function useBudgets(
     const cx = 150;
     const cy = 96;
     const r = 60;
-    const result: Array<{ pathData: string; color: string; category: string; name: string }> = [];
+    const result: Array<{ pathData: string; color: string; category: string; name: string; expense: number }> = [];
 
     if (totalPieExpense > 0) {
       let accumulatedAngle = -Math.PI / 2;
@@ -224,7 +224,7 @@ export function useBudgets(
         const y2 = cy + r * Math.sin(endAngle);
         const largeArcFlag = angleSpan > Math.PI ? 1 : 0;
         const pathData = `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${largeArcFlag} 1 ${x2} ${y2} Z`;
-        result.push({ pathData, color: item.color, category: item.id, name: item.name });
+        result.push({ pathData, color: item.color, category: item.id, name: item.name, expense: item.total });
         accumulatedAngle = endAngle;
       });
     }

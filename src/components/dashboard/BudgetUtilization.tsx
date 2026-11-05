@@ -362,7 +362,7 @@ export function BudgetUtilization({
                 return (
                   <div key={seg.category} className="flex items-center gap-1.5">
                     <span className="w-2.5 h-2.5 rounded-full shrink-0 shadow-sm" style={{ backgroundColor: seg.color }} />
-                    <span className="font-semibold text-foreground truncate max-w-[80px]">{seg.category}</span>
+                    <span className="font-semibold text-foreground truncate max-w-[80px]">{seg.name || seg.category}</span>
                     <span className="tabular-nums font-medium">${Math.round(seg.expense).toLocaleString()} ({pct}%)</span>
                   </div>
                 );
