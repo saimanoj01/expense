@@ -67,6 +67,7 @@ export class DashboardPage {
     if (data.notes) await this.notesInput.fill(data.notes);
     if (data.labels) await this.labelsInput.fill(data.labels.join(','));
     await this.saveTxnBtn.click();
+    await this.saveTxnBtn.waitFor({ state: 'hidden' });
   }
 
   async editTransaction(id: string, updatedData: {
@@ -81,6 +82,7 @@ export class DashboardPage {
       await this.descInput.fill(updatedData.description);
     }
     await this.saveTxnBtn.click();
+    await this.saveTxnBtn.waitFor({ state: 'hidden' });
   }
 
   async deleteTransaction(id: string) {

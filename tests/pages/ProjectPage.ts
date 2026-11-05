@@ -20,13 +20,22 @@ export class ProjectPage {
   }
 
   async createProject(name: string) {
-    await this.createProjectBtn.click();
+    if (!await this.projectNameInput.isVisible() && await this.createProjectBtn.isVisible()) {
+      await this.createProjectBtn.click();
+    }
     await this.projectNameInput.fill(name);
     await this.projectSubmitBtn.click();
   }
 
   async selectProject(id: string) {
-    await this.page.getByTestId(`project-item-${id}`).click();
+    const item = this.page.getByTestId(`project-item-${id}`);
+    const tagName = await item.evaluate(el => el.tagName.toLowerCase()).catch(() => '');
+    if (tagName === 'option') {
+      const select = this.page.getByTestId('project-selector');
+      await select.selectOption(id);
+    } else {
+      await item.click();
+    }
   }
 
   async shareProject(email: string) {

@@ -485,12 +485,19 @@ export function BudgetUtilization({
       <div className="w-full space-y-3 flex-1 overflow-y-auto max-h-[800px]" data-testid="budget-grid-container">
         {displayedCategories.length > 0 ? (
           displayedCategories.map(item => {
+            const catKey = item.id === 'food' ? 'Food' : (item.id === 'meals' ? 'Meals' : (item.id === 'housing' ? 'Rent' : item.name));
             if (item.isNonBudgetable) {
               return (
                 <div key={item.id} className="glass-card p-4 rounded-xl border border-border/50 space-y-2 bg-card/25">
                   <div className="flex items-center justify-between gap-2">
                     <div className="font-semibold flex items-center gap-2.5 text-base truncate min-w-0">
-                      <span className="text-base leading-none shrink-0">{item.emoji}</span>
+                      <span 
+                      data-testid={`category-badge-${catKey}`}
+                      className="text-base leading-none shrink-0"
+                      style={{ backgroundColor: item.color }}
+                    >
+                      {item.emoji}
+                    </span>
                       <span className="truncate" data-testid={`budget-label-${item.id === 'food' ? 'Food' : item.name}`}>{item.name}</span>
                     </div>
                     <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-secondary/15 text-secondary border border-secondary/30 shrink-0">
@@ -539,8 +546,14 @@ export function BudgetUtilization({
                     <span className="text-muted-foreground shrink-0">
                       {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                     </span>
-                    <span className="text-base leading-none shrink-0">{item.emoji}</span>
-                    <span className="truncate" data-testid={`budget-label-${item.id === 'food' ? 'Food' : item.name}`}>{item.name}</span>
+                    <span 
+                      data-testid={`category-badge-${catKey}`}
+                      className="text-base leading-none shrink-0"
+                      style={{ backgroundColor: item.color }}
+                    >
+                      {item.emoji}
+                    </span>
+                    <span className="truncate" data-testid={`budget-label-${catKey}`}>{item.name}</span>
 
                     {/* Note indicator icon (Item 1: Note indicator on collapsed cards) */}
                     {isSpecificMonth && parentNote && (
@@ -591,7 +604,7 @@ export function BudgetUtilization({
                           disabled={isLockedMonth}
                           type="number"
                           min="0"
-                          data-testid={`budget-input-${item.id === 'food' ? 'Food' : item.name}`}
+                          data-testid={`budget-input-${catKey}`}
                           value={item.budget === 0 ? '0' : (item.budget || '')}
                           placeholder="0"
                           onChange={e => handleBudgetInputChange(item.id, e.target.value)}
@@ -605,7 +618,7 @@ export function BudgetUtilization({
                 </div>
 
                 {budgetErrors[item.id] && (
-                  <p className={`text-[10px] text-destructive font-bold budget-error-${item.id === 'food' ? 'Food' : (item.name || item.id)}`} data-testid="budget-error">
+                  <p className={`text-[10px] text-destructive font-bold budget-error-${catKey}`} data-testid="budget-error">
                     {budgetErrors[item.id]}
                   </p>
                 )}
@@ -615,7 +628,7 @@ export function BudgetUtilization({
                   <div className="space-y-1 pt-0.5">
                     <div className="h-2 bg-card/60 rounded-full overflow-hidden border border-border/40">
                       <motion.div
-                        data-testid={`budget-indicator-${item.id === 'food' ? 'Food' : item.name}`}
+                        data-testid={`budget-indicator-${catKey}`}
                         initial={{ width: 0 }}
                         animate={{ width: `${Math.min(item.percent, 100)}%` }}
                         transition={{ duration: 0.8, delay: 0.1 }}
@@ -624,9 +637,9 @@ export function BudgetUtilization({
                       />
                     </div>
                     <div className="flex justify-between items-center text-[11px] text-muted-foreground px-0.5 font-medium tabular-nums">
-                      <span data-testid={`budget-utilization-${item.id === 'food' ? 'Food' : item.name}`}>{item.percent.toFixed(0)}% used</span>
+                      <span data-testid={`budget-utilization-${catKey}`}>{item.percent.toFixed(0)}% used</span>
                       <span 
-                        data-testid={`budget-remaining-${item.id === 'food' ? 'Food' : item.name}`}
+                        data-testid={`budget-remaining-${catKey}`}
                         className={isOver ? 'text-destructive font-semibold' : ''}
                       >
                         {isOver

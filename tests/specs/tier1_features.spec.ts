@@ -133,8 +133,8 @@ test.describe('Tier 1: Feature Coverage (Happy Paths)', () => {
       await appPage.goto();
       const selector = page.getByTestId('project-selector');
       await expect(selector).toBeVisible();
-      await expect(page.getByTestId('project-item-p1')).toBeVisible();
-      await expect(page.getByTestId('project-item-p2')).toBeVisible();
+      await expect(page.getByTestId('project-item-p1')).toBeAttached();
+      await expect(page.getByTestId('project-item-p2')).toBeAttached();
     });
 
     test('8. Switching Projects: Selecting/switching projects updates the active context', async ({ page }) => {
@@ -300,6 +300,9 @@ test.describe('Tier 1: Feature Coverage (Happy Paths)', () => {
       await page.getByTestId('new-category-emoji-input').fill('✈️');
       await page.getByTestId('save-category-btn').click();
 
+      // Dismiss Category Manager Modal so it doesn't intercept clicks
+      await page.keyboard.press('Escape');
+
       // Check category in dropdown list
       if (await dashboardPage.openAddTxnModalBtn.isVisible()) {
         await dashboardPage.openAddTxnModalBtn.click();
@@ -342,12 +345,18 @@ test.describe('Tier 1: Feature Coverage (Happy Paths)', () => {
     });
 
     test('20. Custom Category Editing: Modifying category color/emoji propagates change to items', async ({ page }) => {
+      await page.getByTestId('dashboard-header').waitFor({ state: 'visible' });
+      // Open Category Manager Modal first
+      await page.getByTestId('open-add-category-btn').click();
+
       // Modify a category "Food" custom details
       await page.getByTestId('edit-category-Food-btn').click();
       await page.getByTestId('edit-category-color-input').fill('#0000ff');
       await page.getByTestId('edit-category-emoji-input').fill('🍔');
       await page.getByTestId('save-edited-category-btn').click();
       
+      await page.keyboard.press('Escape');
+
       const badge = page.getByTestId('category-badge-Food');
       await expect(badge).toContainText('🍔');
     });

@@ -329,14 +329,14 @@ export function TransactionModal({
                   value={activeValue} 
                   onChange={e => {
                     let [catId, subId] = e.target.value.split('|');
-                    if (catId.toLowerCase() === 'food' || catId.toLowerCase() === 'meals') {
+                    if (catId.toLowerCase() === 'food') {
                       catId = 'food';
                     } else if (catId.toLowerCase() === 'salary') {
                       catId = 'income';
                       subId = 'income-salary';
                     } else if (catId.toLowerCase() === 'rent') {
                       catId = 'housing';
-                      subId = 'housing-rent';
+                      subId = '';
                     }
                     setTxnCategory(catId);
                     setTxnSubCategory(subId || null);

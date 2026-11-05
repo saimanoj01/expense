@@ -60,6 +60,7 @@ test.describe('Tier 4: Real-world Application Scenarios', () => {
 
   test('Flow 1: New User Onboarding & Initial Budgeting', async ({ page }) => {
     // 1. User loads landing page without environment configurations.
+    await preseedMockData(page, { projects: [] });
     await appPage.goto();
     await expect(appPage.mockBanner).toBeVisible();
 
@@ -238,7 +239,52 @@ test.describe('Tier 4: Real-world Application Scenarios', () => {
       // Set Client ID to simulate real OAuth detection
       (window as any).VITE_GOOGLE_CLIENT_ID = 'real-client-id-xyz.apps.googleusercontent.com';
     });
-    
+
+    let sheetCreated = false;
+    let sheetsWriteCalled = false;
+
+    await page.route(/oauth2\/v3\/userinfo/, async route => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ email: 'cloud@example.com', name: 'Google User' })
+      });
+    });
+
+    await page.route(/drive\/v3\/files/, async route => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ files: [] }) // Empty search list triggers creation
+      });
+    });
+
+    await page.route(/spreadsheets.*values/, async route => {
+      sheetsWriteCalled = true;
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ updatedCells: 5 })
+      });
+    });
+
+    await page.route(/spreadsheets/, async route => {
+      if (route.request().method() === 'POST') {
+        sheetCreated = true;
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({ spreadsheetId: 'sheet-drive-xyz-999', properties: { title: 'Drive Sync Project' } })
+        });
+      } else {
+        await route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({})
+        });
+      }
+    });
+
     await page.goto('/');
     
     // Banner should reflect OAuth mode ready, click sign in with google
@@ -254,33 +300,12 @@ test.describe('Tier 4: Real-world Application Scenarios', () => {
       window.dispatchEvent(new HashChangeEvent('hashchange'));
     });
 
-    // Navigates to dashboard in Google Workspace mode
-    await expect(page.locator('[data-testid="dashboard-header"]')).toBeVisible();
+    // Navigates to app in Google Workspace mode
     await expect(page.locator('.mock-mode-banner')).not.toBeVisible(); // no mock banner in real mode
 
     // Create a new project
     await projectPage.createProject('Drive Sync Project');
-    
-    // Verify spreadsheet initialization calls Drive API and Sheet Creation
-    let sheetCreated = false;
-    await page.route('**/drive/v3/files*', async route => {
-      await route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({ files: [] }) // Empty search list triggers creation
-      });
-    });
-
-    await page.route('**/spreadsheets', async route => {
-      if (route.request().method() === 'POST') {
-        sheetCreated = true;
-        await route.fulfill({
-          status: 200,
-          contentType: 'application/json',
-          body: JSON.stringify({ spreadsheetId: 'sheet-drive-xyz-999', properties: { title: 'Drive Sync Project' } })
-        });
-      }
-    });
+    await expect(page.locator('[data-testid="dashboard-header"]')).toBeVisible();
 
     // Trigger transaction add
     await dashboardPage.addTransaction({
@@ -289,16 +314,6 @@ test.describe('Tier 4: Real-world Application Scenarios', () => {
       category: 'Food',
       date: '2026-07-16',
       description: 'OAuth Sync check'
-    });
-
-    // Check if the sheets API was called to write transaction
-    let sheetsWriteCalled = false;
-    await page.route('**/spreadsheets/sheet-drive-xyz-999/values/**', async route => {
-      sheetsWriteCalled = true;
-      await route.fulfill({
-        status: 200,
-        body: JSON.stringify({ updatedCells: 5 })
-      });
     });
 
     // Wait a brief moment or reload to complete async routing
@@ -348,16 +363,16 @@ test.describe('Tier 4: Real-world Application Scenarios', () => {
     await projectPage.selectProject('p_vacation');
 
     // Assert Vacation transaction visible, Business transaction hidden, Vacation KPIs matching
-    await expect(page.locator('text=Flight')).toBeVisible();
-    await expect(page.locator('text=Client Dinner')).not.toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Flight', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Client Dinner', exact: true })).not.toBeVisible();
     await expect(page.getByTestId('kpi-total-expenses')).toContainText('$800.00');
 
     // 5. Switch back to Project 2 (Business)
     await projectPage.selectProject('p_business');
 
     // Assert Business transaction visible, Vacation transaction hidden, Business KPIs matching
-    await expect(page.locator('text=Client Dinner')).toBeVisible();
-    await expect(page.locator('text=Flight')).not.toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Client Dinner', exact: true })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Flight', exact: true })).not.toBeVisible();
     await expect(page.getByTestId('kpi-total-expenses')).toContainText('$150.00');
   });
 });

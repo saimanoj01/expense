@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { showToast } from '../utils/toast';
 
 export interface User {
   email: string;
@@ -276,6 +277,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [googleClientIdExists]);
 
   const login = async () => {
+    if (!navigator.onLine) {
+      setAuthErrorToast('You are currently offline');
+      showToast('You are currently offline', 'error');
+      return;
+    }
     let clientId = getClientId();
     if (!clientId) {
       const input = window.prompt("To sign in with your real Google account, please enter your Google OAuth Client ID (or click Cancel to use Demo mode):");
@@ -333,6 +339,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const loginAsMock = () => {
     if (!navigator.onLine) {
       setAuthErrorToast('You are currently offline');
+      showToast('You are currently offline', 'error');
     }
     const mockUser: User = {
       email: 'demo@example.com',
