@@ -204,4 +204,85 @@ test.describe('Tier 12: v3 Progressive Disclosure Drill-Down Experience', () => 
     await expect(palette).not.toBeVisible();
     await expect(page.getByTestId('breadcrumb-item-bucket-fixed')).toBeVisible();
   });
+
+  test('8. Level 1 Calm Month Overview renders Hero Savings Card, Allocation Ring, and 4 Bucket Cards', async ({ page }) => {
+    await page.goto('/#month/2026-11');
+
+    // Month Switcher
+    const switcher = page.getByTestId('month-switcher');
+    await expect(switcher).toBeVisible();
+
+    // Hero Savings Card
+    const heroCard = page.getByTestId('hero-savings-card');
+    await expect(heroCard).toBeVisible();
+    await expect(page.getByTestId('kpi-savings-amount')).toBeVisible();
+    await expect(page.getByTestId('kpi-savings-rate')).toBeVisible();
+
+    // Income Allocation Ring
+    const ring = page.getByTestId('income-allocation-ring');
+    await expect(ring).toBeVisible();
+
+    // 4 Morphing Bucket Cards
+    await expect(page.getByTestId('kpi-total-income')).toBeVisible();
+    await expect(page.getByTestId('kpi-fixed-expenses')).toBeVisible();
+    await expect(page.getByTestId('kpi-flexible-spent')).toBeVisible();
+    await expect(page.getByTestId('kpi-non-monthly')).toBeVisible();
+
+    // Story Narrative Card
+    await expect(page.getByTestId('story-narrative')).toBeVisible();
+    await expect(page.getByTestId('guideline-meter-50-30-20')).toBeVisible();
+  });
+
+  test('9. Month Switcher arrow buttons, keyboard shortcuts, and drilldown CTA transitions', async ({ page }) => {
+    await page.goto('/#month/2026-11');
+    await expect(page.getByTestId('month-switcher')).toBeVisible();
+
+    // Test next button
+    const nextBtn = page.getByTestId('btn-next-month');
+    await nextBtn.click();
+    await expect(page.getByTestId('breadcrumb-item-month-overview')).toContainText('Dec 2026');
+    await expect(page.getByTestId('month-selector')).toHaveValue('2026-12');
+
+    // Test prev button
+    const prevBtn = page.getByTestId('btn-prev-month');
+    await prevBtn.click();
+    await expect(page.getByTestId('breadcrumb-item-month-overview')).toContainText('Nov 2026');
+    await expect(page.getByTestId('month-selector')).toHaveValue('2026-11');
+
+    // Test keyboard ArrowLeft navigates to Oct 2026
+    await page.keyboard.press('ArrowLeft');
+    await expect(page.getByTestId('breadcrumb-item-month-overview')).toContainText('Oct 2026');
+    await expect(page.getByTestId('month-selector')).toHaveValue('2026-10');
+
+    // Test keyboard ArrowRight navigates back to Nov 2026
+    await page.keyboard.press('ArrowRight');
+    await expect(page.getByTestId('breadcrumb-item-month-overview')).toContainText('Nov 2026');
+    await expect(page.getByTestId('month-selector')).toHaveValue('2026-11');
+
+    // Test direct Level 2 Drill-down button on Fixed bucket card
+    const drillFixedBtn = page.getByTestId('drill-down-fixed');
+    await expect(drillFixedBtn).toBeVisible();
+    await drillFixedBtn.click();
+    await expect(page.getByTestId('breadcrumb-item-bucket-fixed')).toBeVisible();
+  });
+
+  test('10. Desktop Zero-Scroll Constraint & Tabular Numerals Formatting', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto('/#month/2026-11');
+
+    // Tabular numerals verification on Hero KPI
+    const savingsAmount = page.getByTestId('kpi-savings-amount');
+    await expect(savingsAmount).toBeVisible();
+    await expect(savingsAmount).toHaveClass(/tabular-nums/);
+
+    // Verify desktop header bounding box fits comfortably within 900px viewport
+    const dashboardHeader = page.getByTestId('dashboard-header');
+    await expect(dashboardHeader).toBeVisible();
+    const box = await dashboardHeader.boundingBox();
+    expect(box).not.toBeNull();
+    if (box) {
+      // The Level 1 Overview component must fit within the 900px viewport
+      expect(box.height).toBeLessThan(900);
+    }
+  });
 });

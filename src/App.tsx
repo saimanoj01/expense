@@ -21,8 +21,7 @@ import { Navbar } from './components/layout/Navbar';
 import { Modal } from './components/common/Modal';
 
 // Dashboard
-import { PeriodController } from './components/dashboard/PeriodController';
-import { MonthlyFinancialStory } from './components/dashboard/MonthlyFinancialStory';
+import { Level1MonthOverview } from './components/dashboard/Level1MonthOverview';
 import { TrendChart } from './components/dashboard/TrendChart';
 import { BudgetUtilization } from './components/dashboard/BudgetUtilization';
 
@@ -333,11 +332,6 @@ function AppInner() {
         ) : activeProject ? (
           <>
             <BreadcrumbTrail className="mb-4" />
-            <PeriodController
-              selectedMonth={txnHooks.selectedMonth}
-              availableMonths={txnHooks.availableMonths}
-              onSelectMonth={txnHooks.setSelectedMonth}
-            />
 
             {/* Backfill Banner */}
             {txnHooks.unclassifiedCount > 0 && (
@@ -413,8 +407,10 @@ function AppInner() {
               </div>
             )}
 
-            <MonthlyFinancialStory
+            <Level1MonthOverview
               selectedMonth={txnHooks.selectedMonth}
+              availableMonths={txnHooks.availableMonths}
+              onSelectMonth={txnHooks.setSelectedMonth}
               activeProject={activeProject}
               totalBudget={budgetHooks.totalBudget}
               totalExpenses={txnHooks.totalExpenses}
