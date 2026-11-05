@@ -20,6 +20,7 @@ import { bucketOf } from '../../utils/categorizer';
 import { deriveCategoryBucket } from '../../hooks/useBudgets';
 import { bucketColor, negativeColor } from '../../theme/buckets';
 import { spring } from '../../theme/motion';
+import { RollingNumber } from '../motion/RollingNumber';
 
 export interface Level2BucketViewProps {
   bucketId: SpendingBucket | 'income';
@@ -291,12 +292,7 @@ export const Level2BucketView: React.FC<Level2BucketViewProps> = ({
             >
               {(() => {
                 const parts = splitMoneyParts(totalSpent);
-                return (
-                  <>
-                    {parts.whole}
-                    <span className="sr-only">{parts.cents}</span>
-                  </>
-                );
+                return <RollingNumber value={parts.whole} srSuffix={parts.cents} />;
               })()}
             </motion.div>
             <div className="flex items-center gap-2 text-xs mt-1">

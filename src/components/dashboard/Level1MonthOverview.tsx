@@ -1,7 +1,11 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useRef, useEffect, useState, useCallback } from 'react';
+import { motion } from 'framer-motion';
 import { Project, Transaction, Category, Budget } from '../../services/storage';
-import { formatCurrency, splitMoneyParts } from '../../utils/formatters';
+import { formatCurrency, formatMoney, splitMoneyParts } from '../../utils/formatters';
+import { formatMonthLabel } from '../../utils/navigation';
+import { useNavigation } from '../../hooks/useNavigation';
 import { bucketOf } from '../../utils/categorizer';
+import { dur, ease } from '../../theme/motion';
 import { OverviewHero } from '../overview/OverviewHero';
 import { IncomeRibbon } from '../overview/IncomeRibbon';
 import { BucketStats } from '../overview/BucketStats';
@@ -45,6 +49,8 @@ function getPriorMonthKey(monthStr: string): string | null {
 
 export const Level1MonthOverview: React.FC<Level1MonthOverviewProps> = ({
   selectedMonth,
+  availableMonths,
+  onSelectMonth,
   totalBudget = 0,
   totalExpenses,
   totalIncome,
@@ -61,6 +67,50 @@ export const Level1MonthOverview: React.FC<Level1MonthOverviewProps> = ({
   onOpenAddTxn,
   className = '',
 }) => {
+  const { currentRoute } = useNavigation();
+  const isOverview = currentRoute.view === 'overview';
+  const prevMonthRef = useRef(selectedMonth);
+  const [slideOffset, setSlideOffset] = useState(0);
+
+  useEffect(() => {
+    if (prevMonthRef.current !== selectedMonth) {
+      const d = selectedMonth > prevMonthRef.current ? 1 : -1;
+      prevMonthRef.current = selectedMonth;
+      setSlideOffset(d * 18);
+      const id = requestAnimationFrame(() => setSlideOffset(0));
+      return () => cancelAnimationFrame(id);
+    }
+  }, [selectedMonth]);
+
+  const handlePrevMonth = useCallback(() => {
+    if (selectedMonth === 'all') {
+      if (availableMonths.length > 0) {
+        onSelectMonth(availableMonths[availableMonths.length - 1]);
+      }
+      return;
+    }
+    const [y, m] = selectedMonth.split('-').map(Number);
+    if (!isNaN(y) && !isNaN(m)) {
+      const prevDate = new Date(Date.UTC(y, m - 2, 1));
+      const prevStr = `${prevDate.getUTCFullYear()}-${String(prevDate.getUTCMonth() + 1).padStart(2, '0')}`;
+      onSelectMonth(prevStr);
+    }
+  }, [selectedMonth, availableMonths, onSelectMonth]);
+
+  const handleNextMonth = useCallback(() => {
+    if (selectedMonth === 'all') {
+      if (availableMonths.length > 0) {
+        onSelectMonth(availableMonths[0]);
+      }
+      return;
+    }
+    const [y, m] = selectedMonth.split('-').map(Number);
+    if (!isNaN(y) && !isNaN(m)) {
+      const nextDate = new Date(Date.UTC(y, m, 1));
+      const nextStr = `${nextDate.getUTCFullYear()}-${String(nextDate.getUTCMonth() + 1).padStart(2, '0')}`;
+      onSelectMonth(nextStr);
+    }
+  }, [selectedMonth, availableMonths, onSelectMonth]);
 
   const priorMonthKey = getPriorMonthKey(selectedMonth);
   const priorTxns = useMemo(() => {
@@ -141,11 +191,38 @@ export const Level1MonthOverview: React.FC<Level1MonthOverviewProps> = ({
   const wantsPct = totalIncome > 0 ? (flexibleExpenses / totalIncome) * 100 : 0;
   const benchmarkSavingsPct = totalIncome > 0 ? (savingsAmount / totalIncome) * 100 : 0;
 
+  const monthLabel = formatMonthLabel(selectedMonth);
+  const liveAnnouncement =
+    totalIncome === 0 && totalExpenses === 0
+      ? `${monthLabel}: nothing recorded yet`
+      : savingsAmount >= 0
+      ? `${monthLabel}: kept ${formatMoney(savingsAmount)}`
+      : `${monthLabel}: overspent by ${formatMoney(Math.abs(savingsAmount))}`;
+
   return (
-    <div
-      data-testid="dashboard-header"
+    <motion.div
+      data-testid={isOverview ? 'dashboard-header' : undefined}
+      animate={{ x: slideOffset }}
+      transition={{ duration: dur.page, ease }}
+      drag="x"
+      dragConstraints={{ left: 0, right: 0 }}
+      dragElastic={0.18}
+      dragDirectionLock
+      onDragEnd={(_e, { offset, velocity }) => {
+        if (offset.x < -80 || velocity.x < -500) {
+          handleNextMonth();
+        } else if (offset.x > 80 || velocity.x > 500) {
+          handlePrevMonth();
+        }
+      }}
+      style={{ touchAction: 'pan-y' }}
       className={`max-w-[1120px] mx-auto space-y-5 pb-4 ${className}`}
     >
+      {/* Polite live region for month change announcements */}
+      <div aria-live="polite" className="sr-only">
+        {liveAnnouncement}
+      </div>
+
       {/* Screen-reader compatibility nodes */}
       <div className="sr-only" data-testid="monthly-financial-story">
         Monthly Financial Story
@@ -285,6 +362,6 @@ export const Level1MonthOverview: React.FC<Level1MonthOverviewProps> = ({
           </svg>
         </div>
       </div>
-    </div>
+    </motion.div>
   );
 };

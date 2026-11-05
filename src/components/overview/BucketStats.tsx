@@ -6,6 +6,7 @@ import { spring } from '../../theme/motion';
 import { splitMoneyParts } from '../../utils/formatters';
 import { delta, deltaToneClass, DeltaKind } from '../../utils/delta';
 import { useNavigation } from '../../hooks/useNavigation';
+import { RollingNumber } from '../motion/RollingNumber';
 
 export interface BucketStatsProps {
   selectedMonth: string;
@@ -53,7 +54,8 @@ export const BucketStats: React.FC<BucketStatsProps> = ({
   hasPriorMonthData = false,
   className = '',
 }) => {
-  const { navigate } = useNavigation();
+  const { navigate, currentRoute } = useNavigation();
+  const isOverview = currentRoute.view === 'overview';
   const denom = Math.max(totalIncome, totalExpenses, 1);
 
   const cols: StatCol[] = [
@@ -121,7 +123,7 @@ export const BucketStats: React.FC<BucketStatsProps> = ({
           <motion.button
             key={col.key}
             type="button"
-            data-testid={col.drillTestId}
+            data-testid={isOverview ? col.drillTestId : undefined}
             onClick={() => navigate(`#/month/${selectedMonth}/bucket/${col.route}`)}
             className="w-full min-h-[52px] sm:min-h-[44px] py-2.5 sm:p-2.5 rounded-none sm:rounded-[10px] hover:bg-surface2 transition-colors text-left flex sm:flex-col items-center sm:items-start justify-between gap-2 focus-visible:ring-2 ring-ring/40 ring-offset-2 ring-offset-background"
           >
@@ -142,11 +144,10 @@ export const BucketStats: React.FC<BucketStatsProps> = ({
                 layoutId={`bucket-amount-${col.route}`}
                 layout="position"
                 transition={spring}
-                data-testid={col.testId}
+                data-testid={isOverview ? col.testId : undefined}
                 className="text-[18px] sm:text-[20px] leading-[24px] font-semibold tracking-tight tabular-nums num text-foreground inline-block"
               >
-                {parts.whole}
-                <span className="sr-only">{parts.cents}</span>
+                <RollingNumber value={parts.whole} srSuffix={parts.cents} />
               </motion.span>
               <span className="text-label text-muted-foreground tabular-nums num">
                 {pct}%
@@ -156,7 +157,7 @@ export const BucketStats: React.FC<BucketStatsProps> = ({
 
             {/* MoM Delta Row */}
             <span
-              data-testid={col.momTestId}
+              data-testid={isOverview ? col.momTestId : undefined}
               className={`sr-only sm:not-sr-only sm:inline-block text-label tabular-nums num mt-0.5 ${deltaToneClass(d.tone)}`}
             >
               {d.text}

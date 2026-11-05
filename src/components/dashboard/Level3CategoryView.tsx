@@ -20,6 +20,7 @@ import { suggestSpendingBucket } from '../../utils/categorizer';
 import { DailySpendTimeline } from './DailySpendTimeline';
 import { bucketColor, negativeColor } from '../../theme/buckets';
 import { spring } from '../../theme/motion';
+import { RollingNumber } from '../motion/RollingNumber';
 
 export interface Level3CategoryViewProps {
   categoryId: string;
@@ -199,12 +200,7 @@ export const Level3CategoryView: React.FC<Level3CategoryViewProps> = ({
             >
               {(() => {
                 const parts = splitMoneyParts(totalSpent);
-                return (
-                  <>
-                    {parts.whole}
-                    <span className="sr-only">{parts.cents}</span>
-                  </>
-                );
+                return <RollingNumber value={parts.whole} srSuffix={parts.cents} />;
               })()}
             </motion.div>
 

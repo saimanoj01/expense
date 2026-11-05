@@ -332,8 +332,8 @@ function MainRouter({
           custom={direction}
           variants={{
             enter: (d: number) => ({ opacity: 0, x: d > 0 ? 32 : d < 0 ? -32 : 0 }),
-            center: { opacity: 1, x: 0, transition: { duration: dur.page, ease } },
-            exit: (d: number) => ({ opacity: 0, x: d > 0 ? -16 : d < 0 ? 16 : 0, transition: { duration: dur.small } }),
+            center: { opacity: 1, x: 0, pointerEvents: 'auto', transition: { duration: dur.page, ease } },
+            exit: (d: number) => ({ opacity: 0, x: d > 0 ? -16 : d < 0 ? 16 : 0, pointerEvents: 'none', transition: { duration: dur.small } }),
           }}
           initial="enter"
           animate="center"

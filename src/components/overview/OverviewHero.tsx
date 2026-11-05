@@ -2,6 +2,7 @@ import React from 'react';
 import { formatMoney, formatCurrency, splitMoneyParts } from '../../utils/formatters';
 import { delta, deltaToneClass } from '../../utils/delta';
 import { useNavigation } from '../../hooks/useNavigation';
+import { RollingNumber } from '../motion/RollingNumber';
 
 export interface OverviewHeroProps {
   selectedMonth: string;
@@ -124,8 +125,7 @@ export const OverviewHero: React.FC<OverviewHeroProps> = ({
             data-testid="kpi-savings-amount"
             className="text-[44px] leading-[48px] sm:text-display-xl font-semibold tracking-tight tabular-nums num text-foreground"
           >
-            {expenseParts.whole}
-            <span className="sr-only">{expenseParts.cents}</span>
+            <RollingNumber value={expenseParts.whole} srSuffix={expenseParts.cents} />
           </div>
           <p className="text-body text-muted-foreground flex flex-wrap items-center gap-1.5">
             <span>No income recorded this month</span>
@@ -160,8 +160,7 @@ export const OverviewHero: React.FC<OverviewHeroProps> = ({
             data-testid="kpi-savings-amount"
             className="text-[44px] leading-[48px] sm:text-display-xl font-semibold tracking-tight tabular-nums num text-negative"
           >
-            {keptParts.whole}
-            <span className="sr-only">{keptParts.cents}</span>
+            <RollingNumber value={keptParts.whole} srSuffix={keptParts.cents} />
           </div>
           <p className="text-body text-muted-foreground flex flex-wrap items-center gap-1.5">
             <span>
@@ -205,8 +204,7 @@ export const OverviewHero: React.FC<OverviewHeroProps> = ({
             title="Income minus spending. Transfers between your accounts aren't counted."
             className="text-[44px] leading-[48px] sm:text-display-xl font-semibold tracking-tight tabular-nums num text-bucket-saved"
           >
-            {keptParts.whole}
-            <span className="sr-only">{keptParts.cents}</span>
+            <RollingNumber value={keptParts.whole} srSuffix={keptParts.cents} />
           </div>
           <p className="text-body text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-1">
             <span>
