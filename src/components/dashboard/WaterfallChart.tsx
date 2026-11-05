@@ -176,7 +176,7 @@ export function WaterfallChart({ data }: WaterfallChartProps) {
                   x={barX + barWidth / 2}
                   y={chartHeight - 12}
                   textAnchor="middle"
-                  className={`text-[11px] font-semibold transition-colors ${
+                  className={`text-label font-semibold transition-colors ${
                     isHovered ? 'fill-foreground font-bold' : 'fill-muted-foreground'
                   }`}
                 >
@@ -201,7 +201,7 @@ export function WaterfallChart({ data }: WaterfallChartProps) {
           <p className="font-extrabold text-sm" style={{ color: data[hoveredIndex].color }}>
             {formatCurrency(data[hoveredIndex].displayValue)}
           </p>
-          <p className="text-[10px] text-muted-foreground mt-0.5 capitalize">
+          <p className="text-label text-muted-foreground mt-0.5 capitalize">
             {data[hoveredIndex].stepType === 'inflow'
               ? 'Starting Inflow'
               : data[hoveredIndex].stepType === 'outflow'

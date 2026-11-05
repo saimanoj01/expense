@@ -233,7 +233,7 @@ export const SpendTimeline: React.FC<SpendTimelineProps> = ({
         <span className="text-label text-muted-foreground tabular-nums num shrink-0">
           <span
             data-testid={isOverview ? 'kpi-total-expenses' : undefined}
-            className="text-foreground font-medium"
+            className="text-foreground font-medium inline-block overflow-hidden max-w-full align-bottom"
           >
             {expenseParts.whole}
             <span className="sr-only">{expenseParts.cents}</span>

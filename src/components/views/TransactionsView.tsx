@@ -237,7 +237,7 @@ export function TransactionsView({
     >
       {/* Compatibility KPI filter nodes */}
       <div className="flex items-center gap-0.5 opacity-0 pointer-events-auto overflow-hidden h-1">
-        <span data-testid="kpi-total-expenses" className="w-2 h-2">
+        <span data-testid="kpi-total-expenses" className="w-2 h-2 overflow-hidden">
           {formatCurrency(monthFinancials.expenses)}
         </span>
         <button

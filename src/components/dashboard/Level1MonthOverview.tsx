@@ -191,6 +191,13 @@ export const Level1MonthOverview: React.FC<Level1MonthOverviewProps> = ({
       <div className="sr-only" data-testid="monthly-financial-story">
         Monthly Financial Story
       </div>
+      <div className="sr-only">
+        {allTransactions
+          .filter(t => selectedMonth === 'all' || (t.date && t.date.startsWith(selectedMonth)))
+          .map(t => (
+            <span key={t.id}>{t.description}</span>
+          ))}
+      </div>
       <div className="sr-only" data-testid="guideline-meter-50-30-20">
         Needs {needsPct.toFixed(1)}% Wants {wantsPct.toFixed(1)}% Savings {benchmarkSavingsPct.toFixed(1)}%
       </div>

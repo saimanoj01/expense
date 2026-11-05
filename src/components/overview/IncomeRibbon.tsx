@@ -1,9 +1,11 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
 import { BUCKETS, bucketColor } from '../../theme/buckets';
 import { spring } from '../../theme/motion';
 import { formatMoney } from '../../utils/formatters';
 import { useNavigation } from '../../hooks/useNavigation';
+
+let hasPlayedRibbonIntro = false;
 
 export interface IncomeRibbonProps {
   selectedMonth: string;
@@ -26,6 +28,12 @@ export const IncomeRibbon: React.FC<IncomeRibbonProps> = ({
 }) => {
   const { navigate } = useNavigation();
   const reduced = useReducedMotion();
+  const shouldAnimateIntro = !hasPlayedRibbonIntro && !reduced;
+
+  useEffect(() => {
+    hasPlayedRibbonIntro = true;
+  }, []);
+
   const totalExpenses = fixedExpenses + flexibleExpenses + nonMonthlyExpenses;
   const isDeficit = totalIncome > 0 && savingsAmount < 0;
   const savedPositive = Math.max(0, savingsAmount);
@@ -74,9 +82,11 @@ export const IncomeRibbon: React.FC<IncomeRibbonProps> = ({
               key={seg.key}
               type="button"
               layoutId={`bucket-bar-${seg.route}`}
-              initial={reduced ? false : { scaleX: 0 }}
+              initial={shouldAnimateIntro ? { scaleX: 0 } : false}
               animate={{ scaleX: 1 }}
-              transition={reduced ? { duration: 0 } : { ...spring, delay: idx * 0.06 }}
+              transition={
+                shouldAnimateIntro ? { ...spring, delay: idx * 0.06 } : spring
+              }
               onClick={() => navigate(`#/month/${selectedMonth}/bucket/${seg.route}`)}
               aria-label={`${seg.label}, ${formatMoney(seg.amount)}, ${pct}% of income. Open ${seg.label}`}
               style={{
@@ -95,9 +105,9 @@ export const IncomeRibbon: React.FC<IncomeRibbonProps> = ({
             key="overspent"
             type="button"
             data-testid="ribbon-overspent-segment"
-            initial={reduced ? false : { scaleX: 0 }}
+            initial={shouldAnimateIntro ? { scaleX: 0 } : false}
             animate={{ scaleX: 1 }}
-            transition={reduced ? { duration: 0 } : { ...spring, delay: 0.18 }}
+            transition={shouldAnimateIntro ? { ...spring, delay: 0.18 } : spring}
             onClick={() => navigate(`#/month/${selectedMonth}/bucket/income`)}
             aria-label={`Overspent, ${formatMoney(Math.abs(savingsAmount))}. Open Income & saved`}
             style={{
@@ -114,9 +124,9 @@ export const IncomeRibbon: React.FC<IncomeRibbonProps> = ({
             key="saved"
             type="button"
             layoutId="bucket-bar-income"
-            initial={reduced ? false : { scaleX: 0 }}
+            initial={shouldAnimateIntro ? { scaleX: 0 } : false}
             animate={{ scaleX: 1 }}
-            transition={reduced ? { duration: 0 } : { ...spring, delay: 0.18 }}
+            transition={shouldAnimateIntro ? { ...spring, delay: 0.18 } : spring}
             onClick={() => navigate(`#/month/${selectedMonth}/bucket/income`)}
             aria-label={`Saved, ${formatMoney(savedPositive)}, ${Math.round((savedPositive / total) * 100)}% of income. Open Income & saved`}
             style={{

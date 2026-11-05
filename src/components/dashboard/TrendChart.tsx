@@ -1,13 +1,13 @@
-import { useState, useEffect, useMemo, lazy, Suspense } from 'react';
-import { TrendingDown, Calendar, DollarSign, Sparkles, BarChart3, LineChart, AlertTriangle, ArrowUpRight, ArrowDownRight, RefreshCw, Key, Layers } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { TrendChartDetails, CumulativePacingPoint } from '../../hooks/useTransactions';
+import { useState, useMemo } from 'react';
+import { Sparkles, AlertTriangle, ArrowUpRight, ArrowDownRight, RefreshCw, Key, ChevronDown, ChevronRight } from 'lucide-react';
+import { TrendChartDetails } from '../../hooks/useTransactions';
 import { generateSpendingInsights, AiInsightsResult } from '../../services/ai/aiInsightsService';
 import { hasGeminiApiKey } from '../../services/ai/geminiClient';
 import { Category, Budget, Transaction } from '../../services/storage';
-
-const PacingChart = lazy(() => import('./PacingChart'));
-const CashFlowBarChart = lazy(() => import('./CashFlowBarChart'));
+import { bucketOf } from '../../utils/categorizer';
+import { bucketColor } from '../../theme/buckets';
+import { formatMoney } from '../../utils/formatters';
+import { useNavigation } from '../../hooks/useNavigation';
 
 interface TrendChartProps {
   trendDetails?: TrendChartDetails;
@@ -20,33 +20,173 @@ interface TrendChartProps {
   onRequestGeminiKey?: () => void;
 }
 
-type ViewTab = 'pacing' | 'cashflow' | 'ai';
+interface MonthBucketSummary {
+  month: string;
+  shortLabel: string;
+  longLabel: string;
+  income: number;
+  fixed: number;
+  flexible: number;
+  nonMonthly: number;
+  totalExpense: number;
+  saved: number;
+  savingsRate: number;
+}
+
+function getTrailing12Months(anchorMonth: string): string[] {
+  let year = 2026;
+  let monthNum = 11;
+  if (/^\d{4}-\d{2}$/.test(anchorMonth)) {
+    const [yStr, mStr] = anchorMonth.split('-');
+    year = parseInt(yStr, 10);
+    monthNum = parseInt(mStr, 10);
+  }
+  const result: string[] = [];
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date(Date.UTC(year, monthNum - 1 - i, 1));
+    const y = d.getUTCFullYear();
+    const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+    result.push(`${y}-${m}`);
+  }
+  return result;
+}
+
+function formatShortMonth(monthStr: string): string {
+  const [yStr, mStr] = monthStr.split('-');
+  const d = new Date(Date.UTC(parseInt(yStr, 10), parseInt(mStr, 10) - 1, 1));
+  return d.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' });
+}
+
+function formatLongMonth(monthStr: string): string {
+  const [yStr, mStr] = monthStr.split('-');
+  const d = new Date(Date.UTC(parseInt(yStr, 10), parseInt(mStr, 10) - 1, 1));
+  return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' });
+}
 
 export function TrendChart({
-  trendDetails,
   totalBudget = 0,
   budgets = [],
   categories = [],
   transactions = [],
-  selectedMonth = '2026-07',
+  selectedMonth = '2026-11',
   onSelectMonth,
-  onRequestGeminiKey
+  onRequestGeminiKey,
 }: TrendChartProps) {
-  const [activeTab, setActiveTab] = useState<ViewTab>('pacing');
-  const [pacingEngine, setPacingEngine] = useState<'svg' | 'recharts'>('svg');
-  const [hoveredCumulativePoint, setHoveredCumulativePoint] = useState<CumulativePacingPoint | null>(null);
+  const { navigate } = useNavigation();
+  const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
+  const [aiExpanded, setAiExpanded] = useState(false);
 
   // AI Insights State
   const [aiResult, setAiResult] = useState<AiInsightsResult | null>(null);
   const [isGeneratingAi, setIsGeneratingAi] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
 
-  // Auto-switch to cashflow tab if user selects 'all' months
-  useEffect(() => {
-    if (selectedMonth === 'all') {
-      setActiveTab('cashflow');
+  const nonTransferTxns = useMemo(
+    () => transactions.filter(t => t.type !== 'transfer'),
+    [transactions]
+  );
+
+  const hasData = nonTransferTxns.length > 0;
+
+  // Determine anchor month for trailing 12 months
+  const anchorMonth = useMemo(() => {
+    if (selectedMonth && /^\d{4}-\d{2}$/.test(selectedMonth)) {
+      return selectedMonth;
     }
-  }, [selectedMonth]);
+    const txMonths = Array.from(
+      new Set(
+        nonTransferTxns
+          .map(t => (t.date || '').substring(0, 7))
+          .filter(m => /^\d{4}-\d{2}$/.test(m))
+      )
+    ).sort();
+    return txMonths[txMonths.length - 1] || '2026-11';
+  }, [selectedMonth, nonTransferTxns]);
+
+  const monthKeys = useMemo(() => getTrailing12Months(anchorMonth), [anchorMonth]);
+
+  const monthlyData = useMemo<MonthBucketSummary[]>(() => {
+    return monthKeys.map(mKey => {
+      const mTxns = nonTransferTxns.filter(t => (t.date || '').startsWith(mKey));
+      let income = 0;
+      let fixed = 0;
+      let flexible = 0;
+      let nonMonthly = 0;
+
+      for (const t of mTxns) {
+        if (t.type === 'income') {
+          income += t.amount;
+        } else if (t.type === 'expense') {
+          const b = bucketOf(t, categories);
+          if (b === 'fixed') fixed += t.amount;
+          else if (b === 'non-monthly') nonMonthly += t.amount;
+          else flexible += t.amount;
+        }
+      }
+
+      const totalExpense = fixed + flexible + nonMonthly;
+      const saved = income - totalExpense;
+      const savingsRate =
+        income > 0
+          ? Math.max(-100, Math.min(100, (saved / income) * 100))
+          : totalExpense > 0
+          ? -25
+          : 0;
+
+      return {
+        month: mKey,
+        shortLabel: formatShortMonth(mKey),
+        longLabel: formatLongMonth(mKey),
+        income,
+        fixed,
+        flexible,
+        nonMonthly,
+        totalExpense,
+        saved,
+        savingsRate,
+      };
+    });
+  }, [monthKeys, nonTransferTxns, categories]);
+
+  // Last 6 months for category trends table
+  const last6MonthKeys = useMemo(() => monthKeys.slice(6), [monthKeys]);
+
+  const categoryTrends = useMemo(() => {
+    const map = new Map<string, number[]>();
+    for (const t of nonTransferTxns) {
+      if (t.type !== 'expense') continue;
+      const mKey = (t.date || '').substring(0, 7);
+      const mIdx = last6MonthKeys.indexOf(mKey);
+      if (mIdx === -1) continue;
+      const cat = t.category || 'Uncategorized';
+      const arr = map.get(cat) || [0, 0, 0, 0, 0, 0];
+      arr[mIdx] += t.amount;
+      map.set(cat, arr);
+    }
+
+    return Array.from(map.entries())
+      .map(([name, values]) => {
+        const total = values.reduce((s, v) => s + v, 0);
+        const avg = total / 6;
+        const latest = values[5] || 0;
+        const catObj = categories.find(
+          c => c.id === name || c.name.toLowerCase() === name.toLowerCase()
+        );
+        const b = bucketOf({ category: name }, categories);
+        return {
+          name,
+          icon: catObj?.emoji || '🏷️',
+          bucket: b,
+          values,
+          total,
+          avg,
+          latest,
+        };
+      })
+      .filter(c => c.total > 0)
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 8);
+  }, [nonTransferTxns, last6MonthKeys, categories]);
 
   const handleGenerateAiInsights = async () => {
     if (!hasGeminiApiKey()) {
@@ -62,8 +202,8 @@ export function TrendChart({
         transactions,
         categories,
         budgets,
-        selectedMonth,
-        totalBudget
+        selectedMonth: anchorMonth,
+        totalBudget,
       });
       setAiResult(res);
     } catch (err: unknown) {
@@ -74,562 +214,522 @@ export function TrendChart({
     }
   };
 
-  const daysInMonth = trendDetails?.daysInMonth || 30;
-  const range = trendDetails?.maxAmt || 0;
-  const eomProjection = trendDetails?.eomProjection || 0;
-  const effectiveRange = Math.max(range, totalBudget ? totalBudget * 1.1 : 0);
+  // Chart geometry
+  const width = 720;
+  const height = 220;
+  const padLeft = 52;
+  const padRight = 44;
+  const padTop = 20;
+  const padBottom = 30;
+  const plotW = width - padLeft - padRight;
+  const plotH = height - padTop - padBottom;
 
-  const idealPacingPathData = useMemo(() => {
-    if (!trendDetails || !totalBudget || totalBudget <= 0) return '';
-    const width = 500;
-    const height = 200;
-    const paddingLeft = 55;
-    const paddingRight = 25;
-    const paddingTop = 25;
-    const paddingBottom = 35;
-    const chartWidth = width - paddingLeft - paddingRight;
-    const chartHeight = height - paddingTop - paddingBottom;
-    const coords: string[] = [];
-    for (let d = 1; d <= daysInMonth; d++) {
-      const idealCum = (totalBudget / daysInMonth) * d;
-      const x = paddingLeft + ((d - 1) / Math.max(daysInMonth - 1, 1)) * chartWidth;
-      const norm = idealCum / effectiveRange;
-      const y = height - paddingBottom - Math.max(0, Math.min(1, norm)) * chartHeight;
-      coords.push(`${x.toFixed(1)} ${y.toFixed(1)}`);
-    }
-    return `M ${coords.join(' L ')}`;
-  }, [trendDetails, totalBudget, daysInMonth, effectiveRange]);
-
-  const pacingStatus = useMemo(() => {
-    if (!trendDetails || totalBudget <= 0) return 'on_track' as const;
-    if (eomProjection > totalBudget * 1.05) return 'over_budget' as const;
-    if (eomProjection < totalBudget * 0.92) return 'under_budget' as const;
-    return 'on_track' as const;
-  }, [trendDetails, eomProjection, totalBudget]);
-
-  const hasData = trendDetails && transactions.some(t => t.type === 'expense' && (selectedMonth === 'all' || (t.date || '').startsWith(selectedMonth)));
-
-  if (!trendDetails) {
-    return (
-      <motion.div 
-        initial={{ opacity: 0, scale: 0.95 }}
-        animate={{ opacity: 1, scale: 1 }}
-        className="glass-card p-6 rounded-2xl flex-1 flex flex-col justify-between min-h-[320px]"
-      >
-        <div className="flex items-center gap-3 mb-4">
-          <div className="p-2 rounded-xl bg-secondary/10 text-secondary">
-            <TrendingDown className="w-5 h-5" />
-          </div>
-          <div>
-            <h3 className="text-lg font-bold">Expense Trend & Insights</h3>
-            <p className="text-xs text-muted-foreground">Financial analytics dashboard</p>
-          </div>
-        </div>
-        <div className="flex-1 min-h-[220px] relative w-full flex items-center justify-center select-none">
-          <svg viewBox="0 0 500 200" data-testid="chart-svg-trend" className="w-full h-full overflow-visible">
-            <text x="50%" y="50%" textAnchor="middle" fill="currentColor" className="no-data-text text-muted-foreground text-xs">
-              No data available
-            </text>
-          </svg>
-        </div>
-      </motion.div>
+  const maxDollar = useMemo(() => {
+    const peak = Math.max(
+      ...monthlyData.map(m => Math.max(m.income, m.totalExpense)),
+      100
     );
-  }
+    return peak * 1.1;
+  }, [monthlyData]);
 
-  const {
-    cumulativePoints,
-    cumulativePathData,
-    cumulativeAreaPathData,
-    prevMonthCumulativePoints,
-    prevMonthPathData,
-    highestSpendDay,
-    dailyAvg,
-    monthlyCashFlows,
-    avgMonthlySavings,
-    overallSavingsRate,
-    bestCashFlowMonth,
-    yTicks
-  } = trendDetails;
+  const yForDollar = (val: number) => {
+    const clamped = Math.max(0, Math.min(maxDollar, val));
+    return padTop + plotH - (clamped / maxDollar) * plotH;
+  };
+
+  // Savings rate right axis: -50% to +100%
+  const yForRate = (rate: number) => {
+    const clamped = Math.max(-50, Math.min(100, rate));
+    const norm = (clamped + 50) / 150;
+    return padTop + plotH - norm * plotH;
+  };
+
+  const colWidth = plotW / 12;
+  const barWidth = Math.max(14, Math.min(28, colWidth - 18));
+
+  const savingsRatePath = useMemo(() => {
+    const rateY = (rate: number) => {
+      const clamped = Math.max(-50, Math.min(100, rate));
+      const norm = (clamped + 50) / 150;
+      return padTop + plotH - norm * plotH;
+    };
+    const ys = monthlyData.map(m => rateY(m.savingsRate));
+    const minY = Math.min(...ys);
+    const maxY = Math.max(...ys);
+    const flatAdjust = maxY - minY < 1 ? 1.5 : 0;
+    const pts = monthlyData.map((m, idx) => {
+      const cx = padLeft + idx * colWidth + colWidth / 2;
+      const cy = rateY(m.savingsRate) + (idx === 0 ? flatAdjust : 0);
+      return `${cx.toFixed(1)} ${cy.toFixed(1)}`;
+    });
+    return `M ${pts.join(' L ')}`;
+  }, [monthlyData, colWidth, padLeft, padTop, plotH]);
+
+  const hoveredMonth = hoveredIdx !== null ? monthlyData[hoveredIdx] : null;
+
+  const handleBarClick = (monthKey: string) => {
+    if (onSelectMonth) {
+      onSelectMonth(monthKey);
+    }
+    navigate(`#/month/${monthKey}`);
+  };
 
   return (
-    <motion.div 
-      initial={{ opacity: 0, scale: 0.95 }}
-      animate={{ opacity: 1, scale: 1 }}
-      transition={{ delay: 0.2 }}
-      className="glass-card p-6 rounded-2xl flex-1 flex flex-col relative"
-    >
-      {/* Top Header & View Tabs */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-        <div className="flex items-center gap-3">
-          <div className="p-2.5 rounded-xl bg-secondary/10 text-secondary shadow-sm">
-            <TrendingDown className="w-5 h-5" />
-          </div>
+    <div className="space-y-6">
+      {/* 12-Month Stacked Bar & Savings Rate Chart */}
+      <div className="p-5 rounded-[14px] bg-card border border-border space-y-4">
+        <div className="flex flex-wrap items-baseline justify-between gap-2 min-h-[28px]">
           <div>
-            <h3 className="text-lg font-bold tracking-tight">Expense Trend & Insights</h3>
-            <p className="text-xs text-muted-foreground">Track velocity, cash flow & AI intelligent analysis</p>
+            <h2 className="text-heading text-foreground">12-month cash flow</h2>
+            <p className="text-label text-muted-foreground">
+              Click any month bar to open its overview
+            </p>
           </div>
+
+          {hoveredMonth ? (
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-label tabular-nums num">
+              <span className="font-semibold text-foreground">{hoveredMonth.longLabel}</span>
+              <span className="text-muted-foreground">
+                Income <strong className="text-foreground">{formatMoney(hoveredMonth.income)}</strong>
+              </span>
+              <span className="text-muted-foreground">
+                Fixed <strong className="text-foreground">{formatMoney(hoveredMonth.fixed)}</strong>
+              </span>
+              <span className="text-muted-foreground">
+                Variable <strong className="text-foreground">{formatMoney(hoveredMonth.flexible)}</strong>
+              </span>
+              <span className="text-muted-foreground">
+                Non-monthly <strong className="text-foreground">{formatMoney(hoveredMonth.nonMonthly)}</strong>
+              </span>
+              <span className={hoveredMonth.saved >= 0 ? 'text-bucket-saved font-medium' : 'text-negative font-medium'}>
+                {hoveredMonth.saved >= 0
+                  ? `Kept ${formatMoney(hoveredMonth.saved)} (${Math.round(hoveredMonth.savingsRate)}%)`
+                  : `Overspent ${formatMoney(Math.abs(hoveredMonth.saved))}`}
+              </span>
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center gap-4 text-label text-muted-foreground">
+              <span className="inline-flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-[3px]" style={{ backgroundColor: bucketColor('fixed') }} />
+                Fixed
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-[3px]" style={{ backgroundColor: bucketColor('flexible') }} />
+                Variable
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-[3px]" style={{ backgroundColor: bucketColor('non-monthly') }} />
+                Non-monthly
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="w-3 h-[2px]" style={{ backgroundColor: bucketColor('saved') }} />
+                Income
+              </span>
+              <span className="inline-flex items-center gap-1.5">
+                <span className="w-3 h-[1.5px] bg-foreground" />
+                Savings rate
+              </span>
+            </div>
+          )}
         </div>
 
-        {/* Tab Switcher */}
-        <div className="flex items-center p-1 bg-card/60 border border-border/60 rounded-xl">
-          <button
-            onClick={() => setActiveTab('pacing')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${
-              activeTab === 'pacing'
-                ? 'bg-primary text-primary-foreground shadow-md'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
+        <div className="relative w-full select-none">
+          <svg
+            viewBox={`0 0 ${width} ${height}`}
+            data-testid="chart-svg-trend"
+            className="w-full h-[220px] overflow-visible"
+            onMouseLeave={() => setHoveredIdx(null)}
           >
-            <LineChart className="w-3.5 h-3.5" />
-            <span>Monthly Pacing</span>
-          </button>
+            {!hasData ? (
+              <text
+                x="50%"
+                y="50%"
+                textAnchor="middle"
+                fill="currentColor"
+                className="no-data-text text-muted-foreground text-label"
+              >
+                No data available
+              </text>
+            ) : (
+              <>
+                {/* Horizontal grid lines */}
+                {[0, 0.5, 1].map((frac, idx) => {
+                  const val = maxDollar * frac;
+                  const y = yForDollar(val);
+                  const rateLabel = frac === 1 ? '100%' : frac === 0.5 ? '25%' : '-50%';
+                  return (
+                    <g key={idx}>
+                      <line
+                        x1={padLeft}
+                        y1={y}
+                        x2={width - padRight}
+                        y2={y}
+                        stroke="hsl(var(--border))"
+                        strokeWidth="1"
+                        strokeDasharray={frac === 0 ? undefined : '3 3'}
+                      />
+                      <text
+                        x={padLeft - 8}
+                        y={y + 4}
+                        textAnchor="end"
+                        className="text-label fill-muted-foreground tabular-nums num"
+                      >
+                        {val >= 1000
+                          ? `$${(val / 1000).toFixed(val % 1000 === 0 ? 0 : 1)}k`
+                          : formatMoney(val)}
+                      </text>
+                      <text
+                        x={width - padRight + 8}
+                        y={y + 4}
+                        textAnchor="start"
+                        className="text-label fill-muted-foreground tabular-nums num"
+                      >
+                        {rateLabel}
+                      </text>
+                    </g>
+                  );
+                })}
 
-          <button
-            onClick={() => setActiveTab('cashflow')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${
-              activeTab === 'cashflow'
-                ? 'bg-primary text-primary-foreground shadow-md'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            <BarChart3 className="w-3.5 h-3.5" />
-            <span>Annual Cash Flow</span>
-          </button>
+                {/* 12 Stacked Monthly Bars */}
+                {monthlyData.map((m, idx) => {
+                  const cx = padLeft + idx * colWidth + colWidth / 2;
+                  const bx = cx - barWidth / 2;
+                  const isHovered = hoveredIdx === idx;
+                  const isCurrent = m.month === anchorMonth;
+                  const barOpacity = isHovered || isCurrent ? 0.92 : 0.7;
 
-          <button
-            onClick={() => setActiveTab('ai')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${
-              activeTab === 'ai'
-                ? 'bg-gradient-to-r from-teal-500 to-emerald-500 text-white shadow-md'
-                : 'text-teal-400 hover:text-teal-300'
-            }`}
-          >
-            <Sparkles className="w-3.5 h-3.5 animate-pulse" />
-            <span>AI Insights</span>
-          </button>
+                  const fixedH = (m.fixed / maxDollar) * plotH;
+                  const flexH = (m.flexible / maxDollar) * plotH;
+                  const nonMonthlyH = (m.nonMonthly / maxDollar) * plotH;
+
+                  const fixedY = padTop + plotH - fixedH;
+                  const flexY = fixedY - flexH;
+                  const nonMonthlyY = flexY - nonMonthlyH;
+                  const incomeY = yForDollar(m.income);
+
+                  return (
+                    <g key={m.month}>
+                      {/* Empty stub if 0 spend */}
+                      {m.totalExpense === 0 && (
+                        <rect
+                          x={bx}
+                          y={padTop + plotH - 2}
+                          width={barWidth}
+                          height={2}
+                          rx={1}
+                          fill="hsl(var(--surface-2))"
+                        />
+                      )}
+
+                      {fixedH > 0 && (
+                        <rect
+                          x={bx}
+                          y={fixedY}
+                          width={barWidth}
+                          height={Math.max(2, fixedH)}
+                          rx={2}
+                          fill={bucketColor('fixed')}
+                          fillOpacity={barOpacity}
+                        />
+                      )}
+
+                      {flexH > 0 && (
+                        <rect
+                          x={bx}
+                          y={flexY}
+                          width={barWidth}
+                          height={Math.max(2, flexH)}
+                          rx={2}
+                          fill={bucketColor('flexible')}
+                          fillOpacity={barOpacity}
+                        />
+                      )}
+
+                      {nonMonthlyH > 0 && (
+                        <rect
+                          x={bx}
+                          y={nonMonthlyY}
+                          width={barWidth}
+                          height={Math.max(2, nonMonthlyH)}
+                          rx={2}
+                          fill={bucketColor('non-monthly')}
+                          fillOpacity={barOpacity}
+                        />
+                      )}
+
+                      {/* Income tick mark */}
+                      {m.income > 0 && (
+                        <line
+                          x1={bx - 3}
+                          y1={incomeY}
+                          x2={bx + barWidth + 3}
+                          y2={incomeY}
+                          stroke={bucketColor('saved')}
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                        />
+                      )}
+
+                      {/* Month label */}
+                      <text
+                        x={cx}
+                        y={height - 8}
+                        textAnchor="middle"
+                        className={`text-label ${
+                          isCurrent || isHovered
+                            ? 'fill-foreground font-semibold'
+                            : 'fill-muted-foreground'
+                        }`}
+                      >
+                        {m.shortLabel}
+                      </text>
+
+                      {/* Interactive hit column */}
+                      <rect
+                        x={padLeft + idx * colWidth}
+                        y={padTop}
+                        width={colWidth}
+                        height={plotH + 22}
+                        fill="transparent"
+                        className="cursor-pointer"
+                        data-testid={`trend-month-bar-${m.month}`}
+                        onMouseEnter={() => setHoveredIdx(idx)}
+                        onClick={() => handleBarClick(m.month)}
+                      />
+                    </g>
+                  );
+                })}
+
+                {/* Savings rate line (single <path> element inside chart-svg-trend) */}
+                <path
+                  d={savingsRatePath}
+                  fill="none"
+                  stroke="hsl(var(--foreground))"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="pointer-events-none"
+                />
+
+                {/* Hover dot on savings rate line */}
+                {hoveredIdx !== null && monthlyData[hoveredIdx] && (
+                  <circle
+                    cx={padLeft + hoveredIdx * colWidth + colWidth / 2}
+                    cy={yForRate(monthlyData[hoveredIdx].savingsRate)}
+                    r={3.5}
+                    fill="hsl(var(--foreground))"
+                    stroke="hsl(var(--background))"
+                    strokeWidth="1.5"
+                    className="pointer-events-none"
+                  />
+                )}
+              </>
+            )}
+          </svg>
         </div>
       </div>
 
-      {/* TAB 1: MONTHLY CUMULATIVE PACING VIEW */}
-      {activeTab === 'pacing' && (
-        <div className="flex flex-col gap-4">
-          {/* Quick Stat Badges */}
-          <div className="flex flex-wrap items-center justify-between gap-2 mb-1">
-            <div className="flex flex-wrap items-center gap-2">
-              {highestSpendDay && (
-                <div className="px-3 py-1.5 rounded-lg bg-card/60 border border-border/60 flex items-center gap-2 text-xs">
-                  <Calendar className="w-3.5 h-3.5 text-primary" />
-                  <span className="text-muted-foreground">Peak:</span>
-                  <span className="font-semibold text-foreground">{highestSpendDay.formattedDate} (${highestSpendDay.amount.toLocaleString()})</span>
-                </div>
-              )}
-              <div className="px-3 py-1.5 rounded-lg bg-card/60 border border-border/60 flex items-center gap-2 text-xs">
-                <DollarSign className="w-3.5 h-3.5 text-emerald-400" />
-                <span className="text-muted-foreground">Avg:</span>
-                <span className="font-semibold text-foreground">${dailyAvg.toLocaleString()}/day</span>
-              </div>
-            </div>
-
-            {/* EOM Projection & Pacing Status Pill */}
-            <div className="flex items-center gap-2">
-              <div className="px-3 py-1.5 rounded-lg bg-card/60 border border-border/60 flex items-center gap-2 text-xs">
-                <span className="text-muted-foreground">EOM Projection:</span>
-                <span className="font-bold text-foreground">${eomProjection.toLocaleString()}</span>
-                {totalBudget > 0 && (
-                  <span className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold uppercase tracking-wider ${
-                    pacingStatus === 'under_budget'
-                      ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                      : pacingStatus === 'over_budget'
-                      ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30'
-                      : 'bg-amber-500/20 text-amber-400 border border-amber-500/30'
-                  }`}>
-                    {pacingStatus === 'under_budget' ? 'Under Budget' : pacingStatus === 'over_budget' ? 'Over Budget' : 'On Track'}
-                  </span>
-                )}
-              </div>
-              <button
-                onClick={() => setPacingEngine(prev => prev === 'svg' ? 'recharts' : 'svg')}
-                className="px-2.5 py-1.5 rounded-lg bg-card/60 hover:bg-card border border-border/60 flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-all"
-                title="Toggle Chart Rendering Engine"
-              >
-                <Layers className="w-3.5 h-3.5 text-primary" />
-                <span>{pacingEngine === 'svg' ? 'Interactive' : 'Classic SVG'}</span>
-              </button>
-            </div>
+      {/* Category Trends Table (Top 8 categories x last 6 months) */}
+      {categoryTrends.length > 0 && (
+        <div className="p-5 rounded-[14px] bg-card border border-border space-y-3">
+          <div className="flex items-baseline justify-between">
+            <h3 className="text-heading text-foreground">Category trends</h3>
+            <span className="text-label text-muted-foreground">Last 6 months</span>
           </div>
 
-          {/* SVG / Recharts Pacing Chart Frame */}
-          <div className="min-h-[220px] relative w-full flex items-center justify-center select-none">
-            {pacingEngine === 'recharts' && hasData ? (
-              <Suspense fallback={<div className="h-48 w-full animate-pulse bg-card/20 rounded-xl" />}>
-                <PacingChart 
-                  cumulativePoints={cumulativePoints}
-                  daysInMonth={daysInMonth}
-                  totalBudget={totalBudget}
-                  prevMonthCumulativePoints={prevMonthCumulativePoints}
-                />
-              </Suspense>
-            ) : (
-            <svg 
-              viewBox="0 0 500 200" 
-              data-testid="chart-svg-trend" 
-              className="w-full h-full overflow-visible"
-            >
-              <defs>
-                <linearGradient id="cumulativeGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="rgb(20, 184, 166)" stopOpacity="0.35" />
-                  <stop offset="100%" stopColor="rgb(20, 184, 166)" stopOpacity="0.0" />
-                </linearGradient>
-              </defs>
+          <div className="divide-y divide-border/50">
+            {categoryTrends.map(cat => {
+              const maxCat = Math.max(...cat.values, 1);
+              const sparkPts = cat.values
+                .map((v, idx) => {
+                  const sx = (idx / 5) * 68 + 2;
+                  const sy = 20 - (v / maxCat) * 16;
+                  return `${sx.toFixed(1)},${sy.toFixed(1)}`;
+                })
+                .join(' ');
 
-              {!hasData ? (
-                <text x="50%" y="50%" textAnchor="middle" fill="currentColor" className="no-data-text text-muted-foreground text-xs">
-                  No data available
-                </text>
-              ) : (
-                <>
-                  {/* Y Grid Lines */}
-                  {yTicks.map((tick, idx) => (
-                    <g key={`y-tick-${idx}`}>
-                      <line 
-                        x1="55" 
-                        y1={tick.y} 
-                        x2="475" 
-                        y2={tick.y} 
-                        stroke="currentColor" 
-                        className="text-border/30" 
-                        strokeWidth="1" 
-                        strokeDasharray="4 4" 
-                      />
-                      <text 
-                        x="45" 
-                        y={tick.y + 4} 
-                        textAnchor="end" 
-                        className="text-[11px] fill-muted-foreground font-medium"
-                      >
-                        {tick.label}
-                      </text>
-                    </g>
-                  ))}
+              return (
+                <button
+                  key={cat.name}
+                  type="button"
+                  onClick={() =>
+                    navigate(`#/month/${anchorMonth}/category/${encodeURIComponent(cat.name)}`)
+                  }
+                  className="w-full h-12 flex items-center justify-between gap-4 px-2 -mx-2 rounded-[10px] hover:bg-surface2 transition-colors text-left focus-visible:ring-2 ring-ring/40"
+                >
+                  <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                    <span className="w-7 h-7 rounded-full bg-surface2 flex items-center justify-center text-sm shrink-0">
+                      {cat.icon}
+                    </span>
+                    <span className="text-body font-medium text-foreground truncate">
+                      {cat.name}
+                    </span>
+                  </div>
 
-                  {/* X Axis Labels */}
-                  <text x="55" y="188" textAnchor="start" className="text-[11px] fill-muted-foreground font-medium">Day 1</text>
-                  <text x="265" y="188" textAnchor="middle" className="text-[11px] fill-muted-foreground font-medium">Day {Math.round(daysInMonth / 2)}</text>
-                  <text x="475" y="188" textAnchor="end" className="text-[11px] fill-muted-foreground font-medium">Day {daysInMonth}</text>
-
-                  {/* Ideal Pacing Reference Line (Dotted Gray) */}
-                  {idealPacingPathData && (
+                  {/* 6-month sparkline */}
+                  <svg
+                    viewBox="0 0 72 24"
+                    className="w-[72px] h-6 shrink-0 overflow-visible"
+                    aria-hidden="true"
+                  >
                     <polyline
-                      points={idealPacingPathData.replace(/M\s+/, '').replace(/\s+L\s+/g, ' ')}
+                      points={sparkPts}
                       fill="none"
-                      stroke="rgba(156, 163, 175, 0.5)"
-                      strokeWidth="2"
-                      strokeDasharray="3 3"
-                    />
-                  )}
-
-                  {/* Previous Month Trajectory Line (Dashed Amber) */}
-                  {prevMonthPathData && prevMonthCumulativePoints.length > 0 && (
-                    <polyline
-                      points={prevMonthCumulativePoints.map(p => `${p.x},${p.y}`).join(' ')}
-                      fill="none"
-                      stroke="rgba(245, 158, 11, 0.6)"
-                      strokeWidth="2"
-                      strokeDasharray="6 4"
-                    />
-                  )}
-
-                  {/* Gradient Area under Cumulative Path */}
-                  {cumulativeAreaPathData && cumulativePoints.length > 0 && (
-                    <motion.polygon
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      transition={{ duration: 0.8 }}
-                      points={`55,165 ${cumulativePoints.map(p => `${p.x},${p.y}`).join(' ')} 475,165`}
-                      fill="url(#cumulativeGradient)"
-                    />
-                  )}
-
-                  {/* Current Month Cumulative Path (Solid Teal) */}
-                  {cumulativePathData && (
-                    <path
-                      key={cumulativePathData}
-                      d={cumulativePathData}
-                      fill="none"
-                      stroke="currentColor"
-                      className="text-primary drop-shadow-[0_0_8px_rgba(20,184,166,0.6)]"
-                      strokeWidth="3.5"
+                      stroke={bucketColor(cat.bucket)}
+                      strokeWidth="1.5"
                       strokeLinecap="round"
                       strokeLinejoin="round"
                     />
-                  )}
+                  </svg>
 
-                  {/* Interactive Data Nodes */}
-                  {cumulativePoints.map((pt, idx) => {
-                    const isHovered = hoveredCumulativePoint?.day === pt.day;
-                    // Highlight nodes every 5 days or hovered
-                    if (pt.day % 5 !== 0 && !isHovered && pt.day !== daysInMonth) return null;
-
-                    return (
-                      <g key={`cum-point-${idx}`}>
-                        <circle
-                          cx={pt.x}
-                          cy={pt.y}
-                          r={isHovered ? "6.5" : "4"}
-                          className="fill-background stroke-primary transition-all cursor-pointer"
-                          strokeWidth={isHovered ? "3" : "2"}
-                          onMouseEnter={() => setHoveredCumulativePoint(pt)}
-                          onMouseLeave={() => setHoveredCumulativePoint(null)}
-                        />
-                      </g>
-                    );
-                  })}
-                </>
-              )}
-            </svg>
-            )}
-
-            {/* Hover Tooltip */}
-            <AnimatePresence>
-              {hoveredCumulativePoint && (
-                <motion.div
-                  initial={{ opacity: 0, y: 5, scale: 0.95 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.95 }}
-                  style={{
-                    left: `${(hoveredCumulativePoint.x / 500) * 100}%`,
-                    top: `${(hoveredCumulativePoint.y / 200) * 100}%`,
-                    transform: 'translate(-50%, -120%)'
-                  }}
-                  className="absolute z-30 pointer-events-none bg-popover/95 border border-border text-popover-foreground px-3 py-2 rounded-xl shadow-xl backdrop-blur-md whitespace-nowrap"
-                >
-                  <p className="text-[11px] text-muted-foreground font-semibold">{hoveredCumulativePoint.formattedDate}</p>
-                  <p className="text-sm font-extrabold text-primary">Cumulative: ${hoveredCumulativePoint.cumulativeAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
-                  {hoveredCumulativePoint.dailyAmount > 0 && (
-                    <p className="text-[11px] text-muted-foreground">Daily Spend: ${hoveredCumulativePoint.dailyAmount.toLocaleString()}</p>
-                  )}
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
-
-          {/* Legend Footer */}
-          <div className="flex flex-wrap items-center justify-center gap-6 mt-4 pt-3 border-t border-border/40 text-xs text-muted-foreground">
-            <div className="flex items-center gap-2">
-              <span className="w-3 h-1 bg-primary rounded-full"></span>
-              <span>Actual Cumulative Spend</span>
-            </div>
-            {totalBudget > 0 && (
-              <div className="flex items-center gap-2">
-                <span className="w-3 h-0.5 bg-gray-400 border-t border-dashed border-gray-400"></span>
-                <span>Ideal Budget Pace (${(totalBudget / daysInMonth).toFixed(0)}/day)</span>
-              </div>
-            )}
-            {prevMonthCumulativePoints.length > 0 && (
-              <div className="flex items-center gap-2">
-                <span className="w-3 h-0.5 bg-amber-400 border-t border-dashed border-amber-400"></span>
-                <span>Previous Month Trajectory</span>
-              </div>
-            )}
+                  <div className="w-24 text-right shrink-0">
+                    <div className="text-body font-medium text-foreground tabular-nums num">
+                      {formatMoney(cat.latest)}
+                    </div>
+                    <div className="text-label text-muted-foreground tabular-nums num">
+                      avg {formatMoney(cat.avg)}/mo
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
           </div>
         </div>
       )}
 
-      {/* TAB 2: ANNUAL CASH FLOW VIEW */}
-      {activeTab === 'cashflow' && (
-        <div className="flex-1 flex flex-col justify-between">
-          {/* Top Metric Badges */}
-          <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="px-3 py-1.5 rounded-lg bg-card/60 border border-border/60 flex items-center gap-2 text-xs">
-                <DollarSign className="w-3.5 h-3.5 text-emerald-400" />
-                <span className="text-muted-foreground">Avg Monthly Savings:</span>
-                <span className={`font-bold ${avgMonthlySavings >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
-                  ${avgMonthlySavings.toLocaleString()}
-                </span>
-              </div>
-              <div className="px-3 py-1.5 rounded-lg bg-card/60 border border-border/60 flex items-center gap-2 text-xs">
-                <span className="text-muted-foreground">Savings Rate:</span>
-                <span className="font-bold text-foreground">{overallSavingsRate}%</span>
-              </div>
-            </div>
-
-            {bestCashFlowMonth && (
-              <div className="px-3 py-1.5 rounded-lg bg-card/60 border border-border/60 flex items-center gap-2 text-xs">
-                <span className="text-muted-foreground">Best Month:</span>
-                <span className="font-bold text-emerald-400">{bestCashFlowMonth.formattedMonth} (+${bestCashFlowMonth.net.toLocaleString()})</span>
-              </div>
-            )}
+      {/* Collapsible AI Insights Card (collapsed by default) */}
+      <div className="rounded-[14px] bg-card border border-border overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setAiExpanded(prev => !prev)}
+          className="w-full px-5 py-3.5 flex items-center justify-between text-left hover:bg-surface2 transition-colors focus-visible:ring-2 ring-ring/40"
+        >
+          <div className="flex items-center gap-2.5">
+            <Sparkles className="w-4 h-4 text-muted-foreground" />
+            <span className="text-body font-medium text-foreground">AI Financial Analysis</span>
+            <span className="text-label text-muted-foreground">Optional Gemini summary</span>
           </div>
+          {aiExpanded ? (
+            <ChevronDown className="w-4 h-4 text-muted-foreground" />
+          ) : (
+            <ChevronRight className="w-4 h-4 text-muted-foreground" />
+          )}
+        </button>
 
-          {/* Multi-Month Cash Flow View (Recharts) */}
-          <div className="flex-1 min-h-[220px] relative w-full flex items-center justify-center select-none">
-            {monthlyCashFlows.length === 0 ? (
-              <div className="text-center text-muted-foreground text-sm">No multi-month cash flow data available.</div>
-            ) : (
-              <Suspense fallback={<div className="h-48 w-full animate-pulse bg-card/20 rounded-xl" />}>
-                <CashFlowBarChart 
-                  monthlyCashFlows={monthlyCashFlows} 
-                  onSelectMonth={(m) => {
-                    if (onSelectMonth) onSelectMonth(m);
-                    setActiveTab('pacing');
-                  }} 
-                  selectedMonth={selectedMonth} 
-                />
-              </Suspense>
-            )}
-          </div>
-
-          {/* Bar Chart Legend */}
-          <div className="flex flex-wrap items-center justify-center gap-6 mt-4 pt-3 border-t border-border/40 text-xs text-muted-foreground">
-            <div className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 bg-emerald-500 rounded-sm"></span>
-              <span>Inflow</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 bg-blue-500 rounded-sm"></span>
-              <span>Fixed</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 bg-violet-500 rounded-sm"></span>
-              <span>Variable</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 bg-amber-500 rounded-sm"></span>
-              <span>Non-Monthly</span>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* TAB 3: ✨ AI FINANCIAL INSIGHTS VIEW */}
-      {activeTab === 'ai' && (
-        <div className="flex-1 flex flex-col justify-between">
-          {!hasGeminiApiKey() ? (
-            <div className="flex-1 flex flex-col items-center justify-center text-center p-6 border border-dashed border-teal-500/30 rounded-xl bg-teal-500/5">
-              <Sparkles className="w-8 h-8 text-teal-400 mb-2 animate-bounce" />
-              <h4 className="text-base font-bold text-foreground">Unlock AI Financial Insights</h4>
-              <p className="text-xs text-muted-foreground max-w-md mt-1 mb-4">
-                Connect your Google Gemini API key to receive automated spending summaries, anomaly detection, and personalized budget advice.
-              </p>
-              <button
-                onClick={() => {
-                  if (onRequestGeminiKey) onRequestGeminiKey();
-                }}
-                className="px-4 py-2 bg-gradient-to-r from-teal-500 to-emerald-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-teal-500/20 flex items-center gap-2 hover:scale-105 transition-all"
-              >
-                <Key className="w-3.5 h-3.5" />
-                <span>Configure Gemini API Key</span>
-              </button>
-            </div>
-          ) : !aiResult && !isGeneratingAi ? (
-            <div className="flex-1 flex flex-col items-center justify-center text-center p-6 border border-dashed border-border rounded-xl">
-              <Sparkles className="w-8 h-8 text-teal-400 mb-2" />
-              <h4 className="text-base font-bold">Generate AI Financial Analysis</h4>
-              <p className="text-xs text-muted-foreground max-w-sm mt-1 mb-4">
-                Gemini will analyze your spending habits for {selectedMonth === 'all' ? 'all months' : selectedMonth} and provide intelligent recommendations.
-              </p>
-              <button
-                onClick={handleGenerateAiInsights}
-                className="px-5 py-2.5 bg-gradient-to-r from-teal-500 to-emerald-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-teal-500/20 flex items-center gap-2 hover:scale-105 active:scale-95 transition-all"
-              >
-                <Sparkles className="w-4 h-4" />
-                <span>Generate Insights Now</span>
-              </button>
-              {aiError && <p className="text-xs text-rose-400 mt-3 font-medium">{aiError}</p>}
-            </div>
-          ) : isGeneratingAi ? (
-            <div className="flex-1 flex flex-col items-center justify-center p-8 text-center space-y-4">
-              <div className="relative">
-                <div className="w-12 h-12 rounded-full border-4 border-teal-500/20 border-t-teal-400 animate-spin" />
-                <Sparkles className="w-5 h-5 text-teal-400 absolute inset-0 m-auto animate-pulse" />
-              </div>
-              <div>
-                <p className="text-sm font-bold text-foreground">Analyzing your transaction data...</p>
-                <p className="text-xs text-muted-foreground mt-1">Gemini is searching for spending patterns and savings opportunities.</p>
-              </div>
-            </div>
-          ) : aiResult ? (
-            <div className="flex-1 flex flex-col gap-4 overflow-y-auto max-h-[300px] pr-1">
-              {/* Executive Digest Card */}
-              <div className="p-4 rounded-xl bg-gradient-to-br from-teal-500/10 via-emerald-500/5 to-transparent border border-teal-500/20">
-                <div className="flex items-center gap-2 mb-2">
-                  <Sparkles className="w-4 h-4 text-teal-400" />
-                  <h4 className="text-xs font-extrabold uppercase tracking-wider text-teal-400">Executive Spending Summary</h4>
-                </div>
-                <p className="text-xs text-foreground leading-relaxed font-medium">{aiResult.digest}</p>
-              </div>
-
-              {/* Anomalies & Badges */}
-              {aiResult.anomalies && aiResult.anomalies.length > 0 && (
-                <div>
-                  <h5 className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-2">Detected Patterns & Anomalies</h5>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {aiResult.anomalies.map((anom, idx) => (
-                      <div 
-                        key={idx} 
-                        className={`p-3 rounded-xl border flex items-start gap-2.5 text-xs ${
-                          anom.type === 'spike'
-                            ? 'bg-rose-500/10 border-rose-500/30 text-rose-300'
-                            : anom.type === 'positive_trend'
-                            ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
-                            : anom.type === 'new_merchant'
-                            ? 'bg-amber-500/10 border-amber-500/30 text-amber-300'
-                            : 'bg-teal-500/10 border-teal-500/30 text-teal-300'
-                        }`}
-                      >
-                        {anom.type === 'spike' ? (
-                          <AlertTriangle className="w-4 h-4 shrink-0 text-rose-400 mt-0.5" />
-                        ) : anom.type === 'positive_trend' ? (
-                          <ArrowDownRight className="w-4 h-4 shrink-0 text-emerald-400 mt-0.5" />
-                        ) : (
-                          <ArrowUpRight className="w-4 h-4 shrink-0 text-amber-400 mt-0.5" />
-                        )}
-                        <div>
-                          <p className="font-bold text-foreground">{anom.title}</p>
-                          <p className="text-[11px] opacity-90 mt-0.5">{anom.description}</p>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Recommendations */}
-              {aiResult.recommendations && aiResult.recommendations.length > 0 && (
-                <div>
-                  <h5 className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-2">Actionable Recommendations</h5>
-                  <div className="space-y-2">
-                    {aiResult.recommendations.map((rec, idx) => (
-                      <div key={idx} className="p-3 rounded-xl bg-card/60 border border-border/60 flex items-center justify-between gap-3 text-xs">
-                        <div className="flex items-center gap-2">
-                          <span className="w-2 h-2 rounded-full bg-teal-400"></span>
-                          <span className="text-foreground font-medium">{rec.action}</span>
-                        </div>
-                        <span className="px-2 py-1 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-bold shrink-0 text-[10px]">
-                          {rec.impact}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Regenerate Footer */}
-              <div className="flex items-center justify-between pt-2 border-t border-border/30 text-[10px] text-muted-foreground">
-                <span>Generated at {new Date(aiResult.generatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+        {aiExpanded && (
+          <div className="px-5 pb-5 pt-2 border-t border-border/60">
+            {!hasGeminiApiKey() ? (
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 py-2">
+                <p className="text-body text-muted-foreground">
+                  Connect your Google Gemini API key to generate spending summaries and anomaly checks.
+                </p>
                 <button
-                  onClick={handleGenerateAiInsights}
-                  className="flex items-center gap-1 hover:text-foreground font-semibold transition-colors"
+                  type="button"
+                  onClick={() => onRequestGeminiKey?.()}
+                  className="px-3.5 py-2 rounded-[10px] bg-primary text-primary-foreground text-label font-medium inline-flex items-center gap-2 shrink-0 hover:opacity-90 transition-opacity focus-visible:ring-2 ring-ring/40"
                 >
-                  <RefreshCw className="w-3 h-3" />
-                  <span>Refresh Insights</span>
+                  <Key className="w-3.5 h-3.5" />
+                  <span>Configure API key</span>
                 </button>
               </div>
-            </div>
-          ) : null}
-        </div>
-      )}
-    </motion.div>
+            ) : !aiResult && !isGeneratingAi ? (
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 py-2">
+                <div>
+                  <p className="text-body text-muted-foreground">
+                    Analyze spending patterns for {anchorMonth}.
+                  </p>
+                  {aiError && <p className="text-label text-negative mt-1">{aiError}</p>}
+                </div>
+                <button
+                  type="button"
+                  onClick={handleGenerateAiInsights}
+                  className="px-3.5 py-2 rounded-[10px] bg-primary text-primary-foreground text-label font-medium inline-flex items-center gap-2 shrink-0 hover:opacity-90 transition-opacity focus-visible:ring-2 ring-ring/40"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>Generate analysis</span>
+                </button>
+              </div>
+            ) : isGeneratingAi ? (
+              <div className="py-4 text-body text-muted-foreground">
+                Analyzing transaction data...
+              </div>
+            ) : aiResult ? (
+              <div className="space-y-4 pt-2">
+                <p className="text-body text-foreground leading-relaxed">{aiResult.digest}</p>
+
+                {aiResult.anomalies && aiResult.anomalies.length > 0 && (
+                  <div className="space-y-2">
+                    <h4 className="text-label font-medium uppercase tracking-[0.06em] text-muted-foreground">
+                      Notable patterns
+                    </h4>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {aiResult.anomalies.map((anom, idx) => (
+                        <div
+                          key={idx}
+                          className="p-3 rounded-[10px] bg-surface2 border border-border flex items-start gap-2.5"
+                        >
+                          {anom.type === 'spike' ? (
+                            <AlertTriangle className="w-4 h-4 shrink-0 text-negative mt-0.5" />
+                          ) : anom.type === 'positive_trend' ? (
+                            <ArrowDownRight className="w-4 h-4 shrink-0 text-bucket-saved mt-0.5" />
+                          ) : (
+                            <ArrowUpRight className="w-4 h-4 shrink-0 text-muted-foreground mt-0.5" />
+                          )}
+                          <div>
+                            <p className="text-body font-medium text-foreground">{anom.title}</p>
+                            <p className="text-label text-muted-foreground mt-0.5">
+                              {anom.description}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {aiResult.recommendations && aiResult.recommendations.length > 0 && (
+                  <div className="space-y-2">
+                    <h4 className="text-label font-medium uppercase tracking-[0.06em] text-muted-foreground">
+                      Recommendations
+                    </h4>
+                    <div className="space-y-1.5">
+                      {aiResult.recommendations.map((rec, idx) => (
+                        <div
+                          key={idx}
+                          className="px-3 py-2 rounded-[10px] bg-surface2 flex items-center justify-between gap-3"
+                        >
+                          <span className="text-body text-foreground">{rec.action}</span>
+                          <span className="text-label text-bucket-saved font-medium shrink-0">
+                            {rec.impact}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between pt-2 border-t border-border/50 text-label text-muted-foreground">
+                  <span>
+                    Generated at{' '}
+                    {new Date(aiResult.generatedAt).toLocaleTimeString([], {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleGenerateAiInsights}
+                    className="inline-flex items-center gap-1 hover:text-foreground transition-colors"
+                  >
+                    <RefreshCw className="w-3 h-3" />
+                    <span>Refresh</span>
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }

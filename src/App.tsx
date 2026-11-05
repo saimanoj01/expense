@@ -134,7 +134,7 @@ function MainRouter({
         bucketId={normalizedBucket}
         month={currentRoute.month || txnHooks.selectedMonth}
         totalIncome={txnHooks.totalIncome}
-        transactions={txnHooks.monthTransactions}
+        transactions={txnHooks.transactions}
         categories={budgetHooks.categories}
         budgets={budgetHooks.budgets}
         onOpenAddTxn={handleOpenAddTxn}

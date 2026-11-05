@@ -125,7 +125,12 @@ export function parseHash(hashString: string, fallbackMonth: string = getCurrent
   // Level 3 Category: #/month/:month/category/:catId
   // or Level 4 Category txns: #/month/:month/category/:catId/transactions
   if (rest[0] === 'category' && rest[1]) {
-    const categoryId = rest[1];
+    let categoryId = rest[1];
+    try {
+      categoryId = decodeURIComponent(rest[1]);
+    } catch {
+      categoryId = rest[1];
+    }
     if (rest[2] === 'transactions') {
       return { view: 'transactions', level: 4, month, categoryId, isCategoryTransactions: true };
     }

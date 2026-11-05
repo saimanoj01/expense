@@ -99,13 +99,16 @@ export const Level2BucketView: React.FC<Level2BucketViewProps> = ({
 
   const priorSpent = useMemo(() => {
     if (!priorMonthKey) return null;
+    const anyPriorMonthTxn = transactions.some(
+      t => t.date && t.date.startsWith(priorMonthKey) && t.type !== 'transfer'
+    );
+    if (!anyPriorMonthTxn) return null;
     const pTxns = transactions.filter(t => {
       const matchMonth = t.date && t.date.startsWith(priorMonthKey);
       if (!matchMonth) return false;
       if (bucketId === 'income') return t.type === 'income';
       return t.type === 'expense' && bucketOf(t, categories) === bucketId;
     });
-    if (pTxns.length === 0) return null;
     return pTxns.reduce((sum, t) => sum + t.amount, 0);
   }, [transactions, priorMonthKey, bucketId, categories]);
 
@@ -149,17 +152,24 @@ export const Level2BucketView: React.FC<Level2BucketViewProps> = ({
       });
     } else {
       bucketTransactions.forEach(t => {
-        const catId = t.category || 'misc';
+        const rawCat = t.category || 'misc';
         const catObj = categories.find(
-          c => c.id === catId || c.name.toLowerCase() === catId.toLowerCase()
+          c =>
+            c.id.toLowerCase() === rawCat.toLowerCase() ||
+            c.name.toLowerCase() === rawCat.toLowerCase()
         );
-        const catName = catObj?.name || catId;
+        const key = catObj?.id || rawCat;
+        const catName = catObj?.name || rawCat;
         const catEmoji = catObj?.emoji || '🏷️';
 
-        if (!map[catId]) {
-          const bObj = budgets.find(b => b.category === catId || b.category === catName);
-          map[catId] = {
-            id: catId,
+        if (!map[key]) {
+          const bObj = budgets.find(
+            b =>
+              b.category.toLowerCase() === key.toLowerCase() ||
+              b.category.toLowerCase() === catName.toLowerCase()
+          );
+          map[key] = {
+            id: key,
             name: catName,
             emoji: catEmoji,
             spent: 0,
@@ -167,13 +177,17 @@ export const Level2BucketView: React.FC<Level2BucketViewProps> = ({
             budget: bObj?.amount || 0,
           };
         }
-        map[catId].spent += t.amount;
-        map[catId].txnCount += 1;
+        map[key].spent += t.amount;
+        map[key].txnCount += 1;
       });
 
       categories.forEach(c => {
         if (deriveCategoryBucket(c.id, c) === bucketId && !map[c.id]) {
-          const bObj = budgets.find(b => b.category === c.id || b.category === c.name);
+          const bObj = budgets.find(
+            b =>
+              b.category.toLowerCase() === c.id.toLowerCase() ||
+              b.category.toLowerCase() === c.name.toLowerCase()
+          );
           if (bObj && bObj.amount > 0) {
             map[c.id] = {
               id: c.id,

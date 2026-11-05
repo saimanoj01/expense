@@ -1,8 +1,7 @@
-import { useState, useMemo, Suspense, lazy } from 'react';
+import { useMemo, Suspense, lazy } from 'react';
 import { TrendChart } from '../dashboard/TrendChart';
 import { TrendChartDetails } from '../../hooks/useTransactions';
 import { Category, Budget, Transaction } from '../../services/storage';
-import { BarChart3, TrendingUp } from 'lucide-react';
 import { formatMonthLabel } from '../../utils/navigation';
 import { bucketOf } from '../../utils/categorizer';
 import { bucketColor, negativeColor } from '../../theme/buckets';
@@ -29,24 +28,30 @@ export function TrendsView({
   budgets = [],
   categories = [],
   transactions = [],
-  availableMonths: _availableMonths = [],
   onSelectMonth,
-  onRequestGeminiKey
+  onRequestGeminiKey,
 }: TrendsViewProps) {
-  const [selectedTimeframe, setSelectedTimeframe] = useState<'month' | 'all'>('month');
-
-  const activeMonth = selectedTimeframe === 'all' ? 'all' : month;
-
   // Waterfall Chart Data for cash flow breakdown
   const waterfallData = useMemo<WaterfallItem[]>(() => {
-    const periodTxns = activeMonth === 'all'
-      ? transactions.filter(t => t.type !== 'transfer')
-      : transactions.filter(t => t.date && t.date.startsWith(activeMonth) && t.type !== 'transfer');
+    const periodTxns =
+      month === 'all'
+        ? transactions.filter(t => t.type !== 'transfer')
+        : transactions.filter(
+            t => t.date && t.date.startsWith(month) && t.type !== 'transfer'
+          );
 
-    const totalIncome = periodTxns.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0);
-    const fixedExpenses = periodTxns.filter(t => t.type === 'expense' && bucketOf(t, categories) === 'fixed').reduce((s, t) => s + t.amount, 0);
-    const flexibleExpenses = periodTxns.filter(t => t.type === 'expense' && bucketOf(t, categories) === 'flexible').reduce((s, t) => s + t.amount, 0);
-    const nonMonthlyExpenses = periodTxns.filter(t => t.type === 'expense' && bucketOf(t, categories) === 'non-monthly').reduce((s, t) => s + t.amount, 0);
+    const totalIncome = periodTxns
+      .filter(t => t.type === 'income')
+      .reduce((s, t) => s + t.amount, 0);
+    const fixedExpenses = periodTxns
+      .filter(t => t.type === 'expense' && bucketOf(t, categories) === 'fixed')
+      .reduce((s, t) => s + t.amount, 0);
+    const flexibleExpenses = periodTxns
+      .filter(t => t.type === 'expense' && bucketOf(t, categories) === 'flexible')
+      .reduce((s, t) => s + t.amount, 0);
+    const nonMonthlyExpenses = periodTxns
+      .filter(t => t.type === 'expense' && bucketOf(t, categories) === 'non-monthly')
+      .reduce((s, t) => s + t.amount, 0);
     const totalExpenses = fixedExpenses + flexibleExpenses + nonMonthlyExpenses;
     const savingsAmount = totalIncome - totalExpenses;
 
@@ -59,7 +64,7 @@ export function TrendsView({
       value: Math.max(0, totalIncome),
       displayValue: totalIncome,
       color: bucketColor('saved'),
-      stepType: 'inflow'
+      stepType: 'inflow',
     });
 
     // 2. Fixed
@@ -71,7 +76,7 @@ export function TrendsView({
       value: fixedExpenses,
       displayValue: fixedExpenses,
       color: bucketColor('fixed'),
-      stepType: 'outflow'
+      stepType: 'outflow',
     });
 
     // 3. Variable
@@ -82,7 +87,7 @@ export function TrendsView({
       value: flexibleExpenses,
       displayValue: flexibleExpenses,
       color: bucketColor('flexible'),
-      stepType: 'outflow'
+      stepType: 'outflow',
     });
 
     // 4. Non-Monthly
@@ -93,7 +98,7 @@ export function TrendsView({
       value: nonMonthlyExpenses,
       displayValue: nonMonthlyExpenses,
       color: bucketColor('non-monthly'),
-      stepType: 'outflow'
+      stepType: 'outflow',
     });
 
     // 5. Net Saved
@@ -103,91 +108,56 @@ export function TrendsView({
       value: Math.max(0, Math.abs(savingsAmount)),
       displayValue: savingsAmount,
       color: savingsAmount >= 0 ? bucketColor('saved') : negativeColor(),
-      stepType: 'total'
+      stepType: 'total',
     });
 
     return items;
-  }, [transactions, activeMonth, categories]);
+  }, [transactions, month, categories]);
 
   return (
-    <div className="space-y-4" data-testid="trends-workspace">
-      {/* Hero Header */}
-      <div className="p-6 rounded-2xl bg-gradient-to-br from-card/80 to-card/40 border border-border backdrop-blur-md shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <div className="p-2 rounded-xl bg-primary/10 text-primary">
-              <BarChart3 className="w-5 h-5" />
-            </div>
-            <h1 className="text-xl font-bold tracking-tight text-foreground">
-              Trends & Visual Analytics
-            </h1>
-          </div>
-          <p className="text-xs text-muted-foreground mt-1">
-            Evaluate intra-month pacing velocity, multi-month cash flow trajectory, and AI intelligence
-          </p>
-        </div>
-
-        {/* Timeframe Selector Pill */}
-        <div className="flex items-center bg-card/60 p-1 rounded-xl border border-border">
-          <button
-            onClick={() => setSelectedTimeframe('month')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-              selectedTimeframe === 'month'
-                ? 'bg-primary text-primary-foreground shadow-sm'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            {formatMonthLabel(month)}
-          </button>
-          <button
-            onClick={() => setSelectedTimeframe('all')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
-              selectedTimeframe === 'all'
-                ? 'bg-primary text-primary-foreground shadow-sm'
-                : 'text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            All Time
-          </button>
-        </div>
+    <div
+      className="max-w-[920px] mx-auto space-y-6 pb-8"
+      data-testid="trends-workspace"
+    >
+      <div>
+        <h1 className="text-title text-foreground">Trends</h1>
+        <p className="text-label text-muted-foreground mt-0.5">
+          12-month cash flow, savings trajectory, and category momentum
+        </p>
       </div>
 
-      {/* Main Analytics Engine */}
       <TrendChart
         trendDetails={trendDetails}
         totalBudget={totalBudget}
         budgets={budgets}
         categories={categories}
         transactions={transactions}
-        selectedMonth={activeMonth}
+        selectedMonth={month}
         onSelectMonth={onSelectMonth}
         onRequestGeminiKey={onRequestGeminiKey}
       />
 
-      {/* Cash Flow Waterfall Breakdown Card */}
-      <div className="p-6 rounded-2xl bg-card border border-border shadow-md space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="p-2 rounded-xl bg-primary/10 text-primary">
-              <TrendingUp className="w-4 h-4" />
-            </div>
-            <div>
-              <h2 className="text-sm font-bold text-foreground">
-                Cash Flow Allocation Breakdown
-              </h2>
-              <p className="text-xs text-muted-foreground">
-                Inflow allocation across fixed commitments, variable spending, and retained net savings
-              </p>
-            </div>
+      {/* Cash Flow Allocation Breakdown */}
+      <div className="p-5 rounded-[14px] bg-card border border-border space-y-3">
+        <div className="flex items-baseline justify-between">
+          <div>
+            <h2 className="text-heading text-foreground">
+              Monthly allocation breakdown
+            </h2>
+            <p className="text-label text-muted-foreground">
+              Inflow across fixed commitments, variable spending, and retained savings
+            </p>
           </div>
-          <span className="text-xs font-mono text-muted-foreground">{formatMonthLabel(activeMonth)}</span>
+          <span className="text-label text-muted-foreground">
+            {formatMonthLabel(month)}
+          </span>
         </div>
 
         <div className="min-h-[180px] flex items-center justify-center pt-2">
           <Suspense
             fallback={
-              <div className="w-full h-[180px] flex items-center justify-center text-xs text-muted-foreground bg-secondary/30 rounded-xl border border-border/40 animate-pulse">
-                Loading Waterfall Breakdown...
+              <div className="w-full h-[180px] flex items-center justify-center text-label text-muted-foreground bg-surface2 rounded-[10px]">
+                Loading breakdown...
               </div>
             }
           >
