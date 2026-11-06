@@ -1,5 +1,5 @@
 import { useState, useMemo, forwardRef } from 'react';
-import { Edit2, Trash2, Plus, X } from 'lucide-react';
+import { Edit2, Trash2, Plus, X, Check } from 'lucide-react';
 import { Transaction, Category, DEFAULT_CATEGORIES, SpendingBucket } from '../../services/storage';
 import { formatTransactionAmount } from '../../utils/formatters';
 import { bucketOf } from '../../utils/categorizer';
@@ -20,6 +20,7 @@ interface TransactionItemProps {
   setSelectedTagFilter: (tag: string | null) => void;
   handleAddTag?: (txnId: string, tags: string[]) => void;
   handleRemoveTag?: (txnId: string, tag: string) => void;
+  handleDismissReview?: (txnId: string) => void;
 }
 
 export const TransactionItem = forwardRef<HTMLDivElement, TransactionItemProps>(function TransactionItem({
@@ -37,6 +38,7 @@ export const TransactionItem = forwardRef<HTMLDivElement, TransactionItemProps>(
   setSelectedTagFilter,
   handleAddTag,
   handleRemoveTag,
+  handleDismissReview,
 }, ref) {
   const [showTagPopover, setShowTagPopover] = useState(false);
 
@@ -117,13 +119,45 @@ export const TransactionItem = forwardRef<HTMLDivElement, TransactionItemProps>(
         </div>
 
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <h4 className="text-body font-medium text-foreground truncate">
               {transaction.description}
             </h4>
             {isDuplicate && (
               <span className="px-1.5 py-0.5 rounded text-label font-medium bg-negative/10 text-negative border border-negative/25 shrink-0">
                 Duplicate
+              </span>
+            )}
+            {currentLabels.includes('needs-review') && (
+              <span
+                data-testid={`needs-review-badge-${transaction.id}`}
+                title={
+                  transaction.meta?.review?.detail ||
+                  'Flagged by automated ingestion for review'
+                }
+                className="inline-flex items-center gap-1.5 px-1.5 py-0.5 rounded text-label font-medium bg-warning/15 text-warning border border-warning/30 shrink-0"
+              >
+                <span>
+                  Needs Review
+                  {transaction.meta?.review?.reason
+                    ? ` (${transaction.meta.review.reason})`
+                    : ''}
+                </span>
+                {!isLockedMonth && handleDismissReview && (
+                  <button
+                    type="button"
+                    data-testid={`dismiss-review-btn-${transaction.id}`}
+                    title="Confirm transaction looks good and clear review flag"
+                    onClick={e => {
+                      e.stopPropagation();
+                      handleDismissReview(transaction.id);
+                    }}
+                    className="inline-flex items-center gap-0.5 px-1 py-0.5 rounded bg-background/80 hover:bg-background text-foreground border border-border/60 text-[10px] font-semibold transition-colors"
+                  >
+                    <Check className="w-2.5 h-2.5 text-positive" />
+                    Looks Good
+                  </button>
+                )}
               </span>
             )}
           </div>

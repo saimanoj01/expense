@@ -11,15 +11,27 @@ export class GeminiApiError extends Error {
   }
 }
 
+function getSafeLocalStorage(): Storage | null {
+  try {
+    return typeof localStorage !== 'undefined' ? localStorage : null;
+  } catch {
+    return null;
+  }
+}
+
 /**
- * Retrieves the Gemini API key from localStorage, falling back to VITE_GEMINI_API_KEY env var if present.
+ * Retrieves the Gemini API key from localStorage, falling back to VITE_GEMINI_API_KEY / GEMINI_API_KEY env var if present.
  */
 export function getGeminiApiKey(): string | null {
-  const stored = localStorage.getItem(GEMINI_KEY_STORAGE_KEY);
+  const storage = getSafeLocalStorage();
+  const stored = storage?.getItem(GEMINI_KEY_STORAGE_KEY);
   if (stored && stored.trim()) {
     return stored.trim();
   }
-  const envKey = import.meta.env.VITE_GEMINI_API_KEY;
+  const viteEnv = (import.meta as { env?: Record<string, string | undefined> }).env;
+  const envKey =
+    viteEnv?.VITE_GEMINI_API_KEY ||
+    (typeof process !== 'undefined' ? process.env?.GEMINI_API_KEY || process.env?.VITE_GEMINI_API_KEY : undefined);
   if (typeof envKey === 'string' && envKey.trim()) {
     return envKey.trim();
   }
@@ -27,11 +39,11 @@ export function getGeminiApiKey(): string | null {
 }
 
 export function setGeminiApiKey(key: string): void {
-  localStorage.setItem(GEMINI_KEY_STORAGE_KEY, key.trim());
+  getSafeLocalStorage()?.setItem(GEMINI_KEY_STORAGE_KEY, key.trim());
 }
 
 export function clearGeminiApiKey(): void {
-  localStorage.removeItem(GEMINI_KEY_STORAGE_KEY);
+  getSafeLocalStorage()?.removeItem(GEMINI_KEY_STORAGE_KEY);
 }
 
 export function hasGeminiApiKey(): boolean {
@@ -43,7 +55,7 @@ export function hasGeminiApiKey(): boolean {
  * (as opposed to the key coming from VITE_GEMINI_API_KEY env var).
  */
 export function hasUserStoredKey(): boolean {
-  const stored = localStorage.getItem(GEMINI_KEY_STORAGE_KEY);
+  const stored = getSafeLocalStorage()?.getItem(GEMINI_KEY_STORAGE_KEY);
   return !!stored && !!stored.trim();
 }
 

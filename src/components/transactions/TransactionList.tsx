@@ -29,6 +29,7 @@ interface TransactionListProps {
   handleRemoveTag?: (txnId: string, tag: string) => void;
   handleExecuteBulkAddTag?: (selectedTxnIds: Set<string>, tags: string[]) => void;
   handleExecuteBulkRemoveTag?: (selectedTxnIds: Set<string>, tag: string) => void;
+  handleDismissReview?: (txnId: string) => void;
 }
 
 function formatDayHeader(dateStr: string): string {
@@ -67,6 +68,7 @@ export function TransactionList({
   handleRemoveTag,
   handleExecuteBulkAddTag,
   handleExecuteBulkRemoveTag,
+  handleDismissReview,
 }: TransactionListProps) {
   const [showBulkAddPopover, setShowBulkAddPopover] = useState(false);
 
@@ -164,6 +166,7 @@ export function TransactionList({
                     setSelectedTagFilter={setSelectedTagFilter}
                     handleAddTag={handleAddTag}
                     handleRemoveTag={handleRemoveTag}
+                    handleDismissReview={handleDismissReview}
                   />
                 ))}
               </div>
@@ -189,6 +192,7 @@ export function TransactionList({
               setSelectedTagFilter={setSelectedTagFilter}
               handleAddTag={handleAddTag}
               handleRemoveTag={handleRemoveTag}
+              handleDismissReview={handleDismissReview}
             />
           ))}
         </div>

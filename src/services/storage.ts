@@ -1,4 +1,96 @@
+// Safe in-memory localStorage fallback for Node/CLI execution
+try {
+  if (typeof globalThis !== 'undefined' && typeof globalThis.localStorage === 'undefined') {
+    const mem = new Map<string, string>();
+    Object.defineProperty(globalThis, 'localStorage', {
+      value: {
+        get length() { return mem.size; },
+        clear() { mem.clear(); },
+        getItem(key: string) { return mem.has(key) ? mem.get(key)! : null; },
+        key(index: number) { return Array.from(mem.keys())[index] ?? null; },
+        removeItem(key: string) { mem.delete(key); },
+        setItem(key: string, value: string) { mem.set(key, String(value)); },
+      },
+      configurable: true,
+      writable: true,
+    });
+  }
+} catch {
+  // Ignore if environment restricts globalThis property definition
+}
+
 export type SpendingBucket = 'fixed' | 'flexible' | 'non-monthly';
+
+export type ReviewReason =
+  | 'duplicate'
+  | 'category'
+  | 'amount-mismatch'
+  | 'voided'
+  | 'tip-drift';
+
+export type EditableTxField =
+  | 'category'
+  | 'subCategory'
+  | 'spendingBucket'
+  | 'description'
+  | 'amount'
+  | 'date'
+  | 'type'
+  | 'notes';
+
+export interface TxReviewInfo {
+  reason: ReviewReason;
+  reasons?: ReviewReason[];
+  detail?: string;
+  flaggedAt?: string;
+  resolvedAt?: string;
+}
+
+export interface TxMeta {
+  sources?: string[];                    // e.g. ['bilt-plaid', 'amazon-email']
+  externalIds?: Record<string, string>;  // sourceId -> externalId
+  account?: string;                      // Card/account identifier (e.g. 'bilt', 'amazon-synchrony')
+  aliasHashes?: string[];                // 16-hex prefixes of pre-enrichment/pre-split hashes
+  orderId?: string;                      // Shared order ID for Amazon multi-item splits
+  review?: TxReviewInfo;
+  confidence?: number;                   // 0.0 - 1.0 classification confidence
+  categorizedBy?: 'user' | 'history' | 'keyword' | 'llm' | 'fallback';
+  userEdited?: EditableTxField[];        // Fields manually edited by user (never overwritten by feed updates)
+  provisional?: boolean;                 // Optional flag for instant tap sources (e.g. Google Wallet)
+  ingestedAt?: string;
+  updatedAt?: string;
+}
+
+export interface IngestSourceState {
+  sourceId: string;
+  syncStartDate?: string;                // Ignore inputs earlier than YYYY-MM-DD (only when explicitly set)
+  lastSyncAt?: string;                   // ISO 8601 timestamp
+  totalIngested?: number;                // Cumulative ingested count for this source
+  cursor?: string;                       // Optional feed pagination/sync cursor
+}
+
+export interface IngestRunSummary {
+  runId: string;
+  sourceId: string;
+  timestamp: string;
+  inserted: number;
+  flagged: number;
+  merged: number;
+  updated: number;
+  removed: number;
+  skipped: number;
+}
+
+export interface IngestState {
+  version: number;
+  tombstones: string[];                  // externalIds and 16-char hash prefixes
+  sources: Record<string, IngestSourceState>;
+  recentRuns: IngestRunSummary[];
+}
+
+export interface StorageWriteOptions {
+  ignoreLocks?: boolean;
+}
 
 export interface Transaction {
   id: string;          // Unique UUID (generated on creation)
@@ -12,6 +104,7 @@ export interface Transaction {
   labels: string[];    // Array of tags/labels
   hash: string;        // SHA-256 hash of transaction properties used for deduplication
   spendingBucket?: SpendingBucket; // Spending classification bucket
+  meta?: TxMeta;       // Provenance, deduplication aliases, and review state (Column L)
 }
 
 export interface Category {
@@ -59,10 +152,10 @@ export interface StorageAdapter {
   deleteCategory(projectId: string, categoryId: string): Promise<void>;
 
   getTransactions(projectId: string): Promise<Transaction[]>;
-  saveTransaction(projectId: string, transaction: Transaction): Promise<Transaction>;
-  saveTransactions(projectId: string, transactions: Transaction[]): Promise<Transaction[]>;
-  deleteTransaction(projectId: string, transactionId: string): Promise<void>;
-  deleteTransactions(projectId: string, transactionIds: string[]): Promise<void>;
+  saveTransaction(projectId: string, transaction: Transaction, options?: StorageWriteOptions): Promise<Transaction>;
+  saveTransactions(projectId: string, transactions: Transaction[], options?: StorageWriteOptions): Promise<Transaction[]>;
+  deleteTransaction(projectId: string, transactionId: string, options?: StorageWriteOptions): Promise<void>;
+  deleteTransactions(projectId: string, transactionIds: string[], options?: StorageWriteOptions): Promise<void>;
 
   getBudgets(projectId: string): Promise<Budget[]>;
   saveBudgets(projectId: string, budgets: Budget[]): Promise<void>;
@@ -73,6 +166,21 @@ export interface StorageAdapter {
   getBudgetNotes(projectId: string): Promise<Record<string, BudgetNote>>;
   saveBudgetNote(projectId: string, key: string, note: BudgetNote): Promise<void>;
   deleteBudgetNote(projectId: string, key: string): Promise<void>;
+
+  getIngestState?(projectId: string): Promise<IngestState>;
+  saveIngestState?(projectId: string, state: IngestState): Promise<void>;
+  acquireIngestLock?(projectId: string, holderId: string, ttlMs?: number): Promise<void>;
+  releaseIngestLock?(projectId: string, holderId: string): Promise<void>;
+  commitIngestBatch?(
+    projectId: string,
+    payload: {
+      upserts: Transaction[];
+      deleteIds: string[];
+      ingestState: IngestState;
+    },
+    options?: StorageWriteOptions
+  ): Promise<void>;
+  invalidateCache?(projectId?: string): void;
 }
 
 // Default categories for new projects
@@ -399,7 +507,7 @@ export class LocalStorageAdapter implements StorageAdapter {
       let needsRepair = false;
       for (const t of parsed) {
         if (!t.hash) {
-          t.hash = `${t.date}-${(t.description || '').trim().toLowerCase()}-${Number(t.amount).toFixed(2)}-${(t.type || '').trim().toLowerCase()}`;
+          t.hash = `${t.date}|${(t.description || '').trim().toLowerCase()}|${Number(t.amount).toFixed(2)}|${(t.type || '').trim().toLowerCase()}`;
           needsRepair = true;
         }
         if (!Array.isArray(t.labels)) {
@@ -437,27 +545,31 @@ export class LocalStorageAdapter implements StorageAdapter {
     }
   }
 
-  async saveTransaction(projectId: string, transaction: Transaction): Promise<Transaction> {
+  async saveTransaction(projectId: string, transaction: Transaction, options?: StorageWriteOptions): Promise<Transaction> {
     this.ensureProjectsRestored();
     const transactions = await this.getTransactions(projectId);
     const existingIndex = transactions.findIndex(t => t.id === transaction.id);
 
-    // Enforce lock check on target date's month
-    const locks = await this.getLocks(projectId);
-    const txMonth = transaction.date.substring(0, 7); // YYYY-MM
-    const isLocked = locks.some(lock => lock.month === txMonth && lock.locked);
-    if (isLocked) {
-      throw new Error(`Cannot write to locked month (${txMonth} is locked)`);
+    if (!options?.ignoreLocks) {
+      // Enforce lock check on target date's month
+      const locks = await this.getLocks(projectId);
+      const txMonth = transaction.date.substring(0, 7); // YYYY-MM
+      const isLocked = locks.some(lock => lock.month === txMonth && lock.locked);
+      if (isLocked) {
+        throw new Error(`Cannot write to locked month (${txMonth} is locked)`);
+      }
+
+      if (existingIndex > -1) {
+        const originalTx = transactions[existingIndex];
+        const originalMonth = originalTx.date.substring(0, 7);
+        const isOriginalLocked = locks.some(lock => lock.month === originalMonth && lock.locked);
+        if (isOriginalLocked) {
+          throw new Error(`Cannot modify transaction. The original month ${originalMonth} is locked.`);
+        }
+      }
     }
 
-    // Importantly, if it's an existing transaction (updating an edit), retrieve the transaction's PREVIOUS/OLD date from the database, and verify if THAT month is locked as well.
     if (existingIndex > -1) {
-      const originalTx = transactions[existingIndex];
-      const originalMonth = originalTx.date.substring(0, 7);
-      const isOriginalLocked = locks.some(lock => lock.month === originalMonth && lock.locked);
-      if (isOriginalLocked) {
-        throw new Error(`Cannot modify transaction. The original month ${originalMonth} is locked.`);
-      }
       transactions[existingIndex] = transaction;
     } else {
       if (!transaction.id) {
@@ -473,25 +585,27 @@ export class LocalStorageAdapter implements StorageAdapter {
     return transaction;
   }
 
-  async saveTransactions(projectId: string, newTransactions: Transaction[]): Promise<Transaction[]> {
+  async saveTransactions(projectId: string, newTransactions: Transaction[], options?: StorageWriteOptions): Promise<Transaction[]> {
     const transactions = await this.getTransactions(projectId);
-    const locks = await this.getLocks(projectId);
 
-    // Pre-validate all locks before mutating transactions array
-    for (const transaction of newTransactions) {
-      const txnMonth = transaction.date.substring(0, 7);
-      const isTargetLocked = locks.some(lock => lock.month === txnMonth && lock.locked);
-      if (isTargetLocked) {
-        throw new Error(`Cannot write to locked month ${txnMonth}`);
-      }
+    if (!options?.ignoreLocks) {
+      const locks = await this.getLocks(projectId);
+      // Pre-validate all locks before mutating transactions array
+      for (const transaction of newTransactions) {
+        const txnMonth = transaction.date.substring(0, 7);
+        const isTargetLocked = locks.some(lock => lock.month === txnMonth && lock.locked);
+        if (isTargetLocked) {
+          throw new Error(`Cannot write to locked month ${txnMonth}`);
+        }
 
-      const existingIndex = transactions.findIndex(t => t.id === transaction.id);
-      if (existingIndex > -1) {
-        const originalTx = transactions[existingIndex];
-        const originalMonth = originalTx.date.substring(0, 7);
-        const isOriginalLocked = locks.some(lock => lock.month === originalMonth && lock.locked);
-        if (isOriginalLocked) {
-          throw new Error(`Cannot modify transaction. The original month ${originalMonth} is locked.`);
+        const existingIndex = transactions.findIndex(t => t.id === transaction.id);
+        if (existingIndex > -1) {
+          const originalTx = transactions[existingIndex];
+          const originalMonth = originalTx.date.substring(0, 7);
+          const isOriginalLocked = locks.some(lock => lock.month === originalMonth && lock.locked);
+          if (isOriginalLocked) {
+            throw new Error(`Cannot modify transaction. The original month ${originalMonth} is locked.`);
+          }
         }
       }
     }
@@ -518,17 +632,18 @@ export class LocalStorageAdapter implements StorageAdapter {
     return newTransactions;
   }
 
-  async deleteTransaction(projectId: string, transactionId: string): Promise<void> {
+  async deleteTransaction(projectId: string, transactionId: string, options?: StorageWriteOptions): Promise<void> {
     const transactions = await this.getTransactions(projectId);
     const txIndex = transactions.findIndex(t => t.id === transactionId);
     if (txIndex === -1) return;
 
-    // Enforce lock check
-    const locks = await this.getLocks(projectId);
-    const txMonth = transactions[txIndex].date.substring(0, 7);
-    const isLocked = locks.some(lock => lock.month === txMonth && lock.locked);
-    if (isLocked) {
-      throw new Error(`Cannot delete transaction. The month ${txMonth} is locked.`);
+    if (!options?.ignoreLocks) {
+      const locks = await this.getLocks(projectId);
+      const txMonth = transactions[txIndex].date.substring(0, 7);
+      const isLocked = locks.some(lock => lock.month === txMonth && lock.locked);
+      if (isLocked) {
+        throw new Error(`Cannot delete transaction. The month ${txMonth} is locked.`);
+      }
     }
 
     transactions.splice(txIndex, 1);
@@ -539,18 +654,20 @@ export class LocalStorageAdapter implements StorageAdapter {
     }
   }
 
-  async deleteTransactions(projectId: string, transactionIds: string[]): Promise<void> {
+  async deleteTransactions(projectId: string, transactionIds: string[], options?: StorageWriteOptions): Promise<void> {
     if (transactionIds.length === 0) return;
     const transactions = await this.getTransactions(projectId);
     const idSet = new Set(transactionIds);
-    const locks = await this.getLocks(projectId);
 
-    for (const t of transactions) {
-      if (idSet.has(t.id)) {
-        const txMonth = t.date.substring(0, 7);
-        const isLocked = locks.some(lock => lock.month === txMonth && lock.locked);
-        if (isLocked) {
-          throw new Error(`Cannot delete transaction. The month ${txMonth} is locked.`);
+    if (!options?.ignoreLocks) {
+      const locks = await this.getLocks(projectId);
+      for (const t of transactions) {
+        if (idSet.has(t.id)) {
+          const txMonth = t.date.substring(0, 7);
+          const isLocked = locks.some(lock => lock.month === txMonth && lock.locked);
+          if (isLocked) {
+            throw new Error(`Cannot delete transaction. The month ${txMonth} is locked.`);
+          }
         }
       }
     }
@@ -638,6 +755,112 @@ export class LocalStorageAdapter implements StorageAdapter {
     } catch (e) {
       throw new Error('Local storage quota exceeded. Unable to delete budget note.');
     }
+  }
+
+  async getIngestState(projectId: string): Promise<IngestState> {
+    const raw = localStorage.getItem(`expense_ingest_state_${projectId}`);
+    if (!raw) return { version: 1, tombstones: [], sources: {}, recentRuns: [] };
+    try {
+      const parsed = JSON.parse(raw);
+      const tombstones = Array.isArray(parsed?.tombstones)
+        ? parsed.tombstones
+        : parsed?.tombstones && typeof parsed.tombstones === 'object'
+        ? Object.keys(parsed.tombstones)
+        : [];
+      return {
+        version: parsed?.version || 1,
+        tombstones,
+        sources: parsed?.sources && typeof parsed.sources === 'object' ? parsed.sources : {},
+        recentRuns: Array.isArray(parsed?.recentRuns)
+          ? parsed.recentRuns
+          : Array.isArray(parsed?.runs)
+          ? parsed.runs
+          : [],
+      };
+    } catch {
+      return { version: 1, tombstones: [], sources: {}, recentRuns: [] };
+    }
+  }
+
+  async saveIngestState(projectId: string, state: IngestState): Promise<void> {
+    const tombstones = Array.isArray(state.tombstones)
+      ? state.tombstones.slice(-2000)
+      : state.tombstones && typeof state.tombstones === 'object'
+      ? Object.keys(state.tombstones).slice(-2000)
+      : [];
+    const trimmed: IngestState = {
+      version: state.version || 1,
+      tombstones,
+      sources: state.sources || {},
+      recentRuns: Array.isArray(state.recentRuns) ? state.recentRuns.slice(-50) : [],
+    };
+    localStorage.setItem(`expense_ingest_state_${projectId}`, JSON.stringify(trimmed));
+  }
+
+  async commitIngestBatch(
+    projectId: string,
+    payload: {
+      upserts: Transaction[];
+      deleteIds: string[];
+      ingestState: IngestState;
+    },
+    options?: StorageWriteOptions
+  ): Promise<void> {
+    const prevTxsRaw = localStorage.getItem(`expense_txs_${projectId}`);
+    const transactions = await this.getTransactions(projectId);
+    const deleteSet = new Set(payload.deleteIds);
+
+    if (!options?.ignoreLocks) {
+      const locks = await this.getLocks(projectId);
+      for (const transaction of payload.upserts) {
+        const txnMonth = transaction.date.substring(0, 7);
+        if (locks.some(lock => lock.month === txnMonth && lock.locked)) {
+          throw new Error(`Cannot write to locked month ${txnMonth}`);
+        }
+      }
+      for (const t of transactions) {
+        if (deleteSet.has(t.id)) {
+          const txMonth = t.date.substring(0, 7);
+          if (locks.some(lock => lock.month === txMonth && lock.locked)) {
+            throw new Error(`Cannot delete transaction. The month ${txMonth} is locked.`);
+          }
+        }
+      }
+    }
+
+    const nextTxs = [...transactions];
+    for (const tx of payload.upserts) {
+      const copy = { ...tx };
+      if (!copy.id) {
+        copy.id = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 9);
+      }
+      const idx = nextTxs.findIndex(t => t.id === copy.id);
+      if (idx > -1) {
+        nextTxs[idx] = copy;
+      } else {
+        nextTxs.push(copy);
+      }
+    }
+    const finalTxs = deleteSet.size > 0 ? nextTxs.filter(t => !deleteSet.has(t.id)) : nextTxs;
+
+    try {
+      if (payload.upserts.length > 0 || payload.deleteIds.length > 0) {
+        localStorage.setItem(`expense_txs_${projectId}`, JSON.stringify(finalTxs));
+      }
+      await this.saveIngestState(projectId, payload.ingestState);
+    } catch (err) {
+      // Roll back transactions if ingest state write failed
+      if (prevTxsRaw === null) {
+        localStorage.removeItem(`expense_txs_${projectId}`);
+      } else {
+        localStorage.setItem(`expense_txs_${projectId}`, prevTxsRaw);
+      }
+      throw err;
+    }
+  }
+
+  invalidateCache(_projectId?: string): void {
+    // LocalStorageAdapter reads directly from storage on each call
   }
 
   async getCategories(projectId: string): Promise<Category[]> {
@@ -889,6 +1112,15 @@ export class GoogleSheetsAdapter implements StorageAdapter {
     }
   }
 
+  invalidateCache(projectId?: string): void {
+    if (projectId) {
+      delete this.cache[projectId];
+    } else {
+      this.cache = {};
+      this.projectsCache = null;
+    }
+  }
+
   private async ensureCache(projectId: string) {
     if (this.cache[projectId]) return;
     const project = (await this.getProjects()).find(p => p.id === projectId);
@@ -898,11 +1130,11 @@ export class GoogleSheetsAdapter implements StorageAdapter {
 
     let valueRanges: Array<{ values?: (string | number | boolean)[][] }> = [];
     try {
-      const res = await this.fetchApi(`https://sheets.googleapis.com/v4/spreadsheets/${project.spreadsheetId}/values:batchGet?ranges=Transactions!A:K&ranges=Categories!A:E&ranges=Budgets!A:B&ranges=Locks!A:C&ranges=Notes!A:B`);
+      const res = await this.fetchApi(`https://sheets.googleapis.com/v4/spreadsheets/${project.spreadsheetId}/values:batchGet?ranges=Transactions!A:L&ranges=Categories!A:E&ranges=Budgets!A:B&ranges=Locks!A:C&ranges=Notes!A:B`);
       valueRanges = res.valueRanges || [];
     } catch {
       // Fallback if Notes tab doesn't exist yet
-      const res = await this.fetchApi(`https://sheets.googleapis.com/v4/spreadsheets/${project.spreadsheetId}/values:batchGet?ranges=Transactions!A:K&ranges=Categories!A:E&ranges=Budgets!A:B&ranges=Locks!A:C`);
+      const res = await this.fetchApi(`https://sheets.googleapis.com/v4/spreadsheets/${project.spreadsheetId}/values:batchGet?ranges=Transactions!A:L&ranges=Categories!A:E&ranges=Budgets!A:B&ranges=Locks!A:C`);
       valueRanges = res.valueRanges || [];
     }
 
@@ -912,7 +1144,7 @@ export class GoogleSheetsAdapter implements StorageAdapter {
     const lockRows = valueRanges[3]?.values || [];
     const noteRows = valueRanges[4]?.values || [];
 
-    this.sheetRowCounts[`${projectId}:Transactions!A:K`] = txRows.length;
+    this.sheetRowCounts[`${projectId}:Transactions!A:L`] = txRows.length;
     this.sheetRowCounts[`${projectId}:Categories!A:E`] = catRows.length;
     this.sheetRowCounts[`${projectId}:Budgets!A:B`] = bgRows.length;
     this.sheetRowCounts[`${projectId}:Locks!A:C`] = lockRows.length;
@@ -928,8 +1160,26 @@ export class GoogleSheetsAdapter implements StorageAdapter {
       }
       const rawBucket = String(r[10] || '');
       const validBucket: SpendingBucket | undefined = (rawBucket === 'fixed' || rawBucket === 'flexible' || rawBucket === 'non-monthly') ? rawBucket : undefined;
+      let meta: TxMeta | undefined;
+      if (r[11]) {
+        const parsedMeta = parseJSON(String(r[11]));
+        if (parsedMeta && typeof parsedMeta === 'object' && !Array.isArray(parsedMeta)) {
+          meta = parsedMeta as TxMeta;
+        }
+      }
       return {
-        id: String(r[0]), date: String(r[1]), category: String(r[2]), subCategory: r[3] ? String(r[3]) : null, amount: parseFloat(String(r[4])), type: String(r[5]) as 'income' | 'expense' | 'transfer', description: String(r[6]), notes: String(r[7] || ''), labels, hash: String(r[9] || ''), spendingBucket: validBucket
+        id: String(r[0]),
+        date: String(r[1]),
+        category: String(r[2]),
+        subCategory: r[3] ? String(r[3]) : null,
+        amount: parseFloat(String(r[4])),
+        type: String(r[5]) as 'income' | 'expense' | 'transfer',
+        description: String(r[6]),
+        notes: String(r[7] || ''),
+        labels,
+        hash: String(r[9] || ''),
+        spendingBucket: validBucket,
+        ...(meta ? { meta } : {})
       };
     }).filter((t: Transaction) => t.id);
 
@@ -1015,9 +1265,22 @@ export class GoogleSheetsAdapter implements StorageAdapter {
   }
 
   private async saveTransactionsToSheet(projectId: string, txs: Transaction[]) {
-    const header = ['id', 'date', 'category', 'subCategory', 'amount', 'type', 'description', 'notes', 'labels', 'hash', 'spendingBucket'];
-    const rows = txs.map(t => [t.id, t.date, t.category, t.subCategory || '', t.amount, t.type, t.description, t.notes, JSON.stringify(t.labels), t.hash, t.spendingBucket || '']);
-    await this.writeSheet(projectId, 'Transactions!A:K', [header, ...rows]);
+    const header = ['id', 'date', 'category', 'subCategory', 'amount', 'type', 'description', 'notes', 'labels', 'hash', 'spendingBucket', 'meta'];
+    const rows = txs.map(t => [
+      t.id,
+      t.date,
+      t.category,
+      t.subCategory || '',
+      t.amount,
+      t.type,
+      t.description,
+      t.notes,
+      JSON.stringify(t.labels),
+      t.hash,
+      t.spendingBucket || '',
+      t.meta ? JSON.stringify(t.meta) : ''
+    ]);
+    await this.writeSheet(projectId, 'Transactions!A:L', [header, ...rows]);
   }
 
   private async saveCategoriesToSheet(projectId: string, cats: Category[]) {
@@ -1043,31 +1306,35 @@ export class GoogleSheetsAdapter implements StorageAdapter {
     return [...this.cache[projectId].transactions];
   }
 
-  async saveTransaction(projectId: string, transaction: Transaction): Promise<Transaction> {
+  async saveTransaction(projectId: string, transaction: Transaction, options?: StorageWriteOptions): Promise<Transaction> {
     return this.enqueueWrite(projectId, async () => {
       await this.ensureCache(projectId);
-      const locks = await this.getLocks(projectId);
+      const nextTxs = [...this.cache[projectId].transactions];
+      const idx = nextTxs.findIndex(t => t.id === transaction.id);
 
-      // Enforce lock check on target month
-      const txnMonth = transaction.date.substring(0, 7);
-      const isTargetLocked = locks.some(lock => lock.month === txnMonth && lock.locked);
-      if (isTargetLocked) {
-        throw new Error(`Cannot write to locked month ${txnMonth}`);
+      if (!options?.ignoreLocks) {
+        const locks = await this.getLocks(projectId);
+        const txnMonth = transaction.date.substring(0, 7);
+        const isTargetLocked = locks.some(lock => lock.month === txnMonth && lock.locked);
+        if (isTargetLocked) {
+          throw new Error(`Cannot write to locked month ${txnMonth}`);
+        }
+
+        if (idx > -1) {
+          const originalTx = nextTxs[idx];
+          const originalMonth = originalTx.date.substring(0, 7);
+          const isOriginalLocked = locks.some(lock => lock.month === originalMonth && lock.locked);
+          if (isOriginalLocked) {
+            throw new Error(`Cannot modify transaction. The original month ${originalMonth} is locked.`);
+          }
+        }
       }
 
       if (!transaction.id) {
         transaction.id = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 9);
       }
 
-      const nextTxs = [...this.cache[projectId].transactions];
-      const idx = nextTxs.findIndex(t => t.id === transaction.id);
       if (idx > -1) {
-        const originalTx = nextTxs[idx];
-        const originalMonth = originalTx.date.substring(0, 7);
-        const isOriginalLocked = locks.some(lock => lock.month === originalMonth && lock.locked);
-        if (isOriginalLocked) {
-          throw new Error(`Cannot modify transaction. The original month ${originalMonth} is locked.`);
-        }
         nextTxs[idx] = transaction;
       } else {
         nextTxs.push(transaction);
@@ -1078,27 +1345,29 @@ export class GoogleSheetsAdapter implements StorageAdapter {
     });
   }
 
-  async saveTransactions(projectId: string, newTransactions: Transaction[]): Promise<Transaction[]> {
+  async saveTransactions(projectId: string, newTransactions: Transaction[], options?: StorageWriteOptions): Promise<Transaction[]> {
     return this.enqueueWrite(projectId, async () => {
       await this.ensureCache(projectId);
-      const locks = await this.getLocks(projectId);
       const txs = [...this.cache[projectId].transactions];
 
-      // Validate ALL transactions against locks before mutating cache (C12)
-      for (const transaction of newTransactions) {
-        const txnMonth = transaction.date.substring(0, 7);
-        const isTargetLocked = locks.some(lock => lock.month === txnMonth && lock.locked);
-        if (isTargetLocked) {
-          throw new Error(`Cannot write to locked month ${txnMonth}`);
-        }
+      if (!options?.ignoreLocks) {
+        const locks = await this.getLocks(projectId);
+        // Validate ALL transactions against locks before mutating cache (C12)
+        for (const transaction of newTransactions) {
+          const txnMonth = transaction.date.substring(0, 7);
+          const isTargetLocked = locks.some(lock => lock.month === txnMonth && lock.locked);
+          if (isTargetLocked) {
+            throw new Error(`Cannot write to locked month ${txnMonth}`);
+          }
 
-        if (transaction.id) {
-          const originalTx = txs.find(t => t.id === transaction.id);
-          if (originalTx) {
-            const originalMonth = originalTx.date.substring(0, 7);
-            const isOriginalLocked = locks.some(lock => lock.month === originalMonth && lock.locked);
-            if (isOriginalLocked) {
-              throw new Error(`Cannot modify transaction. The original month ${originalMonth} is locked.`);
+          if (transaction.id) {
+            const originalTx = txs.find(t => t.id === transaction.id);
+            if (originalTx) {
+              const originalMonth = originalTx.date.substring(0, 7);
+              const isOriginalLocked = locks.some(lock => lock.month === originalMonth && lock.locked);
+              if (isOriginalLocked) {
+                throw new Error(`Cannot modify transaction. The original month ${originalMonth} is locked.`);
+              }
             }
           }
         }
@@ -1125,19 +1394,20 @@ export class GoogleSheetsAdapter implements StorageAdapter {
     });
   }
 
-  async deleteTransaction(projectId: string, transactionId: string): Promise<void> {
+  async deleteTransaction(projectId: string, transactionId: string, options?: StorageWriteOptions): Promise<void> {
     return this.enqueueWrite(projectId, async () => {
       await this.ensureCache(projectId);
       const txs = this.cache[projectId].transactions;
       const txIndex = txs.findIndex(t => t.id === transactionId);
       if (txIndex === -1) return;
 
-      // Enforce lock check
-      const locks = await this.getLocks(projectId);
-      const txMonth = txs[txIndex].date.substring(0, 7);
-      const isLocked = locks.some(lock => lock.month === txMonth && lock.locked);
-      if (isLocked) {
-        throw new Error(`Cannot delete transaction. The month ${txMonth} is locked.`);
+      if (!options?.ignoreLocks) {
+        const locks = await this.getLocks(projectId);
+        const txMonth = txs[txIndex].date.substring(0, 7);
+        const isLocked = locks.some(lock => lock.month === txMonth && lock.locked);
+        if (isLocked) {
+          throw new Error(`Cannot delete transaction. The month ${txMonth} is locked.`);
+        }
       }
 
       const nextTxs = txs.filter(t => t.id !== transactionId);
@@ -1146,20 +1416,22 @@ export class GoogleSheetsAdapter implements StorageAdapter {
     });
   }
 
-  async deleteTransactions(projectId: string, transactionIds: string[]): Promise<void> {
+  async deleteTransactions(projectId: string, transactionIds: string[], options?: StorageWriteOptions): Promise<void> {
     if (transactionIds.length === 0) return;
     return this.enqueueWrite(projectId, async () => {
       await this.ensureCache(projectId);
       const txs = this.cache[projectId].transactions;
       const idSet = new Set(transactionIds);
-      const locks = await this.getLocks(projectId);
 
-      for (const t of txs) {
-        if (idSet.has(t.id)) {
-          const txMonth = t.date.substring(0, 7);
-          const isLocked = locks.some(lock => lock.month === txMonth && lock.locked);
-          if (isLocked) {
-            throw new Error(`Cannot delete transaction. The month ${txMonth} is locked.`);
+      if (!options?.ignoreLocks) {
+        const locks = await this.getLocks(projectId);
+        for (const t of txs) {
+          if (idSet.has(t.id)) {
+            const txMonth = t.date.substring(0, 7);
+            const isLocked = locks.some(lock => lock.month === txMonth && lock.locked);
+            if (isLocked) {
+              throw new Error(`Cannot delete transaction. The month ${txMonth} is locked.`);
+            }
           }
         }
       }
@@ -1331,6 +1603,231 @@ export class GoogleSheetsAdapter implements StorageAdapter {
         delete nextNotes[key];
         await this.saveNotesToSheet(projectId, nextNotes);
         this.cache[projectId].notes = nextNotes;
+      }
+    });
+  }
+
+  async getIngestState(projectId: string): Promise<IngestState> {
+    await this.ensureCache(projectId);
+    const notesMap = this.cache[projectId].notes || {};
+    const rawNote = notesMap['__meta_ingest_state__']?.text;
+    if (!rawNote) return { version: 1, tombstones: [], sources: {}, recentRuns: [] };
+    try {
+      const parsed = JSON.parse(rawNote);
+      const baseTombstones: string[] = Array.isArray(parsed?.tombstones)
+        ? parsed.tombstones
+        : parsed?.tombstones && typeof parsed.tombstones === 'object'
+        ? Object.keys(parsed.tombstones)
+        : [];
+      const chunkCount = typeof parsed?.tombstoneChunks === 'number' ? parsed.tombstoneChunks : 0;
+      const extraTombstones: string[] = [];
+      for (let idx = 1; idx <= chunkCount; idx++) {
+        const chunkRaw = notesMap[`__meta_ingest_tombstones_${idx}__`]?.text;
+        if (chunkRaw) {
+          try {
+            const arr = JSON.parse(chunkRaw);
+            if (Array.isArray(arr)) extraTombstones.push(...arr);
+          } catch {
+            // Ignore malformed chunk
+          }
+        }
+      }
+      return {
+        version: parsed?.version || 1,
+        tombstones: [...baseTombstones, ...extraTombstones],
+        sources: parsed?.sources && typeof parsed.sources === 'object' ? parsed.sources : {},
+        recentRuns: Array.isArray(parsed?.recentRuns)
+          ? parsed.recentRuns
+          : Array.isArray(parsed?.runs)
+          ? parsed.runs
+          : [],
+      };
+    } catch {
+      return { version: 1, tombstones: [], sources: {}, recentRuns: [] };
+    }
+  }
+
+  private buildIngestStateNotes(
+    existingNotes: Record<string, BudgetNote>,
+    state: IngestState,
+    nowIso: string
+  ): Record<string, BudgetNote> {
+    const TOMBSTONE_CHUNK_SIZE = 400;
+    const allTombstones = Array.isArray(state.tombstones)
+      ? state.tombstones.slice(-2000)
+      : state.tombstones && typeof state.tombstones === 'object'
+      ? Object.keys(state.tombstones).slice(-2000)
+      : [];
+    const firstChunk = allTombstones.slice(0, TOMBSTONE_CHUNK_SIZE);
+    const overflowChunks: string[][] = [];
+    for (let i = TOMBSTONE_CHUNK_SIZE; i < allTombstones.length; i += TOMBSTONE_CHUNK_SIZE) {
+      overflowChunks.push(allTombstones.slice(i, i + TOMBSTONE_CHUNK_SIZE));
+    }
+
+    const headPayload = {
+      version: state.version || 1,
+      tombstones: firstChunk,
+      tombstoneChunks: overflowChunks.length,
+      sources: state.sources || {},
+      recentRuns: Array.isArray(state.recentRuns) ? state.recentRuns.slice(-30) : [],
+    };
+
+    const nextNotes: Record<string, BudgetNote> = {};
+    for (const [k, v] of Object.entries(existingNotes || {})) {
+      if (!k.startsWith('__meta_ingest_tombstones_') && k !== '__meta_ingest_lock__') {
+        nextNotes[k] = v;
+      }
+    }
+    nextNotes.__meta_ingest_state__ = {
+      text: JSON.stringify(headPayload),
+      updatedAt: nowIso,
+    };
+    for (let idx = 0; idx < overflowChunks.length; idx++) {
+      nextNotes[`__meta_ingest_tombstones_${idx + 1}__`] = {
+        text: JSON.stringify(overflowChunks[idx]),
+        updatedAt: nowIso,
+      };
+    }
+    return nextNotes;
+  }
+
+  async saveIngestState(projectId: string, state: IngestState): Promise<void> {
+    const nowIso = new Date().toISOString();
+    return this.enqueueWrite(projectId, async () => {
+      await this.ensureCache(projectId);
+      const nextNotes = this.buildIngestStateNotes(this.cache[projectId].notes || {}, state, nowIso);
+      await this.saveNotesToSheet(projectId, nextNotes);
+      this.cache[projectId].notes = nextNotes;
+    });
+  }
+
+  async acquireIngestLock(projectId: string, holderId: string, ttlMs = 60_000): Promise<void> {
+    return this.enqueueWrite(projectId, async () => {
+      this.invalidateCache(projectId);
+      await this.ensureCache(projectId);
+      const notes = this.cache[projectId].notes || {};
+      const lockNote = notes.__meta_ingest_lock__;
+      if (lockNote?.text) {
+        try {
+          const parsed = JSON.parse(lockNote.text) as { holderId?: string; expiresAt?: string };
+          const expiresMs = parsed?.expiresAt ? Date.parse(parsed.expiresAt) : 0;
+          if (parsed?.holderId && parsed.holderId !== holderId && expiresMs > Date.now()) {
+            throw new Error(
+              `Concurrent ingestion lock on project "${projectId}" is held by "${parsed.holderId}" until ${parsed.expiresAt}.`
+            );
+          }
+        } catch (err) {
+          if (err instanceof Error && err.message.startsWith('Concurrent ingestion lock')) {
+            throw err;
+          }
+        }
+      }
+      const nowIso = new Date().toISOString();
+      const expiresAt = new Date(Date.now() + ttlMs).toISOString();
+      const nextNotes: Record<string, BudgetNote> = {
+        ...notes,
+        __meta_ingest_lock__: {
+          text: JSON.stringify({ holderId, acquiredAt: nowIso, expiresAt }),
+          updatedAt: nowIso,
+        },
+      };
+      await this.saveNotesToSheet(projectId, nextNotes);
+      this.cache[projectId].notes = nextNotes;
+    });
+  }
+
+  async releaseIngestLock(projectId: string, holderId: string): Promise<void> {
+    return this.enqueueWrite(projectId, async () => {
+      if (!this.cache[projectId]) return;
+      const notes = this.cache[projectId].notes || {};
+      const lockNote = notes.__meta_ingest_lock__;
+      if (!lockNote?.text) return;
+      try {
+        const parsed = JSON.parse(lockNote.text) as { holderId?: string };
+        if (parsed?.holderId && parsed.holderId !== holderId) return;
+      } catch {
+        // Proceed to clear malformed lock
+      }
+      const nextNotes = { ...notes };
+      delete nextNotes.__meta_ingest_lock__;
+      await this.saveNotesToSheet(projectId, nextNotes);
+      this.cache[projectId].notes = nextNotes;
+    });
+  }
+
+  async commitIngestBatch(
+    projectId: string,
+    payload: {
+      upserts: Transaction[];
+      deleteIds: string[];
+      ingestState: IngestState;
+    },
+    options?: StorageWriteOptions
+  ): Promise<void> {
+    return this.enqueueWrite(projectId, async () => {
+      await this.ensureCache(projectId);
+      const previousTxs = [...this.cache[projectId].transactions];
+      const deleteSet = new Set(payload.deleteIds);
+
+      if (!options?.ignoreLocks) {
+        const locks = await this.getLocks(projectId);
+        for (const transaction of payload.upserts) {
+          const txnMonth = transaction.date.substring(0, 7);
+          if (locks.some(lock => lock.month === txnMonth && lock.locked)) {
+            throw new Error(`Cannot write to locked month ${txnMonth}`);
+          }
+        }
+        for (const t of previousTxs) {
+          if (deleteSet.has(t.id)) {
+            const txMonth = t.date.substring(0, 7);
+            if (locks.some(lock => lock.month === txMonth && lock.locked)) {
+              throw new Error(`Cannot delete transaction. The month ${txMonth} is locked.`);
+            }
+          }
+        }
+      }
+
+      const nextTxs = [...previousTxs];
+      for (const tx of payload.upserts) {
+        const copy = { ...tx };
+        if (!copy.id) {
+          copy.id = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2, 9);
+        }
+        const idx = nextTxs.findIndex(t => t.id === copy.id);
+        if (idx > -1) {
+          nextTxs[idx] = copy;
+        } else {
+          nextTxs.push(copy);
+        }
+      }
+      const finalTxs = deleteSet.size > 0 ? nextTxs.filter(t => !deleteSet.has(t.id)) : nextTxs;
+      const hasTxChanges = payload.upserts.length > 0 || payload.deleteIds.length > 0;
+
+      if (hasTxChanges) {
+        await this.saveTransactionsToSheet(projectId, finalTxs);
+      }
+
+      const nowIso = new Date().toISOString();
+      const nextNotes = this.buildIngestStateNotes(
+        this.cache[projectId].notes || {},
+        payload.ingestState,
+        nowIso
+      );
+
+      try {
+        await this.saveNotesToSheet(projectId, nextNotes);
+        this.cache[projectId].transactions = finalTxs;
+        this.cache[projectId].notes = nextNotes;
+      } catch (err) {
+        if (hasTxChanges) {
+          try {
+            await this.saveTransactionsToSheet(projectId, previousTxs);
+            this.cache[projectId].transactions = previousTxs;
+          } catch {
+            // Preserve original error
+          }
+        }
+        throw err;
       }
     });
   }

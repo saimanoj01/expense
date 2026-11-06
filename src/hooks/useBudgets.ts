@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback } from 'react';
 import { Budget, Category, Transaction, BudgetNote, Project, StorageAdapter } from '../services/storage';
+import { isRefundTransaction } from '../utils/metrics';
 
 export function deriveCategoryBucket(catIdOrName: string, catObj?: Category): 'fixed' | 'flexible' | 'non-monthly' {
   if (catObj?.defaultBucket) {
@@ -112,13 +113,17 @@ export function useBudgets(
       const subCategorySummaries = subCats.map(sCat => {
         const bObj = budgets.find(b => b.category === sCat.id || b.category === sCat.name);
         const subBudget = Number(bObj?.amount) || 0;
-        const subSpent = monthTransactions
-          .filter(t => t.type === 'expense' && (
+        const rawSubSpent = monthTransactions
+          .filter(t => (t.type === 'expense' || isRefundTransaction(t)) && (
             t.subCategory === sCat.id ||
             (t.subCategory && t.subCategory.toLowerCase() === sCat.name.toLowerCase()) ||
             ((t.category === sCat.id || (t.category && t.category.toLowerCase() === sCat.name.toLowerCase())) && !t.subCategory)
           ))
-          .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+          .reduce((sum, t) => {
+            const amt = Number(t.amount) || 0;
+            return sum + (t.type === 'expense' ? amt : -amt);
+          }, 0);
+        const subSpent = Math.max(0, rawSubSpent);
         const subPercent = subBudget > 0 ? Math.round((subSpent / subBudget) * 100) : 0;
         const subBucket = deriveCategoryBucket(sCat.id || sCat.name, sCat);
         return {
@@ -138,16 +143,21 @@ export function useBudgets(
 
       // Calculate direct parent spent (transactions assigned to parent without subCategory or with orphaned subCategory)
       const directParentSpent = monthTransactions
-        .filter(t => t.type === 'expense' && t.category && (
+        .filter(t => (t.type === 'expense' || isRefundTransaction(t)) && t.category && (
           t.category === pCat.id || 
           t.category.toLowerCase() === pCat.id.toLowerCase() || 
           t.category.toLowerCase() === pCat.name.toLowerCase() ||
           (pCat.id === 'food' && t.category.toLowerCase() === 'food')
         ) && (!t.subCategory || !validSubKeys.has(t.subCategory.toLowerCase())))
-        .reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+        .reduce((sum, t) => {
+          const amt = Number(t.amount) || 0;
+          return sum + (t.type === 'expense' ? amt : -amt);
+        }, 0);
 
       // Roll up total parent spent
-      const totalParentSpent = isNonBudgetable ? 0 : (directParentSpent + subCategorySummaries.reduce((sum, s) => sum + s.spent, 0));
+      const totalParentSpent = isNonBudgetable
+        ? 0
+        : Math.max(0, directParentSpent + subCategorySummaries.reduce((sum, s) => sum + s.spent, 0));
 
       // Calculate total parent budget (explicit parent budget or sum of sub-category budgets)
       const parentBObj = budgets.find(b => 
@@ -189,14 +199,15 @@ export function useBudgets(
   }, [categorySummary]);
 
   const piePaths = useMemo(() => {
-    const expenseTxns = monthTransactions.filter(t => t.type === 'expense');
+    const expenseTxns = monthTransactions.filter(t => t.type === 'expense' || isRefundTransaction(t));
     const catMap = new Map<string, { total: number; name: string; color: string; id: string }>();
     const PALETTE = ['#FF6B6B', '#4DABF7', '#51CF66', '#FCC419', '#845EF7', '#FF8787', '#20C997', '#38BDF8', '#ADB5BD', '#E64980'];
     let pIdx = 0;
 
     expenseTxns.forEach(t => {
       if (!t.category) return;
-      const amt = Number(t.amount) || 0;
+      const rawAmt = Number(t.amount) || 0;
+      const amt = t.type === 'expense' ? rawAmt : -rawAmt;
       const matched = categories.find(c =>
         c.id.toLowerCase() === t.category.toLowerCase() ||
         c.name.toLowerCase() === t.category.toLowerCase()
@@ -272,7 +283,7 @@ export function useBudgets(
     const total3moTotals: Record<string, number> = {};
 
     allTransactions.forEach(t => {
-      if (t.type !== 'expense') return;
+      if (t.type !== 'expense' && !isRefundTransaction(t)) return;
       const tMonth = (t.date || '').substring(0, 7);
       const isPrev1 = tMonth === prev1Month;
       const isPrev3 = isPrev1 || tMonth === prev2Month || tMonth === prev3Month;
@@ -281,7 +292,8 @@ export function useBudgets(
       const targetCatId = catMap.get(t.subCategory || '') || catMap.get(t.category) || catMap.get((t.category || '').toLowerCase());
       if (!targetCatId) return;
 
-      const amt = Number(t.amount) || 0;
+      const rawAmt = Number(t.amount) || 0;
+      const amt = t.type === 'expense' ? rawAmt : -rawAmt;
       if (isPrev1) {
         lastMonthTotals[targetCatId] = (lastMonthTotals[targetCatId] || 0) + amt;
       }
@@ -291,8 +303,8 @@ export function useBudgets(
     const history: Record<string, { lastMonth: number; avg3mo: number }> = {};
     categories.forEach(cat => {
       history[cat.id] = {
-        lastMonth: lastMonthTotals[cat.id] || 0,
-        avg3mo: Math.round((total3moTotals[cat.id] || 0) / 3)
+        lastMonth: Math.max(0, lastMonthTotals[cat.id] || 0),
+        avg3mo: Math.max(0, Math.round((total3moTotals[cat.id] || 0) / 3))
       };
     });
 

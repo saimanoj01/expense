@@ -48,6 +48,8 @@ export default {
         surface2: "hsl(var(--surface-2) / <alpha-value>)",
         faint: "hsl(var(--faint) / <alpha-value>)",
         negative: "hsl(var(--c-negative) / <alpha-value>)",
+        warning: "hsl(var(--c-nonmonthly) / <alpha-value>)",
+        positive: "hsl(var(--c-saved) / <alpha-value>)",
         bucket: {
           fixed: "hsl(var(--c-fixed) / <alpha-value>)",
           variable: "hsl(var(--c-variable) / <alpha-value>)",

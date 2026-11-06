@@ -188,6 +188,7 @@ function MainRouter({
           onRemoveTag={txnHooks.handleRemoveTagFromTxn}
           onExecuteBulkAddTag={(selectedIds, tags) => txnHooks.handleExecuteBulkAddTag(selectedIds, tags, () => setSelectedTxnIds(new Set()))}
           onExecuteBulkRemoveTag={(selectedIds, tag) => txnHooks.handleExecuteBulkRemoveTag(selectedIds, tag, () => setSelectedTxnIds(new Set()))}
+          onDismissReview={txnHooks.handleDismissReview}
         />
       </Suspense>
     );

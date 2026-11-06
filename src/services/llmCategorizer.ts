@@ -1,4 +1,4 @@
-import { Category, DEFAULT_CATEGORIES, SpendingBucket } from './storage';
+import { DEFAULT_CATEGORIES, type Category, type SpendingBucket } from './storage';
 import { suggestCategory, suggestSpendingBucket } from '../utils/categorizer';
 import { callGemini, hasGeminiApiKey } from './ai/geminiClient';
 
@@ -6,6 +6,8 @@ export interface ClassifiedResultItem {
   categoryId: string;
   subCategoryId?: string;
   spendingBucket?: SpendingBucket;
+  confidence?: number;
+  confidenceSource?: 'model' | 'default';
 }
 
 export type ClassificationResultMap = Record<string, ClassifiedResultItem>;
@@ -14,7 +16,7 @@ export type ClassificationResultMap = Record<string, ClassifiedResultItem>;
  * Service interface for Gemini LLM Auto-Classification.
  * Formats categories and transactions into a structured JSON prompt,
  * calls gemini-3.5-flash-lite via callGemini(), and maps the returned
- * parent, sub-category, and spending bucket selections.
+ * parent, sub-category, spending bucket, and confidence selections.
  */
 export async function classifyTransactionsWithLLM(
   items: { id: string; description: string; amount?: number; type?: 'income' | 'expense' | 'transfer'; rawCategory?: string }[],
@@ -52,6 +54,7 @@ Your goal is to categorize each given financial transaction into:
    - "fixed": Unavoidable recurring obligations (mortgage, rent, utilities, insurance, subscriptions, loan payments).
    - "flexible": Day-to-day discretionary spending (groceries, dining, coffee, shopping, entertainment, transport).
    - "non-monthly": Irregular but inevitable costs (annual fees, vehicle registration, property tax, holiday gifts, home/car repairs).
+3. A confidence score between 0.0 and 1.0 indicating how certain you are of the category based on the merchant/item description (e.g., 0.92 for "Whole Foods", 0.45 for opaque "AMZN MKTPLACE" or cryptic codes).
 
 CRITICAL RULES:
 1. ONLY return categoryId and subCategoryId values that EXACTLY match one of the Category IDs listed in the provided hierarchy.
@@ -69,7 +72,8 @@ CRITICAL RULES:
             id: { type: 'STRING' },
             categoryId: { type: 'STRING' },
             subCategoryId: { type: 'STRING' },
-            spendingBucket: { type: 'STRING', enum: ['fixed', 'flexible', 'non-monthly'] }
+            spendingBucket: { type: 'STRING', enum: ['fixed', 'flexible', 'non-monthly'] },
+            confidence: { type: 'NUMBER' }
           },
           required: ['id', 'categoryId', 'spendingBucket']
         }
@@ -103,7 +107,7 @@ CRITICAL RULES:
         model: 'gemini-3.5-flash-lite',
         jsonSchema,
         temperature: 0.1
-      })) as { classifications?: { id: string; categoryId: string; subCategoryId?: string; spendingBucket?: SpendingBucket }[] };
+      })) as { classifications?: { id: string; categoryId: string; subCategoryId?: string; spendingBucket?: SpendingBucket; confidence?: number }[] };
 
       if (response && Array.isArray(response.classifications)) {
         for (const res of response.classifications) {
@@ -127,10 +131,17 @@ CRITICAL RULES:
             ? res.spendingBucket
             : suggestSpendingBucket(originalItem?.description || '', finalParent);
 
+          const hasModelConf = typeof res.confidence === 'number' && !isNaN(res.confidence);
+          const rawConf = hasModelConf
+            ? Math.max(0, Math.min(1, res.confidence!))
+            : (isValidParent && finalParent !== 'misc' ? 0.8 : 0.45);
+
           resultMap[res.id] = {
             categoryId: finalParent,
             subCategoryId: finalSub,
-            spendingBucket: bucket
+            spendingBucket: bucket,
+            confidence: rawConf,
+            confidenceSource: hasModelConf ? 'model' : 'default'
           };
         }
       }
@@ -143,7 +154,9 @@ CRITICAL RULES:
           const cat = suggestCategory(item.description, item.rawCategory, categories);
           resultMap[item.id] = {
             categoryId: cat,
-            spendingBucket: suggestSpendingBucket(item.description, cat)
+            spendingBucket: suggestSpendingBucket(item.description, cat),
+            confidence: cat === 'misc' ? 0.4 : 0.75,
+            confidenceSource: 'default'
           };
         }
       }
@@ -156,7 +169,9 @@ CRITICAL RULES:
       const cat = suggestCategory(item.description, item.rawCategory, categories);
       resultMap[item.id] = {
         categoryId: cat,
-        spendingBucket: suggestSpendingBucket(item.description, cat)
+        spendingBucket: suggestSpendingBucket(item.description, cat),
+        confidence: cat === 'misc' ? 0.4 : 0.75,
+        confidenceSource: 'default'
       };
     }
   }

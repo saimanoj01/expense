@@ -44,6 +44,7 @@ export interface TransactionsViewProps {
   onRemoveTag?: (id: string, tag: string) => void;
   onExecuteBulkAddTag?: (ids: Set<string>, tags: string[]) => void;
   onExecuteBulkRemoveTag?: (ids: Set<string>, tag: string) => void;
+  onDismissReview?: (id: string) => void;
 }
 
 function parseQueryDay(hash: string): number | null {
@@ -91,6 +92,7 @@ export function TransactionsView({
   onRemoveTag,
   onExecuteBulkAddTag,
   onExecuteBulkRemoveTag,
+  onDismissReview,
 }: TransactionsViewProps) {
   const [activeCategoryFilter, setActiveCategoryFilter] = useState<string | null>(
     isCategoryTransactions && initialCategoryId ? initialCategoryId : null
@@ -238,6 +240,20 @@ export function TransactionsView({
     };
   }, [transactions, categories]);
 
+  const needsReviewCount = useMemo(
+    () =>
+      transactions.filter(
+        t => Array.isArray(t.labels) && t.labels.includes('needs-review')
+      ).length,
+    [transactions]
+  );
+
+  useEffect(() => {
+    if (needsReviewCount === 0 && selectedTagFilter === 'needs-review') {
+      onSelectTagFilter?.(null);
+    }
+  }, [needsReviewCount, selectedTagFilter, onSelectTagFilter]);
+
   return (
     <div
       className="max-w-[1120px] mx-auto space-y-3 pb-12"
@@ -313,6 +329,26 @@ export function TransactionsView({
           <span>Non-monthly</span>
           <span className="font-semibold tabular-nums num">{formatCurrency(monthFinancials.nonMonthly)}</span>
         </button>
+        {needsReviewCount > 0 && (
+          <button
+            type="button"
+            data-testid="kpi-needs-review"
+            onClick={() =>
+              onSelectTagFilter &&
+              onSelectTagFilter(
+                selectedTagFilter === 'needs-review' ? null : 'needs-review'
+              )
+            }
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[10px] border text-label font-medium transition-colors focus-visible:ring-2 focus-visible:ring-primary/40 ${
+              selectedTagFilter === 'needs-review'
+                ? 'bg-warning text-background border-warning'
+                : 'bg-warning/10 border-warning/30 text-warning hover:bg-warning/20'
+            }`}
+          >
+            <span>Needs Review</span>
+            <span className="font-semibold tabular-nums num">{needsReviewCount}</span>
+          </button>
+        )}
       </div>
 
       {/* Active Category Filter Pill */}
@@ -396,6 +432,7 @@ export function TransactionsView({
         handleRemoveTag={onRemoveTag}
         handleExecuteBulkAddTag={onExecuteBulkAddTag}
         handleExecuteBulkRemoveTag={onExecuteBulkRemoveTag}
+        handleDismissReview={onDismissReview}
       />
     </div>
   );
