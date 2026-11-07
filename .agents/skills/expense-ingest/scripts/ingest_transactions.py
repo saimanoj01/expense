@@ -32,6 +32,8 @@ from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
+import re
+import shutil
 import subprocess
 import sys
 
@@ -255,6 +257,7 @@ const payload = JSON.parse(fs.readFileSync(0, 'utf8'));
 const { request, config } = payload;
 const projectId = request.projectId;
 
+let releaseStateLock = null;
 let adapter;
 if (config.spreadsheetId) {
   const token = await resolveGoogleAccessToken(config);
@@ -269,6 +272,35 @@ if (config.spreadsheetId) {
   );
   adapter = new GoogleSheetsAdapter(() => token);
 } else {
+if (config.stateFile && !config.spreadsheetId) {
+  const lockPath = `${path.resolve(config.stateFile)}.lock`;
+  const deadline = Date.now() + 30000;
+  for (;;) {
+    try {
+      const fd = fs.openSync(lockPath, 'wx');
+      fs.closeSync(fd);
+      releaseStateLock = () => {
+        try {
+          fs.unlinkSync(lockPath);
+        } catch {}
+      };
+      break;
+    } catch (e) {
+      if (e.code !== 'EEXIST') throw e;
+      try {
+        if (Date.now() - fs.statSync(lockPath).mtimeMs > 120000) {
+          fs.unlinkSync(lockPath);
+          continue;
+        }
+      } catch {}
+      if (Date.now() > deadline) {
+        throw new Error('Timed out waiting for state-file lock: ' + lockPath);
+      }
+      await new Promise((r) => setTimeout(r, 200));
+    }
+  }
+}
+
   adapter = new LocalStorageAdapter();
   if (config.stateFile) {
     const stateFilePath = path.resolve(config.stateFile);
@@ -302,32 +334,68 @@ if (config.spreadsheetId) {
   }
 }
 
-const response = await ingestTransactions(request, adapter);
+let response;
+try {
+  response = await ingestTransactions(request, adapter);
 
-if (config.stateFile && !config.spreadsheetId && !response.dryRun) {
-  const stateFilePath = path.resolve(config.stateFile);
-  const updatedTransactions = await adapter.getTransactions(projectId);
-  const updatedCategories = await adapter.getCategories(projectId);
-  const updatedIngestState = await adapter.getIngestState(projectId);
-  fs.writeFileSync(
-    stateFilePath,
-    JSON.stringify(
-      {
-        projectId,
-        updatedAt: new Date().toISOString(),
-        transactions: updatedTransactions,
-        categories: updatedCategories,
-        ingestState: updatedIngestState,
-      },
-      null,
-      2
-    ),
-    'utf8'
-  );
+  if (config.stateFile && !config.spreadsheetId && !response.dryRun) {
+    const stateFilePath = path.resolve(config.stateFile);
+    const updatedTransactions = await adapter.getTransactions(projectId);
+    const updatedCategories = await adapter.getCategories(projectId);
+    const updatedIngestState = await adapter.getIngestState(projectId);
+    const tmpPath = `${stateFilePath}.${process.pid}.tmp`;
+    fs.writeFileSync(
+      tmpPath,
+      JSON.stringify(
+        {
+          projectId,
+          updatedAt: new Date().toISOString(),
+          transactions: updatedTransactions,
+          categories: updatedCategories,
+          ingestState: updatedIngestState,
+        },
+        null,
+        2
+      ),
+      'utf8'
+    );
+    fs.renameSync(tmpPath, stateFilePath);
+  }
+} finally {
+  if (releaseStateLock) releaseStateLock();
 }
 
 process.stdout.write(JSON.stringify(response));
 """
+
+
+def check_node(minimum_major=24):
+    """Fail early with a clear message if Node is missing or too old."""
+    node = shutil.which("node")
+    if not node:
+        raise RuntimeError(
+            f"Node.js >= {minimum_major} is required to run the TypeScript ingestion engine, "
+            "but `node` was not found on PATH."
+        )
+    try:
+        out = subprocess.run([node, "--version"], capture_output=True, text=True, timeout=15)
+        major = int(out.stdout.strip().lstrip("v").split(".")[0])
+    except (ValueError, subprocess.SubprocessError, OSError) as exc:
+        raise RuntimeError(f"Could not determine the Node.js version: {exc}") from exc
+    if major < minimum_major:
+        raise RuntimeError(
+            f"Node.js >= {minimum_major} is required (found {out.stdout.strip()}); "
+            "it needs native TypeScript stripping."
+        )
+
+
+def concise_node_error(stderr):
+    """Reduce a Node failure to its meaningful 'Error: ...' line."""
+    lines = [ln.strip() for ln in stderr.strip().splitlines() if ln.strip()]
+    for ln in lines:
+        if re.match(r"^(\w+)?Error\b.*:", ln) or ln.startswith("Error"):
+            return ln
+    return lines[-1] if lines else "Unknown ingestion error"
 
 
 def run_ingestion_engine(repo_root, request, options):
@@ -353,8 +421,10 @@ def run_ingestion_engine(repo_root, request, options):
         env=env,
     )
     if proc.returncode != 0:
-        err_msg = (proc.stderr or proc.stdout or "Unknown ingestion error").strip()
-        raise RuntimeError(err_msg)
+        raw = (proc.stderr or proc.stdout or "Unknown ingestion error").strip()
+        if getattr(options, "verbose", False):
+            raise RuntimeError(raw)
+        raise RuntimeError(f"{concise_node_error(raw)} (re-run with --verbose for the full trace)")
 
     return json.loads(proc.stdout)
 
@@ -465,13 +535,24 @@ def main():
         "--json",
         action="store_true",
         dest="output_json",
-        help="Output JSON (alias for --format json)",
+        help="Output JSON (alias for --format json; conflicts with --format summary)",
+    )
+    parser.add_argument(
+        "--verbose",
+        "-v",
+        action="store_true",
+        help="Show full Node stack traces on engine failure",
     )
 
     options = parser.parse_args()
     repo_root = Path(__file__).resolve().parents[4]
 
+    if options.output_json and options.format == "summary":
+        parser.error("--json conflicts with --format summary")
+
     try:
+        check_node()
+
         if options.input == "-":
             raw_input_text = sys.stdin.read()
         else:
@@ -480,7 +561,12 @@ def main():
         if not raw_input_text.strip():
             raise ValueError("Empty input provided to ingest_transactions.py")
 
-        parsed_input = json.loads(raw_input_text)
+        try:
+            parsed_input = json.loads(raw_input_text)
+        except json.JSONDecodeError as exc:
+            raise ValueError(
+                f"Input is not valid JSON (line {exc.lineno}, column {exc.colno}): {exc.msg}"
+            ) from exc
         request = normalize_payload(parsed_input, options)
         is_dry_run = bool((request.get("options") or {}).get("dryRun"))
 
@@ -491,6 +577,15 @@ def main():
                 "for Google Sheets, `--state-file <path>` for a local JSON ledger file, "
                 "or `--dry-run` to preview only."
             )
+
+        if options.spreadsheet_id and not (options.access_token or options.service_account):
+            raise ValueError(
+                "`--spreadsheet-id` was provided without credentials. Supply `--access-token` / "
+                "`GOOGLE_ACCESS_TOKEN` or `--service-account` / `GOOGLE_APPLICATION_CREDENTIALS`."
+            )
+        if options.service_account and not Path(options.service_account).is_file():
+            if not options.access_token:
+                raise ValueError(f"Service account file not found: {options.service_account}")
 
         print("📥 Ingesting transactions...", file=sys.stderr)
         print(

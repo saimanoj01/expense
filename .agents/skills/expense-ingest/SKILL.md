@@ -56,6 +56,8 @@ Convert the upstream source into the canonical `RawTransactionInput` array (see 
 
 #### Option A: Python CLI (`scripts/ingest_transactions.py`)
 
+> **Prerequisites:** Python 3 plus **Node.js ≥ 24**. Python normalizes the input, then hands it to the shared TypeScript ingestion engine via Node (single source of truth with the web app). The script checks both up front. Failures print one concise line; add `--verbose` for the full trace. `--state-file` runs are serialized with a `<file>.lock` and written atomically. Prefer `GOOGLE_ACCESS_TOKEN` / `--service-account` over `--access-token` (visible in `ps`).
+
 Run the bundled Python CLI script from `/home/antigravity/saimanoj01/expense` targeting either Google Sheets (`--spreadsheet-id` with `--access-token` or `--service-account`) or a local JSON ledger file (`--state-file`):
 
 ```bash

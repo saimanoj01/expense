@@ -1357,6 +1357,45 @@ test('20. [B3] CLI rejects non-dry-run without storage target and filters supers
   fs.rmSync(tmpDir, { recursive: true, force: true });
 });
 
+test('20b. CLI: stdin, summary, dry-run, payload shapes, friendly errors, state-file lock cleanup', async () => {
+  const { spawnSync } = await import('node:child_process');
+  const cliPath = path.join(repoRoot, '.agents/skills/expense-ingest/scripts/ingest_transactions.py');
+  const run = (args, input, env = {}) =>
+    spawnSync('python3', [cliPath, ...args], {
+      input,
+      encoding: 'utf8',
+      env: { ...process.env, GOOGLE_SHEETS_SPREADSHEET_ID: '', GOOGLE_ACCESS_TOKEN: '', GOOGLE_APPLICATION_CREDENTIALS: '', ...env },
+    });
+  const tx = { externalId: 'cli_1', date: '2026-07-15', description: 'Chipotle', amount: 12.5 };
+
+  let r = run(['--dry-run', '--skip-llm', '-f', 'summary'], JSON.stringify([tx]));
+  assert.equal(r.status, 0, r.stderr);
+  assert.ok(r.stdout.length > 0);
+
+  r = run(['--dry-run', '--skip-llm'], JSON.stringify({ transactions: [tx], sourceId: 'x' }));
+  assert.equal(r.status, 0, r.stderr);
+  assert.equal(JSON.parse(r.stdout).dryRun, true);
+
+  r = run(['--dry-run'], '{not json');
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /not valid JSON/);
+
+  r = run(['--spreadsheet-id', 'abc', '--skip-llm'], JSON.stringify([tx]));
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /without credentials/);
+  assert.doesNotMatch(r.stderr, /\[eval1\]/);
+
+  r = run(['--json', '-f', 'summary', '--dry-run'], JSON.stringify([tx]));
+  assert.notEqual(r.status, 0);
+
+  const tmpDir = fs.mkdtempSync('/tmp/expense-cli-test-');
+  const statePath = path.join(tmpDir, 'state.json');
+  r = run(['--state-file', statePath, '--skip-llm'], JSON.stringify([tx]));
+  assert.equal(r.status, 0, r.stderr);
+  assert.deepEqual(fs.readdirSync(tmpDir), ['state.json']);
+  fs.rmSync(tmpDir, { recursive: true, force: true });
+});
+
 test('21. Stage 3 Gemini LLM classification & GoogleSheetsAdapter Column L (meta) round-trip persistence', async () => {
   const projectId = 'test-stage3-llm';
   const adapter = createCleanAdapter(projectId);
