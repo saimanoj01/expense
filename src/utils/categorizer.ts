@@ -3,21 +3,36 @@ import type { Category, SpendingBucket } from '../services/storage';
 // Dictionary of keyword patterns mapped to category IDs
 const CATEGORY_KEYWORDS: Record<string, string[]> = {
   salary: ['salary', 'payroll', 'direct deposit', 'stipend', 'bonus', 'dividend', 'income', 'paycheck'],
+  income: ['payroll', 'direct deposit', 'your rental', 'rental income'],
   rent: ['rent', 'lease', 'apartment', 'landlord', 'mortgage', 'housing', 'bilt rent', 'bilt rewards rent'],
   housing: ['rent', 'lease', 'apartment', 'landlord', 'mortgage', 'housing', 'hoa', 'bilt rent'],
-  utilities: ['electric', 'water', 'power', 'utility', 'internet', 'comcast', 'verizon', 'at&t', 't-mobile', 'pge', 'pg&e', 'trash', 'sewer', 'wifi', 'broadband'],
+  utilities: ['electric', 'water', 'power', 'utility', 'internet', 'comcast', 'verizon', 'at&t', 't-mobile', 'pge', 'pg&e', 'trash', 'sewer', 'wifi', 'broadband', 'puget sound energy', 'snohomish county pud', 'ziply', 'waste management', 'google fi'],
   groceries: ['whole foods', 'trader joe', 'safeway', 'kroger', 'aldi', 'costco', 'instacart', 'sprouts', 'grocery', 'groceries', 'supermarket'],
   food: ['whole foods', 'trader joe', 'safeway', 'grocery', 'groceries', 'supermarket', 'food', 'diner', 'restaurant', 'dining', 'pizza', 'cafe', 'coffee', 'starbucks', 'blue bottle', 'sweetgreen', 'chipotle', 'mcdonald', 'burger', 'sushi', 'taco', 'bakery', 'bistro', 'eats', 'doordash', 'ubereats', 'grubhub'],
   transport: ['uber', 'lyft', 'gas', 'fuel', 'chevron', 'shell', '7-eleven', '711', 'parking', 'transit', 'subway', 'train', 'mta', 'nyct', 'paygo', 'omny', 'clipper', 'bart', 'caltrain', 'airline', 'flight', 'delta', 'united', 'american air', 'auto', 'car wash', 'waymo', 'geico', 'progressive'],
-  entertainment: ['netflix', 'spotify', 'hulu', 'hbo', 'youtube premium', 'apple tv', 'movie', 'cinema', 'theater', 'concert', 'ticket', 'disney', 'steam', 'playstation', 'xbox', 'nintendo', 'amusement'],
+  entertainment: ['netflix', 'spotify', 'hulu', 'hbo', 'youtube premium', 'apple tv', 'movie', 'cinema', 'theater', 'concert', 'ticket', 'disney', 'steam', 'playstation', 'xbox', 'nintendo', 'amusement', 'google one'],
   travel: ['hotel', 'airbnb', 'expedia', 'booking', 'resort', 'flight', 'hostel', 'vacation', 'cruise', 'marriott', 'hilton', 'hyatt'],
   meals: ['lunch', 'dinner', 'catering', 'snack', 'cafeteria'],
   healthcare: ['doctor', 'dentist', 'pharmacy', 'cvs', 'walgreens', 'medical', 'copay', 'clinic', 'hospital', 'health', 'optometry', 'vision'],
+  'child-care': ['child care', 'childcare', 'daycare', 'preschool', 'woodinville 8609257058'],
   shopping: ['apparel', 'clothing', 'nike', 'uniqlo', 'nordstrom', 'macys', 'zara', 'ikea', 'best buy', 'apple store', 'amazon', 'amzn'],
-  misc: ['target', 'walmart', 'store', 'shop']
+  misc: ['target', 'walmart', 'store', 'shop', 'salon', 'barber', 'haircut']
 };
 
-const WORD_BOUNDARY_KEYWORDS = new Set(['gas', 'auto', 'water', 'car', 'shop', 'store', 'rent', 'food', 'uber', 'shell']);
+const WORD_BOUNDARY_KEYWORDS = new Set([
+  'gas',
+  'auto',
+  'water',
+  'car',
+  'shop',
+  'store',
+  'rent',
+  'food',
+  'uber',
+  'shell',
+  'spa',
+  'nail',
+]);
 
 function normalizeForKeywordMatch(raw?: string): string {
   return (raw || '').toLowerCase().replace(/[_]+/g, ' ').replace(/\s+/g, ' ').trim();
@@ -54,8 +69,19 @@ const TRANSFER_KEYWORDS = [
   'transfer in',
   'transfer out',
   'zelle transfer',
-  'venmo cashout'
+  'venmo cashout',
+  // Real-world bank abbreviations for card bill payoffs & Bilt housing pass-through legs
+  'syf paymnt',
+  'syf payment',
+  'card pmt',
+  'payment to crd',
+  'pending payment',
+  'payment - bilt housing',
+  'bilt card des:housing',
 ];
+
+/** Descriptions that are a bare, contextless payment (credit card payment received). */
+const BARE_TRANSFER_DESCRIPTIONS = new Set(['payment']);
 
 const REFUND_KEYWORDS = [
   'refund',
@@ -82,6 +108,7 @@ export function isTransfer(description: string, rawType?: string): boolean {
   const cleanDesc = normalizeForKeywordMatch(description);
   const cleanRawType = normalizeForKeywordMatch(rawType);
   if (cleanRawType.includes('transfer')) return true;
+  if (BARE_TRANSFER_DESCRIPTIONS.has(cleanDesc)) return true;
   return TRANSFER_KEYWORDS.some(kw => cleanDesc.includes(kw));
 }
 
@@ -163,18 +190,25 @@ const SUBCATEGORY_KEYWORDS: Record<string, Record<string, string[]>> = {
   },
   food: {
     'food-takeout': ['doordash', 'ubereats', 'uber eats', 'grubhub', 'delivery', 'takeout', 'chipotle', 'sweetgreen', 'starbucks', 'coffee', 'cafe', 'bakery'],
-    'food-dine-in': ['restaurant', 'diner', 'bistro', 'sushi', 'osteria', 'dining'],
+    'food-dine-in': ['restaurant', 'diner', 'bistro', 'sushi', 'osteria', 'dining', 'food & drink', 'food and drink'],
   },
   entertainment: {
-    'entertainment-subs': ['netflix', 'spotify', 'hulu', 'hbo', 'youtube', 'apple tv', 'disney', 'subscription'],
+    'entertainment-subs': ['netflix', 'spotify', 'hulu', 'hbo', 'youtube', 'apple tv', 'disney', 'subscription', 'google one'],
     'entertainment-movies': ['movie', 'cinema', 'theater', 'concert', 'ticket', 'event'],
   },
+  misc: {
+    'misc-salon': ['salon', 'barber', 'haircut', 'spa', 'nail'],
+  },
+  income: {
+    'income-salary': ['payroll', 'salary', 'direct deposit', 'paycheck'],
+    'income-investment': ['your rental', 'rental income', 'dividend', 'interest'],
+  },
   utilities: {
-    'utilities-electric': ['electric', 'power', 'pge', 'pg&e'],
-    'utilities-water': ['water', 'sewer', 'trash'],
+    'utilities-electric': ['electric', 'power', 'pge', 'pg&e', 'snohomish county pud'],
+    'utilities-water': ['water', 'sewer', 'trash', 'waste management'],
     'utilities-gas': ['gas', 'heating'],
-    'utilities-internet': ['internet', 'wifi', 'comcast', 'broadband'],
-    'utilities-phone': ['verizon', 'at&t', 't-mobile', 'phone', 'mobile'],
+    'utilities-internet': ['internet', 'wifi', 'comcast', 'broadband', 'ziply'],
+    'utilities-phone': ['verizon', 'at&t', 't-mobile', 'phone', 'mobile', 'google fi'],
   },
   housing: {
     'housing-mortgage': ['rent', 'lease', 'apartment', 'landlord', 'mortgage', 'bilt'],
@@ -228,7 +262,8 @@ export function suggestSubCategory(
 const FIXED_KEYWORDS = [
   'mortgage', 'rent', 'lease', 'landlord', 'insurance', 'loan', 'car payment', 'auto loan',
   'utility', 'electric', 'water', 'power', 'internet', 'wifi', 'comcast', 'verizon', 'at&t',
-  'pge', 'pg&e', 'trash', 'sewer', 'hoa', 'tuition', 'daycare', 'subscription', 'monthly fee'
+  'pge', 'pg&e', 'trash', 'sewer', 'hoa', 'tuition', 'daycare', 'subscription', 'monthly fee',
+  'netflix', 'spotify', 'hulu', 'hbo', 'apple tv', 'disney', 'google one', 'ziply', 'google fi'
 ];
 
 const NON_MONTHLY_KEYWORDS = [
@@ -249,7 +284,7 @@ export function suggestSpendingBucket(
   const combined = `${cleanDesc} ${cleanCat}`;
 
   // Category heuristics
-  if (cleanCat === 'housing' || cleanCat === 'utilities') {
+  if (cleanCat === 'housing' || cleanCat === 'utilities' || cleanCat === 'child-care') {
     // Unless it has non-monthly keyword like repair
     for (const kw of NON_MONTHLY_KEYWORDS) {
       if (cleanDesc.includes(kw)) return 'non-monthly';

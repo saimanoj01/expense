@@ -31,15 +31,15 @@ Activate this skill when the user asks about:
 
 ## Step 1: Load the Expense Data
 
-The app stores all data either in **browser localStorage** or **Google Sheets**. To answer
-questions, you need to extract context from the codebase and data files.
+The app stores all data either in **Google Sheets** (live cloud target) or **browser localStorage**.
+- **Default Cloud Target Spreadsheet**: **Nebula Expense - PriyMan** (`1Whmjhktu_sgdw9WYFYx9JydpB61JU2RGuCm7AT_USLY`)
 
 ### Data Sources to Read
 
 | Entity | LocalStorage Key Pattern | Google Sheets Tab | Source File |
 |--------|--------------------------|-------------------|-------------|
 | Projects | `expense_projects` | Drive API metadata | `src/services/storage.ts` |
-| Transactions | `expense_txs_{projectId}` | `Transactions!A:J` | `src/services/storage.ts` |
+| Transactions | `expense_txs_{projectId}` | `Transactions!A:L` (`id, date, category, subCategory, amount, type, description, notes, labels, hash, spendingBucket, meta`) | `src/services/storage.ts` |
 | Categories | `expense_categories_{projectId}` | `Categories!A:E` | `src/services/storage.ts` |
 | Budgets | `expense_budgets_{projectId}` | `Budgets!A:B` | `src/services/storage.ts` |
 | Budget Notes | `expense_budget_notes_{projectId}` | `Notes!A:B` | `src/services/storage.ts` |
@@ -47,19 +47,23 @@ questions, you need to extract context from the codebase and data files.
 
 ### How to Extract Data
 
-1. **Run the export script** to generate a token-efficient context payload:
+1. **Cloud Native Path (Google Sheets / Scheduled Gemini Task)**:
+   - If `/home/antigravity/saimanoj01/expense` is not mounted in the VM, first materialize the bundled export script by calling `get_skill_resources(name="expense-qna", filenames=["scripts/export_expense_context.py"])` and writing it to `/tmp/export_expense_context.py`.
+   - Export `Transactions` from **Nebula Expense - PriyMan** (`1Whmjhktu_sgdw9WYFYx9JydpB61JU2RGuCm7AT_USLY`) via `gsheets` and pass `--tsv` (or `--json-grid`) to `export_expense_context.py`:
    ```bash
-   python3 .agents/skills/expense-qna/scripts/export_expense_context.py
+   gsheets readonly export 1Whmjhktu_sgdw9WYFYx9JydpB61JU2RGuCm7AT_USLY /tmp/nebula_transactions.tsv --format tsv --sheet Transactions
+   # (Or read as a 2D JSON grid: gsheets readonly read 1Whmjhktu_sgdw9WYFYx9JydpB61JU2RGuCm7AT_USLY 'Transactions!A1:L2000' --json > /tmp/nebula_transactions.json)
+   python3 .agents/skills/expense-qna/scripts/export_expense_context.py \
+     --tsv /tmp/nebula_transactions.tsv \
+     --month 2026-11 \
+     --scope quarter
    ```
-   Options: `--month 2026-07 --scope all|quarter|ytd|month --redact --json`
 
-   This reads seed/localStorage data and outputs a structured Markdown summary.
-
-2. **Or read the data schema** from `references/data_schema.md` in this skill folder
-   to understand the shape of each entity, then read raw data from the storage layer.
-
-3. **For Google Sheets projects**, the user's data is in their Google Spreadsheet.
-   Ask the user to export from the app or use the context export script.
+2. **Local State File or Seed Data Path**:
+   ```bash
+   python3 .agents/skills/expense-qna/scripts/export_expense_context.py --state-file /path/to/state.json --month 2026-11
+   ```
+   Options: `--tsv <path> --json-grid <path> --state-file <path> --month 2026-11 --scope all|quarter|ytd|month --redact --json`
 
 ---
 
@@ -87,17 +91,18 @@ Route the user's question to the right analysis approach:
 See `references/data_schema.md` for complete schema documentation. Key points:
 
 ### Category Hierarchy (2-Level Tree)
-The app uses a parent → sub-category structure. There are **13 parent categories**,
+The app uses a parent → sub-category structure. There are **13 default parent categories** (plus custom parent categories such as `child-care`),
 each with 2-5 sub-categories. When a user asks about a parent category, **roll up
 sub-category totals** into the parent.
 
 **Parent Categories**: Groceries, Shopping, Merchandise, Utilities, Food & Dining,
-Entertainment, Miscellaneous, Income, Transfers, Travel, Housing, Transport, Health & Medical
+Entertainment, Miscellaneous, Income, Transfers, Travel, Housing, Transport, Health & Medical, Child Care (`child-care`)
 
-### Transaction Types
+### Transaction Types & Category-Netted Refunds
 - `expense` — Money going out (the primary analysis target)
-- `income` — Money coming in (salary, freelance, dividends)
-- `transfer` — Internal moves (credit card payments, bank transfers) — **exclude from
+- `income` **with `'refund'` in `labels`** — Category refund/credit (e.g., `Google One` credit). **Subtract from the row's expense category and from total expenses** (`netExpenses = grossExpenses - totalRefunds`); **never** add to `totalIncome`.
+- `income` (without `'refund'`) — Money coming in (salary, rental income, dividends)
+- `transfer` — Internal moves (credit card payments, bank transfers, Bilt Protect housing pass-through legs) — **exclude from
   spending totals** unless specifically asked
 
 ### Budget Notes Key Pattern

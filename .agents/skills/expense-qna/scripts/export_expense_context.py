@@ -1,27 +1,26 @@
 #!/usr/bin/env python3
 """
-Expense Context Export Script
+Expense Context Export Script (`export_expense_context.py`)
 
-Extracts expense data from the Nebula Expense Tracker and outputs a
-token-efficient Markdown summary suitable for pasting into any AI chat.
+Extracts expense data from the Nebula Expense Tracker (live Google Sheets TSV export,
+JSON ledger state file, or local `src/services/storage.ts` seed data) and outputs a
+token-efficient Markdown or JSON summary.
 
 Usage:
   python3 .agents/skills/expense-qna/scripts/export_expense_context.py [options]
 
 Options:
-  --project <id>     Project ID to export (default: first project found)
+  --tsv <path>       Read transactions from a Google Sheets TSV export (`Transactions` tab)
+  --state-file <p>   Read transactions/categories/budgets from a JSON ledger state file
+  --project <id>     Project ID to export (default: personal-finances)
   --month <YYYY-MM>  Specific month to focus on (default: current month)
   --scope <mode>     Data scope: "month", "quarter", "ytd", "all" (default: "quarter")
   --redact           Redact merchant/description names for privacy
   --json             Output as JSON instead of Markdown
-  --help             Show this help message
-
-Data Source:
-  Reads from the app's seed data in src/services/storage.ts.
-  For real user data, export from the app UI or Google Sheets directly.
 """
 
 import argparse
+import csv
 import json
 import os
 import re
@@ -29,27 +28,177 @@ import sys
 from collections import defaultdict
 from datetime import datetime, timezone
 
+EMBEDDED_DEFAULT_CATEGORIES = [
+    {"id": "groceries", "name": "Groceries", "color": "#51CF66", "emoji": "🛒", "parentId": None},
+    {"id": "shopping", "name": "Shopping", "color": "#E64980", "emoji": "🛍️", "parentId": None},
+    {"id": "merchandise", "name": "Merchandise", "color": "#BE4BDB", "emoji": "📦", "parentId": None},
+    {"id": "utilities", "name": "Utilities", "color": "#FCC419", "emoji": "⚡", "parentId": None},
+    {"id": "food", "name": "Food & Dining", "color": "#FF6B6B", "emoji": "🍔", "parentId": None},
+    {"id": "entertainment", "name": "Entertainment", "color": "#FF8787", "emoji": "🎬", "parentId": None},
+    {"id": "misc", "name": "Miscellaneous", "color": "#ADB5BD", "emoji": "📦", "parentId": None},
+    {"id": "income", "name": "Income", "color": "#40C057", "emoji": "💰", "parentId": None},
+    {"id": "transfers", "name": "Transfers", "color": "#339AF0", "emoji": "↔️", "parentId": None},
+    {"id": "travel", "name": "Travel", "color": "#38BDF8", "emoji": "✈️", "parentId": None},
+    {"id": "housing", "name": "Housing", "color": "#4DABF7", "emoji": "🏠", "parentId": None},
+    {"id": "transport", "name": "Transport", "color": "#845EF7", "emoji": "🚗", "parentId": None},
+    {"id": "healthcare", "name": "Health & Medical", "color": "#20C997", "emoji": "🏥", "parentId": None},
+    {"id": "child-care", "name": "Child Care", "color": "#f5f83a", "emoji": "👶", "parentId": None},
+]
+
 
 # ─── Data Loading ─────────────────────────────────────────────────────────────
 
-def load_storage_module():
-    """Read and parse seed data from storage.ts."""
+def _parse_row_dict(r):
+    raw_id = (r.get("id") or "").strip()
+    raw_date = (r.get("date") or "").strip()[:10]
+    raw_desc = (r.get("description") or "").strip()
+    raw_amt = (r.get("amount") or "").strip()
+    if not raw_id and not raw_date and not raw_desc and not raw_amt:
+        return None
+    labels_raw = r.get("labels") or "[]"
+    try:
+        labels = json.loads(labels_raw) if labels_raw.strip() else []
+    except Exception:
+        labels = []
+    meta_raw = r.get("meta") or ""
+    try:
+        meta = json.loads(meta_raw) if meta_raw.strip() else {}
+    except Exception:
+        meta = {}
+    try:
+        amt_float = float(raw_amt.replace("$", "").replace(",", "") or 0.0)
+    except Exception:
+        amt_float = 0.0
+    return {
+        "id": raw_id,
+        "date": raw_date,
+        "category": (r.get("category") or "misc").strip(),
+        "subCategory": (r.get("subCategory") or "").strip() or None,
+        "amount": amt_float,
+        "type": (r.get("type") or "expense").strip(),
+        "description": raw_desc,
+        "notes": r.get("notes") or "",
+        "labels": labels,
+        "hash": (r.get("hash") or "").strip(),
+        "spendingBucket": (r.get("spendingBucket") or "").strip() or None,
+        "meta": meta,
+    }
+
+
+def load_tsv_transactions(tsv_path):
+    """Load transactions from an exported Google Sheets TSV (`Transactions!A:L` or `A:K`)."""
+    transactions = []
+    with open(tsv_path, "r", encoding="utf-8") as f:
+        reader = csv.reader(f, delimiter="\t")
+        header = None
+        for row_idx, raw_cells in enumerate(reader, start=1):
+            if row_idx == 1:
+                header = [c.strip() for c in raw_cells]
+                continue
+            if not raw_cells or all(not c.strip() for c in raw_cells) or not header:
+                continue
+            row_dict = {
+                header[i]: (raw_cells[i] if i < len(raw_cells) else "")
+                for i in range(len(header))
+            }
+            parsed = _parse_row_dict(row_dict)
+            if parsed:
+                transactions.append(parsed)
+    return transactions
+
+
+def load_json_grid_transactions(json_grid_path):
+    """Load transactions from a 2D JSON grid returned by `gsheets readonly read <ID> 'Transactions!A1:L2000' --json`."""
+    transactions = []
+    with open(json_grid_path, "r", encoding="utf-8") as f:
+        payload = json.load(f)
+    grid = payload.get("values", payload) if isinstance(payload, dict) else payload
+    if not isinstance(grid, list) or not grid:
+        return transactions
+    header = [str(c).strip() for c in grid[0]]
+    for raw_cells in grid[1:]:
+        if not isinstance(raw_cells, list) or all(not str(c).strip() for c in raw_cells):
+            continue
+        row_dict = {
+            header[i]: (str(raw_cells[i]) if i < len(raw_cells) and raw_cells[i] is not None else "")
+            for i in range(len(header))
+        }
+        parsed = _parse_row_dict(row_dict)
+        if parsed:
+            transactions.append(parsed)
+    return transactions
+
+
+def load_storage_module(tsv_path=None, json_grid_path=None, state_file=None):
+    """Load expense data from --tsv, --json-grid, --state-file, or fallback to storage.ts seed data."""
     storage_file = os.path.join(os.getcwd(), "src", "services", "storage.ts")
+    categories = list(EMBEDDED_DEFAULT_CATEGORIES)
+    budgets = []
+    notes = {}
+    locks = []
 
-    if not os.path.exists(storage_file):
-        print("❌ Could not find src/services/storage.ts", file=sys.stderr)
-        print("   Run this script from the project root directory.", file=sys.stderr)
+    if os.path.exists(storage_file):
+        with open(storage_file, "r", encoding="utf-8") as f:
+            content = f.read()
+        parsed_cats = extract_default_categories(content)
+        if parsed_cats:
+            cat_ids = {c["id"] for c in parsed_cats}
+            for ec in EMBEDDED_DEFAULT_CATEGORIES:
+                if ec["id"] not in cat_ids:
+                    parsed_cats.append(ec)
+            categories = parsed_cats
+        budgets = extract_seed_budgets(content)
+    else:
+        content = ""
+
+    if json_grid_path:
+        if not os.path.exists(json_grid_path):
+            print(f"❌ Could not find JSON grid file: {json_grid_path}", file=sys.stderr)
+            sys.exit(1)
+        return {
+            "transactions": load_json_grid_transactions(json_grid_path),
+            "categories": categories,
+            "budgets": budgets,
+            "notes": notes,
+            "locks": locks,
+        }
+
+    if tsv_path:
+        if not os.path.exists(tsv_path):
+            print(f"❌ Could not find TSV file: {tsv_path}", file=sys.stderr)
+            sys.exit(1)
+        return {
+            "transactions": load_tsv_transactions(tsv_path),
+            "categories": categories,
+            "budgets": budgets,
+            "notes": notes,
+            "locks": locks,
+        }
+
+    if state_file:
+        if not os.path.exists(state_file):
+            print(f"❌ Could not find state file: {state_file}", file=sys.stderr)
+            sys.exit(1)
+        with open(state_file, "r", encoding="utf-8") as sf:
+            state = json.load(sf)
+        return {
+            "transactions": state.get("transactions") or [],
+            "categories": state.get("categories") or categories,
+            "budgets": state.get("budgets") or budgets,
+            "notes": state.get("notes") or notes,
+            "locks": state.get("locks") or locks,
+        }
+
+    if not content:
+        print("❌ Could not find src/services/storage.ts and no --tsv, --json-grid, or --state-file provided.", file=sys.stderr)
         sys.exit(1)
-
-    with open(storage_file, "r", encoding="utf-8") as f:
-        content = f.read()
 
     return {
         "transactions": extract_seed_transactions(content),
-        "categories": extract_default_categories(content),
-        "budgets": extract_seed_budgets(content),
-        "notes": {},
-        "locks": [],
+        "categories": categories,
+        "budgets": budgets,
+        "notes": notes,
+        "locks": locks,
     }
 
 
@@ -168,8 +317,21 @@ def get_months_in_scope(current_month, scope):
     return months
 
 
+def resolve_bucket(t):
+    bucket = t.get("spendingBucket")
+    if bucket in ("fixed", "flexible", "non-monthly"):
+        return bucket
+    labels = t.get("labels") or []
+    for b in ("fixed", "non-monthly", "flexible"):
+        if b in labels:
+            return b
+    if t.get("category") in ("housing", "utilities", "child-care"):
+        return "fixed"
+    return "flexible"
+
+
 def aggregate_by_month(transactions, categories, months, redact):
-    """Group transactions by month and compute summaries."""
+    """Group transactions by month and compute net category-refund metrics (matching metrics.ts)."""
     cat_map = {c["id"]: c for c in categories}
 
     by_month = defaultdict(list)
@@ -182,21 +344,49 @@ def aggregate_by_month(transactions, categories, months, redact):
     summaries = []
     for month in sorted(by_month.keys()):
         txns = by_month[month]
-        total_expenses = 0.0
+        gross_expenses = 0.0
+        total_refunds = 0.0
         total_income = 0.0
         total_transfers = 0.0
         category_breakdown = defaultdict(float)
+        bucket_breakdown = {"fixed": 0.0, "flexible": 0.0, "non-monthly": 0.0}
+        needs_review_txns = []
 
         for t in txns:
+            labels = t.get("labels") or []
+            is_refund = t["type"] == "income" and "refund" in labels
+            cat = cat_map.get(t["category"])
+            cat_name = f'{cat["emoji"]} {cat["name"]}' if cat else t["category"]
+
+            if "needs-review" in labels:
+                needs_review_txns.append({
+                    "id": t.get("id", ""),
+                    "date": t.get("date", ""),
+                    "description": f'[Merchant {t.get("id", "")[:4]}]' if redact else t.get("description", ""),
+                    "amount": t["amount"],
+                    "category": t.get("category", "misc"),
+                })
+
             if t["type"] == "expense":
-                total_expenses += t["amount"]
-                cat = cat_map.get(t["category"])
-                cat_name = f'{cat["emoji"]} {cat["name"]}' if cat else t["category"]
+                gross_expenses += t["amount"]
                 category_breakdown[cat_name] += t["amount"]
+                b = resolve_bucket(t)
+                bucket_breakdown[b] += t["amount"]
+            elif is_refund:
+                total_refunds += t["amount"]
+                category_breakdown[cat_name] -= t["amount"]
+                b = resolve_bucket(t)
+                bucket_breakdown[b] -= t["amount"]
             elif t["type"] == "income":
                 total_income += t["amount"]
             elif t["type"] == "transfer":
                 total_transfers += t["amount"]
+
+        net_expenses = max(0.0, round(gross_expenses - total_refunds, 2))
+        clean_cat_breakdown = {
+            k: round(v, 2) for k, v in category_breakdown.items() if round(v, 2) != 0
+        }
+        clean_buckets = {k: max(0.0, round(v, 2)) for k, v in bucket_breakdown.items()}
 
         top_txns = sorted(
             [t for t in txns if t["type"] == "expense"],
@@ -215,11 +405,16 @@ def aggregate_by_month(transactions, categories, months, redact):
 
         summaries.append({
             "month": month,
-            "totalExpenses": total_expenses,
-            "totalIncome": total_income,
-            "totalTransfers": total_transfers,
+            "grossExpenses": round(gross_expenses, 2),
+            "totalRefunds": round(total_refunds, 2),
+            "totalExpenses": net_expenses,
+            "totalIncome": round(total_income, 2),
+            "totalTransfers": round(total_transfers, 2),
+            "bucketBreakdown": clean_buckets,
             "transactionCount": len(txns),
-            "categoryBreakdown": dict(category_breakdown),
+            "needsReviewCount": len(needs_review_txns),
+            "needsReviewTransactions": needs_review_txns,
+            "categoryBreakdown": clean_cat_breakdown,
             "topTransactions": top_transactions,
         })
 
@@ -230,7 +425,7 @@ def aggregate_by_month(transactions, categories, months, redact):
 
 def fmt(n):
     """Format number as currency string."""
-    return f"${n:,.0f}"
+    return f"${n:,.2f}"
 
 
 def format_markdown(summaries, categories, budgets, notes, locks, options):
@@ -261,11 +456,13 @@ def format_markdown(summaries, categories, budgets, notes, locks, options):
         L.append("| Metric | Value |")
         L.append("|--------|-------|")
         L.append(f'| Focus Month | {focus["month"]} |')
-        L.append(f'| Total Expenses | {fmt(focus["totalExpenses"])} |')
+        L.append(f'| Net Expenses | {fmt(focus["totalExpenses"])} (Gross {fmt(focus["grossExpenses"])} - Refunds {fmt(focus["totalRefunds"])}) |')
+        L.append(f'| Fixed / Flexible / Non-Monthly | {fmt(focus["bucketBreakdown"]["fixed"])} / {fmt(focus["bucketBreakdown"]["flexible"])} / {fmt(focus["bucketBreakdown"]["non-monthly"])} |')
         L.append(f'| Total Income | {fmt(focus["totalIncome"])} |')
+        L.append(f'| Internal Transfers (Excluded) | {fmt(focus["totalTransfers"])} |')
         L.append(f"| Net Cash Flow | {fmt(net)} |")
         L.append(f"| Savings Rate | {sr}% |")
-        L.append(f'| Transactions | {focus["transactionCount"]} |')
+        L.append(f'| Transactions | {focus["transactionCount"]} ({focus["needsReviewCount"]} needs-review) |')
         L.append("")
 
     # Budget vs Actual
@@ -304,8 +501,8 @@ def format_markdown(summaries, categories, budgets, notes, locks, options):
     if len(summaries) > 1:
         L.append("## Monthly Trend")
         L.append("")
-        L.append("| Month | Expenses | Income | Net | Savings Rate |")
-        L.append("|-------|----------|--------|-----|-------------|")
+        L.append("| Month | Net Expenses | Income | Net Cash Flow | Savings Rate |")
+        L.append("|-------|--------------|--------|---------------|-------------|")
         for s in summaries:
             net = s["totalIncome"] - s["totalExpenses"]
             sr = (
@@ -323,8 +520,8 @@ def format_markdown(summaries, categories, budgets, notes, locks, options):
     if focus and focus["categoryBreakdown"]:
         L.append("## Category Breakdown")
         L.append("")
-        L.append("| Category | Amount | % of Total |")
-        L.append("|----------|--------|-----------|")
+        L.append("| Category | Net Amount | % of Total |")
+        L.append("|----------|------------|-----------|")
         sorted_cats = sorted(
             focus["categoryBreakdown"].items(), key=lambda x: x[1], reverse=True
         )
@@ -346,6 +543,17 @@ def format_markdown(summaries, categories, budgets, notes, locks, options):
         for i, t in enumerate(focus["topTransactions"], 1):
             L.append(
                 f'| {i} | {t["description"]} | {fmt(t["amount"])} | {t["category"]} | {t["date"]} |'
+            )
+        L.append("")
+
+    if focus and focus.get("needsReviewTransactions"):
+        L.append("## ⚠️ Needs Review Queue")
+        L.append("")
+        L.append("| Date | Description | Amount | Category |")
+        L.append("|------|-------------|--------|----------|")
+        for nr in focus["needsReviewTransactions"]:
+            L.append(
+                f'| {nr["date"]} | {nr["description"]} | {fmt(nr["amount"])} | `{nr["category"]}` |'
             )
         L.append("")
 
@@ -398,6 +606,13 @@ def main():
     now = datetime.now()
     default_month = f"{now.year}-{now.month:02d}"
 
+    parser.add_argument("--tsv", default=None, help="Path to exported Google Sheets Transactions.tsv")
+    parser.add_argument(
+        "--json-grid",
+        default=None,
+        help="Path to 2D JSON grid from `gsheets readonly read <ID> 'Transactions!A1:L2000' --json`",
+    )
+    parser.add_argument("--state-file", default=None, help="Path to JSON ledger state file")
     parser.add_argument("--project", default=None, help="Project ID to export")
     parser.add_argument(
         "--month", default=default_month, help="Focus month (YYYY-MM)"
@@ -423,7 +638,11 @@ def main():
         file=sys.stderr,
     )
 
-    data = load_storage_module()
+    data = load_storage_module(
+        tsv_path=options.tsv,
+        json_grid_path=options.json_grid,
+        state_file=options.state_file,
+    )
     txns = data["transactions"]
     cats = data["categories"]
     budgets = data["budgets"]
@@ -448,21 +667,13 @@ def main():
             },
             "summaries": summaries,
             "budgets": budgets,
+            "categories": cats,
             "notes": notes,
-            "locks": [l for l in locks if l.get("locked")],
-            "categories": [
-                {"id": c["id"], "name": c["name"], "emoji": c["emoji"], "parentId": c.get("parentId")}
-                for c in cats
-            ],
+            "locks": locks,
         }
         print(json.dumps(output, indent=2))
     else:
         print(format_markdown(summaries, cats, budgets, notes, locks, options))
-
-    print(
-        "\n✅ Done. Copy the output above and paste it into any AI chat.",
-        file=sys.stderr,
-    )
 
 
 if __name__ == "__main__":

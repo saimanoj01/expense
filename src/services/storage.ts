@@ -57,6 +57,7 @@ export interface TxMeta {
   categorizedBy?: 'user' | 'history' | 'keyword' | 'llm' | 'fallback';
   userEdited?: EditableTxField[];        // Fields manually edited by user (never overwritten by feed updates)
   provisional?: boolean;                 // Optional flag for instant tap sources (e.g. Google Wallet)
+  backfilled?: boolean;                  // True when metadata was reconstructed/backfilled from existing sheet rows
   ingestedAt?: string;
   updatedAt?: string;
 }

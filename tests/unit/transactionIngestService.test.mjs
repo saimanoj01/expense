@@ -1927,5 +1927,1050 @@ test('26. Atomic commitIngestBatch rollback on mid-flight error and GoogleSheets
   }
 });
 
+test('27. November replay regressions: bare Google/Zelle isolation, Zillow ST-id normalization, transfer keywords, misc-salon history, and legacy needs-review resolution', async () => {
+  const projectId = 'test-november-regressions';
+  const adapter = createCleanAdapter(projectId);
+
+  // Seed historical rows that previously caused cross-type / prefix / rail collisions
+  await adapter.saveTransactions(projectId, [
+    {
+      id: 'hist-google-payroll',
+      date: '2026-07-15',
+      description: 'Google',
+      amount: 5000,
+      type: 'income',
+      category: 'income',
+      subCategory: 'income-salary',
+      labels: ['manoj bofa'],
+      notes: 'Payroll',
+      hash: 'h1',
+    },
+    {
+      id: 'hist-zelle-secdep',
+      date: '2026-07-27',
+      description: 'Zelle',
+      amount: 2700,
+      type: 'expense',
+      category: 'housing',
+      subCategory: 'housing-mortgage',
+      spendingBucket: 'fixed',
+      labels: ['fixed'],
+      notes: 'Returned Security Deposit',
+      hash: 'h2',
+    },
+    {
+      id: 'hist-zillow-rental',
+      date: '2026-07-05',
+      description: 'ZG - Your Rental Rent-#K5-7 ST-A1B2C3D4E5F6',
+      amount: 2695,
+      type: 'income',
+      category: 'income',
+      subCategory: 'income-investment',
+      labels: ['wells fargo'],
+      notes: 'Rental payout',
+      hash: 'h3',
+    },
+    {
+      id: 'hist-mels-barber',
+      date: '2026-07-10',
+      description: "Mel's Barber Studio",
+      amount: 65.58,
+      type: 'expense',
+      category: 'misc',
+      subCategory: 'misc-salon',
+      spendingBucket: 'flexible',
+      labels: ['bilt', 'flexible'],
+      notes: '',
+      hash: 'h4',
+    },
+    {
+      id: 'hist-google-store',
+      date: '2026-07-12',
+      description: 'Google Store',
+      amount: 199.99,
+      type: 'expense',
+      category: 'merchandise',
+      subCategory: 'merchandise-electronics',
+      spendingBucket: 'flexible',
+      labels: ['bilt', 'flexible'],
+      notes: '',
+      hash: 'h5',
+    },
+  ]);
+
+  const res = await ingestTransactions(
+    {
+      projectId,
+      sourceId: 'gpay-plaid',
+      triggerMode: 'automated',
+      transactions: [
+        {
+          externalId: 'nov_1',
+          date: '2026-11-02',
+          description: 'Google Fi',
+          amount: 31.64,
+        },
+        {
+          externalId: 'nov_2',
+          date: '2026-11-03',
+          description: 'Google Store',
+          amount: 355.87,
+        },
+        {
+          externalId: 'nov_3',
+          date: '2026-11-06',
+          description: 'Google One',
+          amount: -16.77,
+          isRefund: true,
+        },
+        {
+          externalId: 'nov_4',
+          date: '2026-11-02',
+          description: 'Zelle payment to DIANA TORRES RIVERA',
+          amount: 200,
+        },
+        {
+          externalId: 'nov_5',
+          date: '2026-11-05',
+          description: 'ZG - Your Rental Rent-#K5-7 ST-T0P3X0N3Q7Q3',
+          amount: 2695,
+          type: 'income',
+        },
+        {
+          externalId: 'nov_6',
+          date: '2026-11-06',
+          description: "Mel's Barber Studio",
+          amount: 65.58,
+        },
+        {
+          externalId: 'nov_7',
+          date: '2026-11-06',
+          description: 'AMAZON CORP SYF PAYMNT 604578111959659',
+          amount: 233.94,
+        },
+        {
+          externalId: 'nov_8',
+          date: '2026-11-04',
+          description: 'BILT CARD PMT PPD ID: 1844372402',
+          amount: 5831.84,
+        },
+        {
+          externalId: 'nov_9',
+          date: '2026-11-04',
+          description: 'Payment',
+          amount: 5831.84,
+        },
+        {
+          externalId: 'nov_10',
+          date: '2026-11-03',
+          description: 'Payment - Bilt Housing',
+          amount: 2640.66,
+        },
+      ],
+      options: { skipLlm: true },
+    },
+    adapter
+  );
+
+  const byExt = Object.fromEntries(res.records.map(r => [r.externalId, r]));
+
+  // Bare 'Google' payroll must not bleed into Google Fi, Google Store, or Google One
+  assert.equal(byExt.nov_1.transactions[0].category, 'utilities');
+  assert.equal(byExt.nov_1.transactions[0].subCategory, 'utilities-phone');
+
+  assert.equal(byExt.nov_2.transactions[0].category, 'merchandise');
+  assert.equal(byExt.nov_2.transactions[0].subCategory, 'merchandise-electronics');
+
+  assert.equal(byExt.nov_3.transactions[0].type, 'income');
+  assert.ok(byExt.nov_3.transactions[0].labels.includes('refund'));
+  assert.equal(byExt.nov_3.transactions[0].category, 'entertainment');
+  assert.equal(byExt.nov_3.transactions[0].subCategory, 'entertainment-subs');
+
+  // Bare 'Zelle' security deposit must not classify Zelle payment to DIANA as housing
+  assert.equal(byExt.nov_4.transactions[0].category, 'misc');
+  assert.ok(byExt.nov_4.transactions[0].labels.includes('needs-review'));
+
+  // Zillow ST-id suffix stripped so history matches income / income-investment
+  assert.equal(byExt.nov_5.transactions[0].type, 'income');
+  assert.equal(byExt.nov_5.transactions[0].category, 'income');
+  assert.equal(byExt.nov_5.transactions[0].subCategory, 'income-investment');
+  assert.equal(byExt.nov_5.categorizedBy, 'history');
+
+  // Mel's Barber Studio matches misc/misc-salon from history and is NOT flagged for review
+  assert.equal(byExt.nov_6.transactions[0].category, 'misc');
+  assert.equal(byExt.nov_6.transactions[0].subCategory, 'misc-salon');
+  assert.ok(!byExt.nov_6.transactions[0].labels.includes('needs-review'));
+
+  // Card bill payoffs and Bilt housing pass-through classify as transfers
+  assert.equal(byExt.nov_7.transactions[0].type, 'transfer');
+  assert.equal(byExt.nov_7.transactions[0].category, 'transfers');
+  assert.equal(byExt.nov_7.transactions[0].subCategory, 'transfers-cc');
+
+  assert.equal(byExt.nov_8.transactions[0].type, 'transfer');
+  assert.equal(byExt.nov_9.transactions[0].type, 'transfer');
+
+  assert.equal(byExt.nov_10.transactions[0].type, 'transfer');
+  assert.equal(byExt.nov_10.transactions[0].category, 'housing');
+  assert.equal(byExt.nov_10.transactions[0].subCategory, 'housing-mortgage');
+
+  // Legacy row with needs-review label but no meta.review resolves as category review
+  const legacyResolved = resolveTransactionReview(
+    {
+      id: 'legacy-review-row',
+      date: '2026-11-05',
+      description: 'Garlic Crush',
+      amount: 7.67,
+      type: 'expense',
+      category: 'food',
+      subCategory: 'food-dine-in',
+      labels: ['bilt', 'flexible', 'needs-review'],
+      notes: '',
+      hash: 'h-legacy',
+    },
+    '2026-11-06T20:00:00.000Z'
+  );
+  assert.ok(!legacyResolved.labels.includes('needs-review'));
+  assert.equal(legacyResolved.meta?.categorizedBy, 'user');
+  assert.equal(legacyResolved.meta?.confidence, 1.0);
+  assert.equal(legacyResolved.meta?.review?.reason, 'category');
+  assert.equal(legacyResolved.meta?.review?.resolvedAt, '2026-11-06T20:00:00.000Z');
+});
+
+test('28. Pure-Python wallet_reconcile.py CLI: 7-day lookback, pending->settled upgrade, tip drift, tombstones, and batch output', async () => {
+  const { execFileSync } = await import('node:child_process');
+  const fs = await import('node:fs');
+  const os = await import('node:os');
+
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wallet-reconcile-test-'));
+  const tsvPath = path.join(tmpDir, 'transactions.tsv');
+  const notesPath = path.join(tmpDir, 'notes.json');
+  const inputPath = path.join(tmpDir, 'wallet_input.json');
+  const batchOutPath = path.join(tmpDir, 'batch_out.json');
+
+  try {
+    // Existing sheet rows:
+    // 1. Settled row (JD's Market on 2026-11-01) -> should be skipped_exact_duplicate
+    // 2. Pending row (Garlic Crush $7.67 on 2026-11-05) -> should be merged_tip_adjusted to $9.67 on 2026-11-06
+    // 3. Pending row (Google Store $355.87 on 2026-11-03) -> should be updated_pending_to_settled on 2026-11-04
+    const tsvLines = [
+      ['id', 'date', 'category', 'subCategory', 'amount', 'type', 'description', 'notes', 'labels', 'hash', 'spendingBucket'].join('\t'),
+      [
+        'tx-jds',
+        '2026-11-01',
+        'groceries',
+        'groceries-supermarket',
+        '76.74',
+        'expense',
+        "JD's Market",
+        'Google Wallet (Plaid) • Bilt Palladium (7702)',
+        '["bilt","flexible"]',
+        '1997f0ba86dae7aa967fc3201f9b121534d8cd908a36941b7669938059f88ca3',
+        'flexible',
+      ].join('\t'),
+      [
+        'tx-garlic-pend',
+        '2026-11-05',
+        'food',
+        'food-dine-in',
+        '7.67',
+        'expense',
+        'Garlic Crush',
+        'Google Wallet (Plaid) • Bilt Palladium (7702) • Pending',
+        '["bilt","flexible"]',
+        '1111222233334444555566667777888899990000aaaabbbbccccddddeeeeffff',
+        'flexible',
+      ].join('\t'),
+      [
+        'tx-gstore-pend',
+        '2026-11-03',
+        'merchandise',
+        'merchandise-electronics',
+        '355.87',
+        'expense',
+        'Google Store',
+        'Google Wallet (Plaid) • Bilt Palladium (7702) • Pending',
+        '["bilt","flexible"]',
+        '2222333344445555666677778888999900001111aaaabbbbccccddddeeeeffff',
+        'flexible',
+      ].join('\t'),
+    ];
+    fs.writeFileSync(tsvPath, tsvLines.join('\n'), 'utf8');
+
+    // Notes with a tombstone for 'tombstoned-ext-1'
+    const notesGrid = [
+      ['key', 'note'],
+      [
+        '__meta_ingest_state__',
+        JSON.stringify({
+          text: JSON.stringify({
+            version: 1,
+            tombstones: ['tombstoned-ext-1'],
+            sources: {},
+            recentRuns: [],
+          }),
+          updatedAt: '2026-11-05T00:00:00Z',
+        }),
+      ],
+    ];
+    fs.writeFileSync(notesPath, JSON.stringify(notesGrid), 'utf8');
+
+    // Incoming Wallet rows
+    const walletRows = [
+      // Too old (before 7-day lookback from 2026-11-06)
+      {
+        date: '2026-10-20',
+        description: 'Old Coffee',
+        amount: 4.5,
+        status: 'Purchase',
+        account: '7702',
+      },
+      // Tombstoned externalId
+      {
+        externalId: 'tombstoned-ext-1',
+        date: '2026-11-04',
+        description: 'Deleted Charge',
+        amount: 19.99,
+        status: 'Purchase',
+        account: '7702',
+      },
+      // Exact duplicate of JD's Market
+      {
+        date: '2026-11-01',
+        description: "JD's Market",
+        amount: 76.74,
+        status: 'Purchase',
+        account: '7702',
+      },
+      // Tip-adjusted settlement of Garlic Crush ($7.67 -> $9.67)
+      {
+        date: '2026-11-06',
+        description: 'Garlic Crush',
+        amount: 9.67,
+        status: 'Purchase',
+        categoryHint: 'Food & Drink',
+        account: '7702',
+      },
+      // Settled upgrade of Google Store with +1d settlement drift
+      {
+        date: '2026-11-04',
+        description: 'Google Store',
+        amount: 355.87,
+        status: 'Purchase',
+        account: '7702',
+      },
+      // New Bilt Housing pass-through ACH on 9666
+      {
+        date: '2026-11-03',
+        description: 'BILT CARD DES:HOUSING ID: INDN:Sai Manoj Bandi',
+        amount: 2640.66,
+        status: 'Purchase',
+        account: '9666',
+      },
+    ];
+    fs.writeFileSync(inputPath, JSON.stringify(walletRows), 'utf8');
+
+    const scriptPath = path.join(
+      repoRoot,
+      '.agents/skills/expense-ingest/scripts/wallet_reconcile.py'
+    );
+    const stdout = execFileSync(
+      'python3',
+      [
+        scriptPath,
+        '--input',
+        inputPath,
+        '--transactions-tsv',
+        tsvPath,
+        '--notes-json',
+        notesPath,
+        '--reference-date',
+        '2026-11-06',
+        '--lookback-days',
+        '7',
+        '--batch-out',
+        batchOutPath,
+      ],
+      { encoding: 'utf8' }
+    );
+
+    const plan = JSON.parse(stdout);
+    assert.equal(plan.summary.skippedBeforeLookback, 1);
+    assert.equal(plan.summary.skippedTombstoned, 1);
+    assert.equal(plan.summary.skippedDuplicate, 1);
+    assert.equal(plan.summary.mergedTipAdjusted, 1);
+    assert.equal(plan.summary.updatedPendingToSettled, 1);
+    assert.equal(plan.summary.inserted, 1);
+
+    // Check Bilt ACH leg normalized to description "Bilt", type "transfer", housing/housing-mortgage
+    const insertedBilt = plan.insertedTransactions[0];
+    assert.equal(insertedBilt.description, 'Bilt');
+    assert.equal(insertedBilt.type, 'transfer');
+    assert.equal(insertedBilt.category, 'housing');
+    assert.equal(insertedBilt.subCategory, 'housing-mortgage');
+    assert.ok(insertedBilt.labels.includes('manoj bofa'));
+    assert.equal(plan.appendRows[0].length, 12); // A:L 12 columns
+
+    // Check batch requests file was written
+    const batchReqs = JSON.parse(fs.readFileSync(batchOutPath, 'utf8'));
+    assert.ok(Array.isArray(batchReqs));
+    assert.ok(batchReqs.some(op => op.op === 'write' && op.range.startsWith('Transactions!A')));
+    assert.ok(batchReqs.some(op => op.op === 'append' && op.range === 'Transactions!A1'));
+    assert.ok(batchReqs.some(op => op.op === 'write' && op.range === 'Notes!A2:B2'));
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('29. TypeScript & Python Parity: Occurrence-aware deduplication, Pending -> Settled upgrade, PENDING PAYMENT settlement, and modal spendingBucket', async () => {
+  const { execFileSync } = await import('node:child_process');
+  const os = await import('node:os');
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nebula-parity-29-'));
+
+  try {
+    const projectId = 'test-parity-29';
+    const adapter = createCleanAdapter(projectId);
+
+    // Seed history with 3 rows for "Bella Yoga Studio": 1 oldest 'flexible', 2 newer 'fixed' -> modal is 'fixed'
+    const seedRows = [
+      {
+        id: 'yoga-1',
+        date: '2026-08-01',
+        category: 'healthcare',
+        subCategory: null,
+        amount: 120.0,
+        type: 'expense',
+        description: 'Bella Yoga Studio',
+        notes: '',
+        labels: ['flexible'],
+        hash: 'h-yoga-1',
+        spendingBucket: 'flexible',
+        meta: { sources: ['gpay-plaid'], confidence: 0.95, categorizedBy: 'user' },
+      },
+      {
+        id: 'yoga-2',
+        date: '2026-09-01',
+        category: 'healthcare',
+        subCategory: null,
+        amount: 120.0,
+        type: 'expense',
+        description: 'Bella Yoga Studio',
+        notes: '',
+        labels: ['fixed'],
+        hash: 'h-yoga-2',
+        spendingBucket: 'fixed',
+        meta: { sources: ['gpay-plaid'], confidence: 0.95, categorizedBy: 'user' },
+      },
+      {
+        id: 'yoga-3',
+        date: '2026-10-01',
+        category: 'healthcare',
+        subCategory: null,
+        amount: 120.0,
+        type: 'expense',
+        description: 'Bella Yoga Studio',
+        notes: '',
+        labels: ['fixed'],
+        hash: 'h-yoga-3',
+        spendingBucket: 'fixed',
+        meta: { sources: ['gpay-plaid'], confidence: 0.95, categorizedBy: 'user' },
+      },
+      // Existing settled Starbucks $5.00 on 2026-11-04
+      {
+        id: 'sbux-existing-1',
+        date: '2026-11-04',
+        category: 'food',
+        subCategory: 'food-takeout',
+        amount: 5.0,
+        type: 'expense',
+        description: 'Starbucks',
+        notes: 'Google Wallet (Plaid) • Bilt Palladium (7702)',
+        labels: ['bilt', 'flexible'],
+        hash: (await import('node:crypto'))
+          .createHash('sha256')
+          .update('2026-11-04|starbucks|5.00|expense')
+          .digest('hex'),
+        spendingBucket: 'flexible',
+        meta: {
+          sources: ['gpay-plaid'],
+          account: 'bilt',
+          confidence: 0.85,
+          categorizedBy: 'keyword',
+        },
+      },
+      // Two pending Cafe Vida $12.00 rows (2026-11-02 and 2026-11-04)
+      {
+        id: 'vida-pend-1',
+        date: '2026-11-02',
+        category: 'food',
+        subCategory: 'food-takeout',
+        amount: 12.0,
+        type: 'expense',
+        description: 'Cafe Vida',
+        notes: 'Google Wallet (Plaid) • Bilt Palladium (7702) • Pending',
+        labels: ['bilt', 'flexible'],
+        hash: 'h-vida-1',
+        spendingBucket: 'flexible',
+        meta: {
+          sources: ['gpay-plaid'],
+          account: 'bilt',
+          provisional: true,
+        },
+      },
+      {
+        id: 'vida-pend-2',
+        date: '2026-11-04',
+        category: 'food',
+        subCategory: 'food-takeout',
+        amount: 12.0,
+        type: 'expense',
+        description: 'Cafe Vida',
+        notes: 'Google Wallet (Plaid) • Bilt Palladium (7702) • Pending',
+        labels: ['bilt', 'flexible'],
+        hash: 'h-vida-2',
+        spendingBucket: 'flexible',
+        meta: {
+          sources: ['gpay-plaid'],
+          account: 'bilt',
+          provisional: true,
+        },
+      },
+      // Pending CC payoff "PENDING PAYMENT" ($3,115.23 on 4692)
+      {
+        id: 'atmos-pend-pmt',
+        date: '2026-11-04',
+        category: 'transfers',
+        subCategory: 'transfers-cc',
+        amount: 3115.23,
+        type: 'transfer',
+        description: 'PENDING PAYMENT',
+        notes: 'Google Wallet (Plaid) • BofA Atmos Ascent Visa (4692) • Pending',
+        labels: ['bofa atmos'],
+        hash: '2df3342a69774ff3f957a99ffbc85e0cf9ef449bc24a84145058325410162780',
+        spendingBucket: undefined,
+        meta: {
+          sources: ['gpay-plaid'],
+          account: 'bofa atmos',
+          provisional: true,
+          aliasHashes: ['2df3342a69774ff3'],
+        },
+      },
+    ];
+
+    for (const r of seedRows) {
+      await adapter.saveTransaction(projectId, r);
+    }
+
+    const incomingBatch = [
+      // 1st Starbucks $5.00 -> matches sbux-existing-1 (skipped_exact_duplicate)
+      {
+        date: '2026-11-04',
+        description: 'Starbucks',
+        amount: 5.0,
+        account: '7702',
+      },
+      // 2nd Starbucks $5.00 -> sbux-existing-1 already claimed -> inserted_flagged (duplicate)!
+      {
+        date: '2026-11-04',
+        description: 'Starbucks',
+        amount: 5.0,
+        account: '7702',
+      },
+      // Settled Cafe Vida $12.00 on 2026-11-05 -> upgrades closest pending row (vida-pend-2 on 2026-11-04)
+      {
+        date: '2026-11-05',
+        description: 'Cafe Vida',
+        amount: 12.0,
+        account: '7702',
+      },
+      // Settled "Payment" $3,115.23 on 4692 -> upgrades "PENDING PAYMENT" in place
+      {
+        date: '2026-11-05',
+        description: 'Payment',
+        amount: 3115.23,
+        type: 'transfer',
+        account: '4692',
+      },
+      // New Bella Yoga Studio charge -> Stage 1 History Memory picks modal 'fixed' bucket
+      {
+        date: '2026-11-05',
+        description: 'Bella Yoga Studio',
+        amount: 120.0,
+        account: '7702',
+      },
+    ];
+
+    const tsRes = await ingestTransactions(
+      {
+        projectId,
+        sourceId: 'gpay-plaid',
+        triggerMode: 'automated',
+        transactions: incomingBatch,
+        options: { skipLlm: true },
+      },
+      adapter
+    );
+
+    assert.equal(tsRes.summary.skippedDuplicate, 1);
+    assert.equal(tsRes.summary.insertedFlagged, 1);
+    assert.equal(tsRes.summary.updatedFromSource, 2);
+    assert.equal(tsRes.summary.inserted, 1);
+
+    const yogaRecord = tsRes.records[4].transactions[0];
+    assert.equal(yogaRecord.spendingBucket, 'fixed');
+
+    const updatedLedger = await adapter.getTransactions(projectId);
+    const settledAtmos = updatedLedger.find(t => t.id === 'atmos-pend-pmt');
+    assert.equal(settledAtmos.description, 'Payment');
+    assert.equal(settledAtmos.meta?.provisional, false);
+    assert.ok(!settledAtmos.notes.toLowerCase().includes('pending'));
+
+    // Now test Python wallet_reconcile.py on the exact same dataset
+    const tsvHeader = [
+      'id',
+      'date',
+      'category',
+      'subCategory',
+      'amount',
+      'type',
+      'description',
+      'notes',
+      'labels',
+      'hash',
+      'spendingBucket',
+      'meta',
+    ].join('\t');
+    const tsvLines = [
+      tsvHeader,
+      ...seedRows.map(r =>
+        [
+          r.id,
+          r.date,
+          r.category,
+          r.subCategory || '',
+          r.amount,
+          r.type,
+          r.description,
+          r.notes,
+          JSON.stringify(r.labels),
+          r.hash,
+          r.spendingBucket || '',
+          JSON.stringify(r.meta),
+        ].join('\t')
+      ),
+    ];
+    const tsvPath = path.join(tmpDir, 'Transactions.tsv');
+    const notesPath = path.join(tmpDir, 'Notes.json');
+    const inputPath = path.join(tmpDir, 'wallet.json');
+    fs.writeFileSync(tsvPath, tsvLines.join('\n') + '\n', 'utf8');
+    fs.writeFileSync(
+      notesPath,
+      JSON.stringify([
+        ['key', 'value'],
+        [
+          '__meta_ingest_state__',
+          JSON.stringify({
+            text: JSON.stringify({ version: 1, tombstones: [], sources: {}, recentRuns: [] }),
+          }),
+        ],
+      ]),
+      'utf8'
+    );
+    fs.writeFileSync(
+      inputPath,
+      JSON.stringify(
+        incomingBatch.map(x => ({
+          ...x,
+          status: x.type === 'transfer' ? 'Transfer' : 'Purchase',
+        }))
+      ),
+      'utf8'
+    );
+
+    const scriptPath = path.join(
+      repoRoot,
+      '.agents/skills/expense-ingest/scripts/wallet_reconcile.py'
+    );
+    const pyOut = JSON.parse(
+      execFileSync(
+        'python3',
+        [
+          scriptPath,
+          '--input',
+          inputPath,
+          '--transactions-tsv',
+          tsvPath,
+          '--notes-json',
+          notesPath,
+          '--reference-date',
+          '2026-11-06',
+          '--lookback-days',
+          '7',
+        ],
+        { encoding: 'utf8' }
+      )
+    );
+
+    assert.equal(pyOut.summary.skippedDuplicate, 1);
+    assert.equal(pyOut.summary.insertedFlagged, 1);
+    assert.equal(pyOut.summary.updatedPendingToSettled, 2);
+    assert.equal(pyOut.summary.inserted, 1);
+
+    const pyYoga = pyOut.insertedTransactions.find(t => t.description === 'Bella Yoga Studio');
+    assert.equal(pyYoga.spendingBucket, 'fixed');
+
+    const pyAtmosUpdate = pyOut.updateOps.find(u => u.id === 'atmos-pend-pmt');
+    assert.equal(pyAtmosUpdate.tx.description, 'Payment');
+    assert.equal(pyAtmosUpdate.tx.meta.provisional, false);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('30. Month-end Bilt housing normalization, HOA ($352.95) exclusion, blank-line TSV rowNumber, tombstone sharding (>400), and lease lock', async () => {
+  const { execFileSync, spawnSync } = await import('node:child_process');
+  const os = await import('node:os');
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nebula-bilt-30-'));
+
+  try {
+    const tsvHeader = [
+      'id',
+      'date',
+      'category',
+      'subCategory',
+      'amount',
+      'type',
+      'description',
+      'notes',
+      'labels',
+      'hash',
+      'spendingBucket',
+      'meta',
+    ].join('\t');
+
+    // Include a blank line at row 2 so the pending transaction is on physical sheet Row 3!
+    const tsvContent = [
+      tsvHeader,
+      '', // physical row 2 (blank)
+      [
+        'row3-pending-id',
+        '2026-11-03',
+        'food',
+        'food-takeout',
+        '15.00',
+        'expense',
+        'Blue Bottle Coffee',
+        'Google Wallet (Plaid) • Bilt Palladium (7702) • Pending',
+        '["bilt","flexible"]',
+        'old-hash-row3',
+        'flexible',
+        '{"sources":["gpay-plaid"],"account":"bilt","provisional":true}',
+      ].join('\t'),
+    ].join('\n');
+
+    const tsvPath = path.join(tmpDir, 'Transactions.tsv');
+    const notesPath = path.join(tmpDir, 'Notes.json');
+    const inputPath = path.join(tmpDir, 'wallet.json');
+    const batchPath = path.join(tmpDir, 'batch.json');
+    fs.writeFileSync(tsvPath, tsvContent + '\n', 'utf8');
+
+    // Create 450 tombstones across inline + overflow chunk 1, plus a duplicate __meta_ingest_state__ row at row 4
+    const inlineTombstones = Array.from({ length: 400 }, (_, i) => `tomb-inline-${i}`);
+    const overflowTombstones = Array.from({ length: 50 }, (_, i) => `tomb-overflow-${i}`);
+    fs.writeFileSync(
+      notesPath,
+      JSON.stringify([
+        ['key', 'value'],
+        [
+          '__meta_ingest_state__',
+          JSON.stringify({
+            text: JSON.stringify({
+              version: 1,
+              tombstones: inlineTombstones,
+              sources: {},
+              recentRuns: [],
+            }),
+          }),
+        ],
+        [
+          '__meta_ingest_tombstones_1__',
+          JSON.stringify({
+            text: JSON.stringify(overflowTombstones),
+          }),
+        ],
+        [
+          '__meta_ingest_state__',
+          JSON.stringify({
+            text: JSON.stringify({ version: 1, tombstones: [], sources: {}, recentRuns: [] }),
+          }),
+        ],
+      ]),
+      'utf8'
+    );
+
+    const walletIncoming = [
+      // 1. Month-end Bilt mortgage expense ($7,356.60 on 2026-10-30 -> normalizes to 2026-11-01, inside 7d lookback from 2026-11-06!)
+      {
+        date: '2026-10-30',
+        description: 'Bilt Housing Payment',
+        amount: 7356.6,
+        status: 'Purchase',
+        account: '7702',
+      },
+      // 2. Month-end Bilt housing pass-through ($7,356.60 on 2026-10-30 -> normalizes to 2026-11-01)
+      {
+        date: '2026-10-30',
+        description: 'Payment - Bilt Housing',
+        amount: 7356.6,
+        status: 'Refund',
+        account: '7702',
+      },
+      // 3. HOA payment ($352.95 on 2026-10-31 -> below minAmount=1000, stays on 2026-10-31)
+      {
+        date: '2026-10-31',
+        description: 'Bilt Housing Payment',
+        amount: 352.95,
+        status: 'Purchase',
+        account: '7702',
+      },
+      // 4. Settled Blue Bottle Coffee on 2026-11-04 -> updates physical sheet row 3
+      {
+        date: '2026-11-04',
+        description: 'Blue Bottle Coffee',
+        amount: 15.0,
+        status: 'Purchase',
+        account: '7702',
+      },
+    ];
+    fs.writeFileSync(inputPath, JSON.stringify(walletIncoming), 'utf8');
+
+    const scriptPath = path.join(
+      repoRoot,
+      '.agents/skills/expense-ingest/scripts/wallet_reconcile.py'
+    );
+    const plan = JSON.parse(
+      execFileSync(
+        'python3',
+        [
+          scriptPath,
+          '--input',
+          inputPath,
+          '--transactions-tsv',
+          tsvPath,
+          '--notes-json',
+          notesPath,
+          '--reference-date',
+          '2026-11-06',
+          '--lookback-days',
+          '7',
+          '--batch-out',
+          batchPath,
+        ],
+        { encoding: 'utf8' }
+      )
+    );
+
+    assert.equal(plan.summary.inserted, 3);
+    assert.equal(plan.summary.updatedPendingToSettled, 1);
+
+    // Check mortgage normalized to 2026-11-01 with Posted 2026-10-30 note and 2 aliasHashes
+    const biltExp = plan.insertedTransactions[0];
+    assert.equal(biltExp.date, '2026-11-01');
+    assert.ok(biltExp.notes.includes('Posted 2026-10-30'));
+    assert.equal(biltExp.meta.aliasHashes.length, 2);
+
+    // Check HOA ($352.95) stayed on 2026-10-31
+    const hoaExp = plan.insertedTransactions[2];
+    assert.equal(hoaExp.date, '2026-10-31');
+    assert.ok(!hoaExp.notes.includes('Posted'));
+
+    // Check blank line at row 2 did not shift row 3!
+    assert.equal(plan.updateOps[0].rowNumber, 3);
+    const batchOps = JSON.parse(fs.readFileSync(batchPath, 'utf8'));
+    assert.ok(batchOps.some(op => op.op === 'write' && op.range === 'Transactions!A3:L3'));
+    // Check duplicate __meta_ingest_state__ at row 4 is cleared and overflow tombstone chunk at row 3 is updated
+    assert.ok(batchOps.some(op => op.op === 'clear' && op.range === 'Notes!A4:B4'));
+    assert.ok(batchOps.some(op => op.op === 'write' && op.range === 'Notes!A3:B3'));
+
+    // Check active lease lock aborts --batch-out with exit code 3
+    const futureIso = new Date(Date.now() + 60_000).toISOString();
+    const lockedNotesPath = path.join(tmpDir, 'NotesLocked.json');
+    fs.writeFileSync(
+      lockedNotesPath,
+      JSON.stringify([
+        ['key', 'value'],
+        [
+          '__meta_ingest_lock__',
+          JSON.stringify({
+            text: JSON.stringify({ holder: 'web-ui', expiresAt: futureIso }),
+          }),
+        ],
+      ]),
+      'utf8'
+    );
+    const lockRun = spawnSync(
+      'python3',
+      [
+        scriptPath,
+        '--input',
+        inputPath,
+        '--transactions-tsv',
+        tsvPath,
+        '--notes-json',
+        lockedNotesPath,
+        '--batch-out',
+        batchPath,
+      ],
+      { encoding: 'utf8' }
+    );
+    assert.equal(lockRun.status, 3);
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('31. Word-boundary isolation ("spaghetti" vs "spa", "snail" vs "nail"), notes transfer isolation, and refund spendingBucket preservation', async () => {
+  const { execFileSync } = await import('node:child_process');
+  const os = await import('node:os');
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nebula-wb-31-'));
+
+  try {
+    const projectId = 'test-wb-31';
+    const adapter = createCleanAdapter(projectId);
+
+    const batch = [
+      {
+        date: '2026-11-04',
+        description: 'Old Spaghetti Factory',
+        amount: 45.0,
+        notes: 'Paid via bank transfer split with friend',
+      },
+      {
+        date: '2026-11-04',
+        description: 'Snail Mail Stamps',
+        amount: 14.0,
+      },
+      {
+        date: '2026-11-04',
+        description: 'Olympus Day Spa',
+        amount: 85.0,
+      },
+      {
+        date: '2026-11-04',
+        description: 'Luxe Nail Studio',
+        amount: 55.0,
+      },
+      {
+        date: '2026-11-04',
+        description: 'Google One',
+        amount: -16.77,
+      },
+    ];
+
+    const tsRes = await ingestTransactions(
+      {
+        projectId,
+        sourceId: 'gpay-plaid',
+        triggerMode: 'automated',
+        transactions: batch,
+        options: { skipLlm: true },
+      },
+      adapter
+    );
+
+    const txs = tsRes.records.map(r => r.transactions[0]);
+    // 1. "Old Spaghetti Factory" with "bank transfer" in notes MUST be expense (NOT transfer and NOT misc-salon!)
+    assert.equal(txs[0].type, 'expense');
+    assert.notEqual(txs[0].subCategory, 'misc-salon');
+    // 2. "Snail Mail Stamps" MUST NOT match 'nail' -> misc-other (flagged), NOT misc-salon
+    assert.equal(txs[1].category, 'misc');
+    assert.equal(txs[1].subCategory, 'misc-other');
+    // 3. "Olympus Day Spa" and "Luxe Nail Studio" DO match misc-salon cleanly
+    assert.equal(txs[2].category, 'misc');
+    assert.equal(txs[2].subCategory, 'misc-salon');
+    assert.ok(!txs[2].labels.includes('needs-review'));
+    assert.equal(txs[3].category, 'misc');
+    assert.equal(txs[3].subCategory, 'misc-salon');
+    assert.ok(!txs[3].labels.includes('needs-review'));
+    // 4. Google One refund preserves spendingBucket ('fixed')
+    assert.equal(txs[4].type, 'income');
+    assert.ok(txs[4].labels.includes('refund'));
+    assert.equal(txs[4].category, 'entertainment');
+    assert.equal(txs[4].subCategory, 'entertainment-subs');
+    assert.equal(txs[4].spendingBucket, 'fixed');
+
+    // Verify Python wallet_reconcile.py parity on the same 5 rows
+    const inputPath = path.join(tmpDir, 'wallet.json');
+    fs.writeFileSync(
+      inputPath,
+      JSON.stringify([
+        {
+          date: '2026-11-04',
+          description: 'Old Spaghetti Factory',
+          amount: 45.0,
+          status: 'Purchase',
+          notes: 'Paid via bank transfer split with friend',
+        },
+        {
+          date: '2026-11-04',
+          description: 'Snail Mail Stamps',
+          amount: 14.0,
+          status: 'Purchase',
+        },
+        {
+          date: '2026-11-04',
+          description: 'Olympus Day Spa',
+          amount: 85.0,
+          status: 'Purchase',
+        },
+        {
+          date: '2026-11-04',
+          description: 'Luxe Nail Studio',
+          amount: 55.0,
+          status: 'Purchase',
+        },
+        {
+          date: '2026-11-04',
+          description: 'Google One',
+          amount: -16.77,
+          status: 'Refund',
+        },
+      ]),
+      'utf8'
+    );
+    const scriptPath = path.join(
+      repoRoot,
+      '.agents/skills/expense-ingest/scripts/wallet_reconcile.py'
+    );
+    const pyPlan = JSON.parse(
+      execFileSync(
+        'python3',
+        [
+          scriptPath,
+          '--input',
+          inputPath,
+          '--reference-date',
+          '2026-11-06',
+          '--lookback-days',
+          '7',
+        ],
+        { encoding: 'utf8' }
+      )
+    );
+    const pyTxs = pyPlan.insertedTransactions;
+    assert.equal(pyTxs[0].type, 'expense');
+    assert.notEqual(pyTxs[0].subCategory, 'misc-salon');
+    assert.equal(pyTxs[1].subCategory, 'misc-other');
+    assert.equal(pyTxs[2].subCategory, 'misc-salon');
+    assert.equal(pyTxs[3].subCategory, 'misc-salon');
+    assert.equal(pyTxs[4].type, 'income');
+    assert.ok(pyTxs[4].labels.includes('refund'));
+    assert.equal(pyTxs[4].spendingBucket, 'fixed');
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+
+
 
 

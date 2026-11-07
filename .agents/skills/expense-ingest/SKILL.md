@@ -1,11 +1,13 @@
 ---
 name: expense-ingest
-description: Automated and interactive transaction ingestion skill for the Nebula Expense Tracker. Activate when the user wants to import, sync, or add transactions from Bilt (Plaid JSON/sync), Amazon Store Card (order/shipment emails, Synchrony statements), CSVs, receipts, or natural language into the expense tracker with automatic deduplication, cross-source enrichment, multi-item splitting, and 3-stage categorization.
+description: Automated and interactive transaction ingestion skill for the Nebula Expense Tracker. Activate when the user wants to import, sync, or add transactions from Google Wallet (Plaid), Bilt (Plaid JSON/sync), Amazon Store Card (order/shipment emails, Synchrony statements), CSVs, receipts, or natural language into the expense tracker with automatic deduplication, 7-day rolling lookback, pending-to-settled upgrades, cross-source enrichment, multi-item splitting, and 3-stage categorization.
 ---
-
 # Nebula Expense Tracker — Transaction Ingestion Skill (`expense-ingest`)
 
-Use this skill whenever the user or an automation wants to ingest transactions into the Nebula Expense Tracker (`/home/antigravity/saimanoj01/expense`).
+Use this skill whenever the user or a scheduled automation wants to ingest or reconcile transactions into the Nebula Expense Tracker (`/home/antigravity/saimanoj01/expense`).
+
+- **Default Cloud Target Spreadsheet**: **Nebula Expense - PriyMan** (`1Whmjhktu_sgdw9WYFYx9JydpB61JU2RGuCm7AT_USLY`, overridable via `--spreadsheet-id` or `NEBULA_SPREADSHEET_ID`)
+- **Canonical Sheet Range**: `Transactions!A:L` (12 columns: `id, date, category, subCategory, amount, type, description, notes, labels, hash, spendingBucket, meta`). Readers also accept legacy 11-column (`A:K`) rows and upgrade them to `A:L` on write.
 
 ## Core Philosophy: "Optimistic Commit, Flag Only Doubts"
 
@@ -17,60 +19,89 @@ Use this skill whenever the user or an automation wants to ingest transactions i
 
 ---
 
-## End-to-End Ingestion Workflow
+## Step 1: Producer Mapping & Multi-Account Rules
 
-### Step 1: Normalize Producer Data into `RawTransactionInput[]`
+See [`references/ingest_api_contract.md`](references/ingest_api_contract.md) for the TypeScript contract and [`references/wallet_rules.json`](references/wallet_rules.json) for the machine-readable Google Wallet rule table.
 
-Convert the upstream source into the canonical `RawTransactionInput` array (see [`references/ingest_api_contract.md`](references/ingest_api_contract.md) for the full TypeScript contract):
+### 1. Google Wallet (`sourceId: 'gpay-plaid'`) — Daily Sync Producer
 
-1. **Bilt Card (Plaid `/transactions/sync` JSON)**:
-   - Map `added` and `modified` items to `op: 'upsert'`:
-     - `externalId`: `tx.transaction_id`
-     - `supersedesExternalId`: `tx.pending_transaction_id ?? undefined` (automatically upgrades pending transactions to posted in place without duplicating)
-     - `date`: `tx.authorized_date || tx.date` (`YYYY-MM-DD`)
-     - `description`: `tx.name`
-     - `merchant`: `tx.merchant_name ?? undefined`
-     - `amount`: `tx.amount`
-     - `categoryHint`: `tx.personal_finance_category?.detailed || tx.personal_finance_category?.primary`
-     - `metadataRichness`: `'medium'`
-   - Map `removed` items to `op: 'remove'`:
-     - `externalId`: `removedTx.transaction_id`
-   - *Note*: The CLI script (`scripts/ingest_transactions.py`) also accepts raw Plaid `{ added, modified, removed }` JSON directly and performs this mapping automatically.
+Google Wallet's transaction feed does not expose persistent Plaid `transaction_id`s (its `id` column is a per-query `1..N` counter), and bank ACH pulls / weekend card charges often settle 2–4 days after the transaction date. Always apply these deterministic rules:
 
-2. **Amazon Order / Shipment Confirmation Emails (`sourceId: 'amazon-email'`)**:
-   - Extract Order ID (`orderId`, e.g., `"112-3456789-0123456"`), shipment/order total (`amount`), date (`YYYY-MM-DD`), and `items: [{ title, price, quantity, categoryHint }]`.
-   - Set `externalId` to the Shipment ID or Order ID, `merchant: 'Amazon'`, `metadataRichness: 'high'`.
-   - The engine automatically groups items that share the same `(category, subCategory, spendingBucket)` into a single consolidated row, or splits across distinct categories using **Largest-Remainder cents allocation** (`allocateLargestRemainderCents`) so split rows always sum to the exact penny total.
+| Rule Type | Pattern in Google Wallet | Target Nebula Mapping |
+| :--- | :--- | :--- |
+| **Account Labels** | `7702` → `bilt` (`Bilt Palladium (7702)`) • `9666` → `manoj bofa` (`BofA SafeBalance (9666)`) • `8885` → `priyanka chase` (`Chase Total Checking (8885)`) • `6823` → `priyanka chase` (`Chase Savings (6823)`) • `4692` → `bofa atmos` (`BofA Atmos Ascent Visa (4692)`) • `4359` → `wells fargo` (`Wells Fargo Checking (4359)`) • `4558` → `wells fargo` (`Wells Fargo Way2Save (4558)`) | Added to `labels` JSON array alongside `spendingBucket` (`fixed` / `flexible` / `non-monthly`) and stored in `meta.account` |
+| **Bilt Housing Pass-Through & Month-End Normalization** | • `Bilt Housing Payment` on `7702` = `expense` (`housing` / `housing-mortgage`, `fixed`)<br>• `Payment - Bilt Housing` on `7702` (Refund/Credit) = `transfer` (`housing` / `housing-mortgage`)<br>• `BILT CARD DES:HOUSING...` on `9666` (Purchase) = `transfer` (`description: "Bilt"`, `housing` / `housing-mortgage`, raw descriptor preserved in `notes`)<br>• **Month-End Rule (`days 28..31` & `amount >= $1,000`)**: When `Bilt Housing Payment` or `Payment - Bilt Housing` posts on days `28..31` of month `M` for `>= $1,000` (excluding smaller HOA charges like `$352.95`), normalize its effective `date` to `YYYY-(M+1)-01`, append `• Posted YYYY-MM-DD` to `notes`, and store both `raw_hash[:16]` and `norm_hash[:16]` in `meta.aliasHashes`. | Counts each month's mortgage/rent **once** in its target calendar month and treats the two Bilt Protect ACH pass-through legs as `transfer` |
+| **Credit Card Bill Payoffs** | `BILT CARD PMT` (`8885`), `AMAZON CORP SYF PAYMNT` (`8885`), `Mobile Banking payment to CRD 4692` (`9666`), `Payment` (`7702`), `PENDING PAYMENT` (`4692`) | Always `type: 'transfer'`, `category: 'transfers'`, `subCategory: 'transfers-cc'` (even when Google Wallet labels the bank debit `Purchase`) |
+| **Known Recurring ACHs & Utilities** | • `WOODINVILLE 8609257058 PPD ID: 1470259040` (`8885`) → `expense` / `child-care` (`fixed`)<br>• `ZG - Your Rental Rent-#K5-7 ST-...` (`4359`) → `income` / `income-investment` (strip `ST-<id>` suffix when matching history)<br>• `ACH CREDIT GOOGLE LLC PAYROLL` / `Google` payroll (`9666`) → `income` / `income-salary`<br>• `Puget Sound Energy` → `utilities` / `utilities-gas` (`fixed`)<br>• `Snohomish County Pud` → `utilities` / `utilities-electric` (`fixed`)<br>• `Google Fi` → `utilities` / `utilities-phone` (`fixed`)<br>• `Eastside Exterminators` → `housing` / `housing-hoa` (`fixed`) | High-confidence Stage 1/2 rules so recurring bills and income never fall back to `misc` |
+| **Category-Netted Refunds** | `Status == 'Refund'` or negative charge (e.g., `-$16.77` `Google One`) | `type: 'income'`, `'refund'` in `labels`, and the **merchant's underlying expense category** (`entertainment` / `entertainment-subs`), **never** `category: 'refund'` |
+| **Deterministic SHA-256 Hash** | `sha256(f"{date}|{description.strip().lower()}|{amount:.2f}|{type.strip().lower()}")` | Matches `computeTxHash` in `src/utils/crypto.ts` for idempotent re-runs |
 
-3. **Amazon Synchrony Store Card Statement (`sourceId: 'amazon-synchrony'`)**:
-   - Map statement lines (`"AMZN Mktp US*..."`, `"AMAZON.COM*..."`, `"PAYMENT - THANK YOU"`) with `metadataRichness: 'low'`.
-   - If the corresponding Amazon order email already arrived (within ±4 days, ±\$0.01), the statement row automatically merges (`status: 'merged_enriched'`) into the itemized row(s) without creating a duplicate.
-   - If the statement row arrives **before** the email, it commits immediately as `shopping / shopping-amazon` with `needs-review (category)` and is automatically enriched in place when the email arrives later.
+#### 7-Day Rolling Lookback (`T-7` to `Today`) & Pending → Settled Lifecycle
+Always pull the **last 7 days (`T-7` to `Today`)** from Google Wallet and compare against the **last 14 days** of sheet rows (plus full sheet history for Stage 1 History Memory and exact hash deduplication):
+1. **Tombstone Check**: Check `Notes!A:B` (`__meta_ingest_state__` and `__meta_ingest_tombstones_1__..5__`). Skip any row whose `externalId` or 16-char hash prefix (`hash[:16]`) is tombstoned (`skipped_tombstoned`) so user-deleted rows are never resurrected during a 7-day lookback.
+2. **Exact Hash Match (Occurrence-Aware)**:
+   - Each existing sheet row can be claimed at most **once** per batch (`claimed_existing_ids`).
+   - If the unclaimed existing sheet row is `Pending` (`meta.provisional == true` or `"pending"` in `notes`/`description`) and the incoming Google Wallet row is now `Purchase` (settled), **upgrade in place** (`updated_pending_to_settled`): strip `Pending` from `notes`, update `"Pending..."` descriptions, and set `meta.provisional = false`.
+   - If a second identical charge arrives in the same batch after the existing row was already claimed (or created in the same batch), commit and flag it (`inserted_flagged` with `reason: 'duplicate'`) rather than silently dropping it.
+3. **Pending → Settled with Settlement Date Drift (±3 Days)**:
+   - Same merchant (or both `transfers / transfers-cc`) + compatible account + same `type` + `abs(amount_diff) <= $0.01` within `±3` days where existing row is `Pending` and incoming row is `Purchase` → **upgrade closest unclaimed row in place** (`updated_pending_to_settled`), update `date`, `description`, and `hash`, and append old `hash[:16]` to `meta.aliasHashes`.
+4. **Restaurant Tip Drift (`0` to `+3` Days)**:
+   - Same merchant + compatible account on a `Pending` expense row where the settled `Purchase` amount increased within restaurant tip bounds (`max($1.00, 1%)` to `max($5.00, 35%)`) within `+3` days → **update closest unclaimed row's `amount`, `date`, `notes`, and `hash` in place** (`merged_tip_adjusted`), preserving old `hash[:16]` in `meta.aliasHashes`.
 
-4. **Refunds & Credits**:
-   - Refunds are stored with `type: 'income'`, `'refund'` in `labels`, and the **merchant's underlying expense category** (e.g., `shopping` / `shopping-amazon`), **never** `category: 'refund'`. This allows `computeMonthMetrics` and `useBudgets` to net refunds directly against the category's spending.
+### 2. Bilt Card (Raw Plaid `/transactions/sync` JSON)
+- Map `added` and `modified` items to `op: 'upsert'` (`externalId: tx.transaction_id`, `supersedesExternalId: tx.pending_transaction_id ?? undefined`, `date: tx.authorized_date || tx.date`, `description: tx.name`, `merchant: tx.merchant_name ?? undefined`, `amount: tx.amount`).
+- Map `removed` items to `op: 'remove'` (`externalId: removedTx.transaction_id`).
+
+### 3. Amazon Order Emails (`sourceId: 'amazon-email'`) & Synchrony Statements (`sourceId: 'amazon-synchrony'`)
+- Statement lines (`"AMZN Mktp US*..."`, `"Amazon Marketplace"`) without itemization commit immediately as `shopping / shopping-amazon` with `needs-review (category)`.
+- Optional cross-source enrichment (when Amazon order emails are provided) matches within `±4` days and `±$0.01`, splitting multi-category orders via Largest-Remainder cents allocation (`allocateLargestRemainderCents`) and clearing the `category` review flag automatically.
 
 ---
 
-### Step 2: Execute the Ingestion CLI or Programmatic API
+## Step 2: Execute Ingestion (Cloud Native vs. Local Repo CLI)
 
-#### Option A: Python CLI (`scripts/ingest_transactions.py`)
+### Option A: Cloud Native Google Wallet → Google Sheets Workflow (Scheduled Gemini Tasks & Plugin CLI)
 
-> **Prerequisites:** Python 3 plus **Node.js ≥ 24**. Python normalizes the input, then hands it to the shared TypeScript ingestion engine via Node (single source of truth with the web app). The script checks both up front. Failures print one concise line; add `--verbose` for the full trace. `--state-file` runs are serialized with a `<file>.lock` and written atomically. Prefer `GOOGLE_ACCESS_TOKEN` / `--service-account` over `--access-token` (visible in `ps`).
+Use [`scripts/wallet_reconcile.py`](scripts/wallet_reconcile.py) (100% Python 3 standard library; no Node.js or external packages required) together with the connected `gsheets` / `gdrive` CLIs:
 
-Run the bundled Python CLI script from `/home/antigravity/saimanoj01/expense` targeting either Google Sheets (`--spreadsheet-id` with `--access-token` or `--service-account`) or a local JSON ledger file (`--state-file`):
+1. **Materialize Bundled Skill Scripts (When Repo Is Not Mounted)**:
+   If `/home/antigravity/saimanoj01/expense` is not present in the VM, call `get_skill_resources(name="expense-ingest", filenames=["scripts/wallet_reconcile.py", "references/wallet_rules.json"])` and write them to `/tmp/expense-ingest/scripts/wallet_reconcile.py` and `/tmp/expense-ingest/references/wallet_rules.json`.
+
+2. **Export Sheet & Run the Reconciler**:
+```bash
+# 1. Export current Transactions (A:L or A:K) and Notes from Nebula Expense - PriyMan
+gsheets readonly export 1Whmjhktu_sgdw9WYFYx9JydpB61JU2RGuCm7AT_USLY /tmp/nebula_transactions.tsv --format tsv --sheet Transactions
+# (Or read as a 2D JSON grid: gsheets readonly read 1Whmjhktu_sgdw9WYFYx9JydpB61JU2RGuCm7AT_USLY 'Transactions!A1:L2000' --json > /tmp/nebula_transactions.json)
+gsheets readonly read 1Whmjhktu_sgdw9WYFYx9JydpB61JU2RGuCm7AT_USLY 'Notes!A1:B50' --json > /tmp/nebula_notes.json
+
+# 2. Run the pure-Python 7-day rolling reconciler to produce a gsheets batch file + Morning Digest
+python3 .agents/skills/expense-ingest/scripts/wallet_reconcile.py \
+  --input /tmp/wallet_7d.json \
+  --transactions-tsv /tmp/nebula_transactions.tsv \
+  --notes-json /tmp/nebula_notes.json \
+  --lookback-days 7 \
+  --batch-out /tmp/gsheets_batch.json \
+  --format summary
+
+# 3. Apply the in-place updates, appended rows (A:L), and updated __meta_ingest_state__ note in one batch
+gsheets mutate batch 1Whmjhktu_sgdw9WYFYx9JydpB61JU2RGuCm7AT_USLY -f /tmp/gsheets_batch.json
+```
+
+### Option B: Local Repo Python → Node Bridge (`scripts/ingest_transactions.py`)
+
+When running inside `/home/antigravity/saimanoj01/expense` with **Python 3** and **Node.js ≥ 24**:
 
 ```bash
-# Option A1: Sync directly to Google Sheets (OAuth token or Service Account JSON)
+# Sync to Google Sheets (OAuth token or Service Account JSON)
 python3 .agents/skills/expense-ingest/scripts/ingest_transactions.py \
   --input /path/to/payload.json \
-  --spreadsheet-id <google-spreadsheet-id> \
+  --spreadsheet-id 1Whmjhktu_sgdw9WYFYx9JydpB61JU2RGuCm7AT_USLY \
   --service-account /path/to/service-account.json \
   --project personal-finances \
   --source bilt-plaid \
   --mode automated
 
-# Option A2: Sync to a local JSON ledger file
+# Sync to a local JSON ledger file
 python3 .agents/skills/expense-ingest/scripts/ingest_transactions.py \
   --input /path/to/payload.json \
   --project personal-finances \
@@ -79,30 +110,14 @@ python3 .agents/skills/expense-ingest/scripts/ingest_transactions.py \
   --state-file /path/to/ledger_state.json
 ```
 
-Use `--dry-run` to preview the `IngestPlan` without writing to storage, `--format summary` for a Markdown report, or `--skip-llm` for fast offline execution using only Stage 1 (History Memory) + Stage 2 (Enhanced Keyword Rules). Non-dry-run invocations require either `--spreadsheet-id` or `--state-file` so runs never silently write to ephemeral memory.
-
-#### Option B: Programmatic TypeScript API
-
-Import `planIngestion`, `executePlan`, or `ingestTransactions` from [`src/services/ingestion/transactionIngestService.ts`](../../../src/services/ingestion/transactionIngestService.ts):
-
-```ts
-import { ingestTransactions } from './src/services/ingestion/transactionIngestService';
-
-const response = await ingestTransactions(
-  {
-    projectId: 'personal-finances',
-    sourceId: 'amazon-email',
-    triggerMode: 'automated',
-    transactions: rawTransactions,
-  },
-  storageAdapter
-);
-```
+Use `--dry-run` to preview the `IngestPlan`, `--format summary` for a Markdown report, `--skip-llm` for offline Stage 1 + Stage 2 execution, or `--verbose` for full tracebacks.
 
 ---
 
-### Step 3: Report Results Concisely to the User
+## Step 3: Morning Sync Digest & Reporting (`0 8 * * *` / 8:00 AM PT)
 
-After running an ingestion batch, present a clear summary:
-1. **Batch Totals**: Inserted (clean), Inserted (flagged for review), Updated in place (`updated_from_source`), Cross-source enriched (`merged_enriched`), Removed (`removed`), and Skipped (`skipped_exact_duplicate` / `skipped_not_found` / `skipped_tombstoned` / `skipped_before_cutoff`).
-2. **Actionable Review Queue (`flaggedTransactions`)**: If any transactions were flagged with `'needs-review'`, list their date, description, amount, best-guess category, and `meta.review.detail` (and `meta.review.reasons` when multiple flags apply) so the user can confirm or adjust them in one click.
+After running a daily or interactive ingestion batch, present a concise summary:
+1. **Batch Totals**: Inserted (clean), Inserted (`needs-review`), Upgraded Pending → Settled (`updated_pending_to_settled` / `updated_from_source`), Restaurant Tip Adjusted (`merged_tip_adjusted`), Cross-source enriched (`merged_enriched`), and Skipped (`skipped_exact_duplicate` / `skipped_tombstoned`).
+2. **Newly Ingested & Updated Rows**: Table of only the newly added or settled/tip-updated rows from this run.
+3. **Month-to-Date Snapshot (`expense-qna`)**: Net expenses (gross minus category-netted refunds), fixed vs. flexible breakdown, total income, and net cash flow.
+4. **Actionable Review Queue (`flaggedTransactions`)**: List any `'needs-review'` rows with their date, description, amount, best-guess category, and review reason so the user can confirm or adjust them in one click.

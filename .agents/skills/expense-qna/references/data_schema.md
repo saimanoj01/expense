@@ -19,17 +19,23 @@ interface Transaction {
   type: 'income' | 'expense' | 'transfer';
   description: string;                // Payee or record summary (e.g., "Costco Weekly Run")
   notes: string;                      // Extended details/comments
-  labels: string[];                   // User-defined tags (e.g., ["vacation", "essential"])
+  labels: string[];                   // User-defined tags (e.g., ["bilt", "fixed", "needs-review", "refund"])
   hash: string;                       // SHA-256 deduplication hash of (date|description|amount|type)
+  spendingBucket?: 'fixed' | 'flexible' | 'non-monthly'; // Column K
+  meta?: TxMeta;                      // Provenance, externalIds, aliasHashes, and review state (Column L JSON)
 }
 ```
 
-### Transaction Type Semantics
-| Type | Meaning | Include in Spending? | Include in Income? |
+### Google Sheets `Transactions!A:L` Column Layout (12 Columns)
+`A: id` | `B: date` | `C: category` | `D: subCategory` | `E: amount` | `F: type` | `G: description` | `H: notes` | `I: labels` | `J: hash` | `K: spendingBucket` | `L: meta`
+
+### Transaction Type & Category-Netted Refund Semantics
+| Type & Labels | Meaning | Include in Net Spending? | Include in Income? |
 |------|---------|---------------------|--------------------|
-| `expense` | Money out | ✅ Yes | No |
-| `income` | Money in | No | ✅ Yes |
-| `transfer` | Internal move (CC payment, bank transfer) | ❌ No (avoids double-counting) | No |
+| `expense` | Money out | ✅ Yes (`+amount`) | No |
+| `income` with `'refund'` in `labels` | Category refund / credit | ✅ Yes (`-amount`, netted against the row's expense `category`) | ❌ No (never inflates income) |
+| `income` (without `'refund'`) | Money in (payroll, rental income, interest) | No | ✅ Yes |
+| `transfer` | Internal move (CC payment, bank transfer, Bilt Protect ACH pass-through) | ❌ No (avoids double-counting) | No |
 
 ---
 

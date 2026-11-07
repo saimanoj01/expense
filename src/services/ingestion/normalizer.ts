@@ -82,6 +82,8 @@ export function normalizeMerchantName(raw: string): string {
   // Collapse punctuation and asterisks used in statement descriptors (e.g. "AMZN Mktp US*2K9P1" -> "amzn mktp us")
   s = s.replace(/\*[a-z0-9]+/gi, ' ');
   s = s.replace(/[_/|]+/g, ' ');
+  // Drop per-payout reference ids (e.g. Zillow "ST-T0P3X0N3Q7Q3") so recurring payouts compare equal
+  s = s.replace(/\bst-[a-z0-9]{6,}\b/gi, ' ');
   s = s.replace(/\s+/g, ' ').trim();
 
   // Remove trailing store numbers, phone numbers, and unambiguous state codes
@@ -178,6 +180,56 @@ export function merchantsMatch(
         return true;
       }
     }
+  }
+  return false;
+}
+
+/**
+ * Generic payment rails/brands where a bare name says nothing about the counterparty.
+ * History must only match these on exact equality (e.g. "Zelle" must never match
+ * "Zelle payment to DIANA ...").
+ */
+const GENERIC_PAYMENT_RAILS = new Set([
+  'zelle',
+  'venmo',
+  'paypal',
+  'cash app',
+  'cashapp',
+  'ach',
+  'wire',
+  'check',
+  'payment',
+]);
+
+/**
+ * Stricter merchant matcher for ledger-history categorization (Stage 1).
+ * Differs from `merchantsMatch` in that a single-token name never matches a longer
+ * name (bare "Google" payroll must not match "Google Fi" / "Google Store"), and generic
+ * payment rails only match exactly.
+ */
+export function historyMerchantsMatch(
+  historyDesc: string,
+  targetDesc: string,
+  targetMerchant?: string
+): boolean {
+  const a = normalizeMerchantName(historyDesc);
+  const famA = getMerchantFamily(historyDesc);
+  const candidates = [targetMerchant, targetDesc].filter(Boolean) as string[];
+  for (const b of candidates) {
+    const nb = normalizeMerchantName(b);
+    if (!a || !nb) continue;
+    if (a === nb) return true;
+    const famB = getMerchantFamily(b);
+    if (famA && famA === famB) return true;
+
+    const firstA = a.split(' ')[0];
+    const firstB = nb.split(' ')[0];
+    if (GENERIC_PAYMENT_RAILS.has(a) || GENERIC_PAYMENT_RAILS.has(nb)) continue;
+    if (GENERIC_PAYMENT_RAILS.has(firstA) || GENERIC_PAYMENT_RAILS.has(firstB)) continue;
+
+    const shorterTokens = (a.length <= nb.length ? a : nb).split(' ').filter(Boolean);
+    if (shorterTokens.length < 2) continue;
+    if (tokensMatchOnBoundaries(a, nb)) return true;
   }
   return false;
 }

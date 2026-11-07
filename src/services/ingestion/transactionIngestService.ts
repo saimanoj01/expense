@@ -34,6 +34,7 @@ import type {
 import {
   getMerchantFamily,
   merchantsMatch,
+  historyMerchantsMatch,
   isMultiCategoryMarketplace,
   isOpaqueDescription,
   daysBetween,
@@ -256,10 +257,14 @@ export function resolveTransactionReview(
     ? [existingReview.reason]
     : [];
 
+  const hasReviewLabel = currentLabels.includes('needs-review');
+  // A needs-review label with no structured meta.review (e.g. rows written by hand) is an
+  // unknown-reason flag: treat "Looks Good" as the user confirming the best-guess category.
+  const isLegacyLabelReview = !existingReview && hasReviewLabel;
   const isDuplicateReview =
     activeReasons.includes('duplicate') ||
-    (!existingReview && !currentLabels.includes('needs-review'));
-  const isCategoryReview = activeReasons.includes('category');
+    (!existingReview && !hasReviewLabel);
+  const isCategoryReview = activeReasons.includes('category') || isLegacyLabelReview;
 
   if (isDuplicateReview && !nextLabels.includes('duplicate-verified')) {
     nextLabels.push('duplicate-verified');
@@ -274,6 +279,12 @@ export function resolveTransactionReview(
     review: existingReview
       ? {
           ...existingReview,
+          resolvedAt: nowIso,
+        }
+      : isLegacyLabelReview
+      ? {
+          reason: 'category',
+          reasons: ['category'],
           resolvedAt: nowIso,
         }
       : {
@@ -327,13 +338,56 @@ interface CandidateChild {
   metadataRichness: 'high' | 'medium' | 'low';
 }
 
+function isUnclassifiedMisc(category: string, subCategory?: string | null): boolean {
+  return category === 'misc' && (!subCategory || subCategory === 'misc-other');
+}
+
+function resolveModalSpendingBucket(
+  txs: Transaction[],
+  fallbackDescription: string,
+  fallbackCategory: string
+): SpendingBucket {
+  const stats = new Map<SpendingBucket, { count: number; latestDate: string }>();
+  for (const tx of txs) {
+    let b: SpendingBucket | null = tx.spendingBucket || null;
+    if (!b && Array.isArray(tx.labels)) {
+      if (tx.labels.includes('fixed')) b = 'fixed';
+      else if (tx.labels.includes('non-monthly')) b = 'non-monthly';
+      else if (tx.labels.includes('flexible')) b = 'flexible';
+    }
+    if (!b) continue;
+    const prev = stats.get(b);
+    const txDate = tx.date || '';
+    if (prev) {
+      prev.count += 1;
+      if (txDate > prev.latestDate) prev.latestDate = txDate;
+    } else {
+      stats.set(b, { count: 1, latestDate: txDate });
+    }
+  }
+  let bestBucket: SpendingBucket | null = null;
+  let bestStat: { count: number; latestDate: string } | null = null;
+  for (const [bucket, st] of stats.entries()) {
+    if (
+      !bestStat ||
+      st.count > bestStat.count ||
+      (st.count === bestStat.count && st.latestDate > bestStat.latestDate)
+    ) {
+      bestBucket = bucket;
+      bestStat = st;
+    }
+  }
+  return bestBucket || suggestSpendingBucket(fallbackDescription, fallbackCategory);
+}
+
 /**
  * Stage 1: Looks up verified ledger history for the same merchant/family.
  */
 function lookupHistoryClassification(
   targetText: string,
   merchant: string | undefined,
-  existingTransactions: Transaction[]
+  existingTransactions: Transaction[],
+  targetType: 'expense' | 'income' = 'expense'
 ): {
   category: string;
   subCategory: string | null;
@@ -349,11 +403,16 @@ function lookupHistoryClassification(
   }
 
   const candidates = existingTransactions.filter(tx => {
-    if (!tx.category || tx.category === 'misc' || tx.category === 'transfers') return false;
+    if (!tx.category || tx.category === 'transfers') return false;
+    // Only learn from rows of the same kind: transfers and payroll must never teach expense categories
+    if (tx.type !== targetType) return false;
+    // Generic 'misc' or 'misc-other' is a non-answer, but a deliberate misc sub-category (e.g. misc-salon) is real signal
+    if (isUnclassifiedMisc(tx.category, tx.subCategory)) return false;
     const labels = Array.isArray(tx.labels) ? tx.labels : [];
     if (labels.includes('needs-review')) return false;
+    if (labels.includes('refund')) return false;
     if (tx.meta?.review?.reason === 'category' && !tx.meta.review.resolvedAt) return false;
-    return merchantsMatch(tx.description, targetText, undefined, merchant);
+    return historyMerchantsMatch(tx.description, targetText, merchant);
   });
 
   if (candidates.length === 0) return null;
@@ -370,7 +429,11 @@ function lookupHistoryClassification(
     return {
       category: best.category,
       subCategory: best.subCategory || null,
-      spendingBucket: best.spendingBucket || suggestSpendingBucket(best.description, best.category),
+      spendingBucket: resolveModalSpendingBucket(
+        exactMatches,
+        best.description,
+        best.category
+      ),
       confidence: best.meta?.categorizedBy === 'user' ? 0.96 : 0.9,
     };
   }
@@ -381,18 +444,19 @@ function lookupHistoryClassification(
   );
   const pool = userVerified.length > 0 ? userVerified : candidates;
 
-  const counts = new Map<string, { count: number; tx: Transaction }>();
+  const counts = new Map<string, { count: number; tx: Transaction; txs: Transaction[] }>();
   for (const tx of pool) {
     const key = `${tx.category}|${tx.subCategory || ''}`;
     const entry = counts.get(key);
     if (entry) {
       entry.count += 1;
+      entry.txs.push(tx);
     } else {
-      counts.set(key, { count: 1, tx });
+      counts.set(key, { count: 1, tx, txs: [tx] });
     }
   }
 
-  let topEntry: { count: number; tx: Transaction } | null = null;
+  let topEntry: { count: number; tx: Transaction; txs: Transaction[] } | null = null;
   for (const entry of counts.values()) {
     if (!topEntry || entry.count > topEntry.count) {
       topEntry = entry;
@@ -407,8 +471,13 @@ function lookupHistoryClassification(
     category: topEntry.tx.category,
     subCategory: topEntry.tx.subCategory || null,
     spendingBucket:
-      topEntry.tx.spendingBucket ||
-      suggestSpendingBucket(topEntry.tx.description, topEntry.tx.category),
+      targetType === 'expense'
+        ? resolveModalSpendingBucket(
+            topEntry.txs,
+            topEntry.tx.description,
+            topEntry.tx.category
+          )
+        : null,
     confidence: userVerified.length > 0 ? 0.95 : Math.min(0.92, 0.78 + purity * 0.14),
   };
 }
@@ -420,6 +489,7 @@ function resolveCategoryWaterfall(
   input: {
     description: string;
     merchant?: string;
+    notes?: string;
     amount: number;
     rawType?: 'expense' | 'income' | 'transfer';
     categoryHint?: string;
@@ -437,9 +507,46 @@ function resolveCategoryWaterfall(
   const combinedText = [input.merchant, input.description, input.categoryHint]
     .filter(Boolean)
     .join(' ');
+  const combinedWithNotes = [combinedText, input.notes].filter(Boolean).join(' ');
+  const isBiltHousingAchInNotes = /\bbilt\s+card\s+des:housing\b/i.test(input.notes || '');
 
-  // 1. Check Transfer first
-  if (input.rawType === 'transfer' || isTransfer(combinedText)) {
+  // 1. Check Transfer first (do NOT feed arbitrary free-text notes into isTransfer)
+  if (
+    input.rawType === 'transfer' ||
+    isTransfer(input.description, input.rawType) ||
+    isTransfer(combinedText, input.rawType) ||
+    isBiltHousingAchInNotes
+  ) {
+    if (input.explicitCategory && input.explicitCategory !== 'misc') {
+      return {
+        type: 'transfer',
+        category: input.explicitCategory,
+        subCategory:
+          input.explicitSubCategory !== undefined
+            ? input.explicitSubCategory
+            : suggestSubCategory(combinedWithNotes, input.explicitCategory, allCategories),
+        spendingBucket: null,
+        isRefund: false,
+        confidence: 1.0,
+        categorizedBy: 'user',
+      };
+    }
+    // Bilt Protect housing pass-through legs keep the ledger's housing/mortgage tagging
+    // (the single "Bilt Housing Payment" expense carries the spend; these legs are transfers).
+    if (
+      /\bbilt\b.*\bhousing\b|\bhousing\b.*\bbilt\b/i.test(combinedWithNotes) ||
+      (input.rawType === 'transfer' && /^bilt$/i.test(input.description.trim()))
+    ) {
+      return {
+        type: 'transfer',
+        category: 'housing',
+        subCategory: 'housing-mortgage',
+        spendingBucket: null,
+        isRefund: false,
+        confidence: 0.95,
+        categorizedBy: 'keyword',
+      };
+    }
     return {
       type: 'transfer',
       category: 'transfers',
@@ -453,17 +560,25 @@ function resolveCategoryWaterfall(
     };
   }
 
-  // 2. Check Refund semantics
+  // 2. Check Refund & Pure Income semantics
   const refundDetected =
     detectRefund(combinedText, input.rawType) ||
+    /\b(?:credit\/refund|purchase\s+refund)\b/i.test(input.notes || '') ||
     (input.amount < 0 && input.rawType !== 'expense');
 
-  const resolvedType: 'expense' | 'income' | 'transfer' = refundDetected
-    ? 'income'
-    : input.rawType || 'expense';
+  const pureIncomeDetected =
+    !refundDetected &&
+    (input.rawType === 'income' ||
+      (input.categoryHint || '').trim().toLowerCase() === 'income' ||
+      /\b(?:payroll|direct\s+deposit|your\s+rental|rental\s+income)\b/i.test(
+        combinedWithNotes
+      ));
+
+  const resolvedType: 'expense' | 'income' | 'transfer' =
+    refundDetected || pureIncomeDetected ? 'income' : input.rawType || 'expense';
 
   // 3. Explicit caller override
-  if (input.explicitCategory && input.explicitCategory !== 'misc') {
+  if (input.explicitCategory && !isUnclassifiedMisc(input.explicitCategory, input.explicitSubCategory)) {
     const sub =
       input.explicitSubCategory !== undefined
         ? input.explicitSubCategory
@@ -483,14 +598,31 @@ function resolveCategoryWaterfall(
     };
   }
 
-  // 4. Pure income (non-refund)
+  // 4. Pure income (non-refund): ledger history first (payroll, rental income), then keywords
   if (resolvedType === 'income' && !refundDetected) {
-    const cat = suggestCategory(combinedText, input.categoryHint, allCategories);
+    const incomeHistory = lookupHistoryClassification(
+      input.description,
+      input.merchant,
+      existingTransactions,
+      'income'
+    );
+    if (incomeHistory) {
+      return {
+        type: 'income',
+        category: incomeHistory.category,
+        subCategory: incomeHistory.subCategory,
+        spendingBucket: null,
+        isRefund: false,
+        confidence: incomeHistory.confidence,
+        categorizedBy: 'history',
+      };
+    }
+    const cat = suggestCategory(combinedWithNotes, input.categoryHint, allCategories);
     const finalCat = cat !== 'misc' ? cat : 'income';
     return {
       type: 'income',
       category: finalCat,
-      subCategory: suggestSubCategory(combinedText, finalCat, allCategories),
+      subCategory: suggestSubCategory(combinedWithNotes, finalCat, allCategories),
       spendingBucket: null,
       isRefund: false,
       confidence: 0.9,
@@ -498,11 +630,12 @@ function resolveCategoryWaterfall(
     };
   }
 
-  // 5. Stage 1: Ledger History Memory
+  // 5. Stage 1: Ledger History Memory (expense rows first; if unhinted and no expense history matches, check income history)
   const historyMatch = lookupHistoryClassification(
     input.description,
     input.merchant,
-    existingTransactions
+    existingTransactions,
+    'expense'
   );
   if (historyMatch) {
     return {
@@ -514,6 +647,26 @@ function resolveCategoryWaterfall(
       confidence: historyMatch.confidence,
       categorizedBy: 'history',
     };
+  }
+
+  if (!refundDetected && !input.rawType) {
+    const unhintedIncomeHistory = lookupHistoryClassification(
+      input.description,
+      input.merchant,
+      existingTransactions,
+      'income'
+    );
+    if (unhintedIncomeHistory && unhintedIncomeHistory.category === 'income') {
+      return {
+        type: 'income',
+        category: unhintedIncomeHistory.category,
+        subCategory: unhintedIncomeHistory.subCategory,
+        spendingBucket: null,
+        isRefund: false,
+        confidence: unhintedIncomeHistory.confidence,
+        categorizedBy: 'history',
+      };
+    }
   }
 
   // 6. Stage 2: Keyword & Category-Hint Rules
@@ -531,12 +684,17 @@ function resolveCategoryWaterfall(
   if (kwCat === 'misc') {
     kwCat = suggestCategory(textForCategory, input.categoryHint, allCategories);
   }
-  if (kwCat && kwCat !== 'misc' && kwCat !== 'transfers') {
-    const kwSub = suggestSubCategory(
-      kwCat === 'shopping' ? textForCategory : itemTextOnly,
-      kwCat,
-      allCategories
-    );
+  const kwSubCandidate =
+    kwCat && kwCat !== 'transfers'
+      ? suggestSubCategory(
+          kwCat === 'shopping' ? textForCategory : itemTextOnly,
+          kwCat,
+          allCategories
+        )
+      : null;
+
+  if (kwCat && kwCat !== 'transfers' && !isUnclassifiedMisc(kwCat, kwSubCandidate)) {
+    const kwSub = kwSubCandidate;
     const kwBucket = suggestSpendingBucket(itemTextOnly, kwCat);
 
     const opaqueMarketplace =
@@ -564,15 +722,18 @@ function resolveCategoryWaterfall(
   // 7. Stage 3: Gemini LLM Classification (if available)
   if (input.llmKey && llmMap.has(input.llmKey)) {
     const llmItem = llmMap.get(input.llmKey)!;
-    if (llmItem && llmItem.categoryId && llmItem.categoryId !== 'misc') {
+    const llmSub =
+      llmItem?.subCategoryId ||
+      (llmItem?.categoryId
+        ? suggestSubCategory(textForCategory, llmItem.categoryId, allCategories)
+        : null);
+    if (llmItem && llmItem.categoryId && !isUnclassifiedMisc(llmItem.categoryId, llmSub)) {
       const llmConfidence =
         typeof llmItem.confidence === 'number' ? llmItem.confidence : 0.78;
       return {
         type: resolvedType,
         category: llmItem.categoryId,
-        subCategory:
-          llmItem.subCategoryId ||
-          suggestSubCategory(textForCategory, llmItem.categoryId, allCategories),
+        subCategory: llmSub,
         spendingBucket:
           llmItem.spendingBucket ||
           suggestSpendingBucket(textForCategory, llmItem.categoryId),
@@ -588,12 +749,13 @@ function resolveCategoryWaterfall(
     }
   }
 
-  // 8. Graceful Fallback -> 'misc' + flag for review
+  // 8. Graceful Fallback -> 'misc / misc-other' + flag for review
+  const fallbackSub = allCategories.some(c => c.id === 'misc-other') ? 'misc-other' : null;
   return {
     type: resolvedType,
     category: 'misc',
-    subCategory: null,
-    spendingBucket: 'flexible',
+    subCategory: fallbackSub,
+    spendingBucket: resolvedType === 'expense' || refundDetected ? 'flexible' : null,
     isRefund: refundDetected,
     confidence: 0.35,
     categorizedBy: 'fallback',
@@ -763,6 +925,13 @@ async function expandAndClassifyInput(
             }
           : undefined;
 
+      const childProvisional =
+        raw.provisional !== undefined
+          ? raw.provisional
+          : /\bpending\b/i.test(`${childDesc} ${raw.notes || ''}`)
+          ? true
+          : undefined;
+
       children.push({
         externalId: childExtId,
         supersedesExternalId: idx === 0 ? raw.supersedesExternalId : undefined,
@@ -784,7 +953,7 @@ async function expandAndClassifyInput(
         reviewReason,
         reviewDetail,
         additionalReview,
-        provisional: raw.provisional,
+        provisional: childProvisional,
         metadataRichness: 'high',
       });
     }
@@ -797,6 +966,7 @@ async function expandAndClassifyInput(
     {
       description: raw.description,
       merchant: raw.merchant,
+      notes: raw.notes,
       amount: raw.amount,
       rawType: raw.type,
       categoryHint: raw.categoryHint,
@@ -825,6 +995,13 @@ async function expandAndClassifyInput(
     resolved.type
   );
 
+  const inferredProvisional =
+    raw.provisional !== undefined
+      ? raw.provisional
+      : /\bpending\b/i.test(`${cleanDesc} ${raw.notes || ''}`)
+      ? true
+      : undefined;
+
   return [
     {
       externalId: raw.externalId,
@@ -846,7 +1023,7 @@ async function expandAndClassifyInput(
       categorizedBy: resolved.categorizedBy,
       reviewReason: resolved.reviewReason,
       reviewDetail: resolved.reviewDetail,
-      provisional: raw.provisional,
+      provisional: inferredProvisional,
       metadataRichness: richness,
     },
   ];
@@ -886,7 +1063,7 @@ function buildTransactionFromCandidate(
     existingToMerge &&
     (userEdited.has('category') ||
       existingToMerge.meta?.categorizedBy === 'user' ||
-      (!incomingIsRicher && existingToMerge.category !== 'misc'))
+      (!incomingIsRicher && !isUnclassifiedMisc(existingToMerge.category, existingToMerge.subCategory)))
       ? existingToMerge.category
       : candidate.category;
 
@@ -895,7 +1072,7 @@ function buildTransactionFromCandidate(
     (userEdited.has('subCategory') ||
       userEdited.has('category') ||
       existingToMerge.meta?.categorizedBy === 'user' ||
-      (!incomingIsRicher && existingToMerge.category !== 'misc'))
+      (!incomingIsRicher && !isUnclassifiedMisc(existingToMerge.category, existingToMerge.subCategory)))
       ? existingToMerge.subCategory ?? null
       : candidate.subCategory;
 
@@ -941,7 +1118,7 @@ function buildTransactionFromCandidate(
     finalReview &&
     !finalReview.resolvedAt &&
     incomingIsRicher &&
-    finalCategory !== 'misc' &&
+    !isUnclassifiedMisc(finalCategory, finalSubCategory) &&
     candidate.confidence >= DEFAULT_CONFIDENCE_THRESHOLD &&
     !candidateHasCategoryReview
   ) {
@@ -1074,6 +1251,24 @@ export async function planIngestion(
     meta: t.meta ? { ...t.meta } : undefined,
   }));
   const createdInBatchIds = new Set<string>();
+  const claimedExistingIds = new Set<string>();
+
+  const isTxPending = (tx: Transaction): boolean => {
+    if (typeof tx.meta?.provisional === 'boolean') {
+      return tx.meta.provisional;
+    }
+    return /\bpending\b/i.test(`${tx.notes || ''} ${tx.description || ''}`);
+  };
+
+  const stripPendingFromNotes = (notes?: string): string => {
+    if (!notes) return '';
+    return notes
+      .replace(/\s*[•·|-]\s*pending\b/gi, '')
+      .replace(/\bpending\s*[•·|-]\s*/gi, '')
+      .replace(/\(\s*pending\s*\)/gi, '')
+      .replace(/^pending$/i, '')
+      .trim();
+  };
 
   const ops: IngestOp[] = [];
   const records: IngestRecordReport[] = [];
@@ -1474,64 +1669,70 @@ export async function planIngestion(
       );
 
       if (exactHashMatches.length > 0) {
-        const sameSourceExact = exactHashMatches.find(t =>
-          (t.meta?.sources || []).includes(sourceId)
+        const sameSourceUnclaimed = exactHashMatches.find(
+          t =>
+            (t.meta?.sources || []).includes(sourceId) &&
+            !createdInBatchIds.has(t.id) &&
+            !claimedExistingIds.has(t.id)
         );
 
-        if (sameSourceExact) {
-          const existingExtId = sameSourceExact.meta?.externalIds?.[sourceId];
+        if (sameSourceUnclaimed) {
+          const existingExtId = sameSourceUnclaimed.meta?.externalIds?.[sourceId];
           const hasDistinctExternalIds =
             Boolean(primary.externalId) &&
             Boolean(existingExtId) &&
             primary.externalId !== existingExtId;
 
           if (!hasDistinctExternalIds) {
-            if (createdInBatchIds.has(sameSourceExact.id) && !primary.externalId) {
-              if (triggerMode === 'interactive') {
-                summary.needsConfirmation += 1;
-                records.push({
-                  inputIndex,
-                  externalId: raw.externalId,
-                  status: 'needs_confirmation',
-                  transactions: [],
-                  matchedExistingId: sameSourceExact.id,
-                  reviewReason: 'duplicate',
-                  reviewDetail:
-                    'Identical transaction in the same import batch; confirm if this is a separate charge.',
-                  confidence: primary.confidence,
-                  categorizedBy: primary.categorizedBy,
-                });
-                continue;
-              } else {
-                const flaggedTx = buildTransactionFromCandidate(
-                  primary,
-                  sourceId,
-                  nowIso,
-                  {
-                    reason: 'duplicate',
-                    detail: `Same-day identical charge ($${primary.amount.toFixed(2)} at ${primary.description}); verify not a duplicate.`,
-                  },
-                  undefined,
-                  idGen
-                );
-                workingLedger.push(flaggedTx);
-                createdInBatchIds.add(flaggedTx.id);
-                ops.push({ type: 'insert', tx: flaggedTx });
-                flaggedTransactions.push(flaggedTx);
-                summary.insertedFlagged += 1;
-                records.push({
-                  inputIndex,
-                  externalId: raw.externalId,
-                  status: 'inserted_flagged',
-                  transactions: [flaggedTx],
-                  matchedExistingId: sameSourceExact.id,
-                  reviewReason: 'duplicate',
-                  reviewDetail: flaggedTx.meta?.review?.detail,
-                  confidence: primary.confidence,
-                  categorizedBy: primary.categorizedBy,
-                });
-                continue;
+            claimedExistingIds.add(sameSourceUnclaimed.id);
+
+            // If existing row was Pending and incoming row is settled, upgrade in place
+            if (isTxPending(sameSourceUnclaimed) && !primary.provisional) {
+              const settledTx = buildTransactionFromCandidate(
+                primary,
+                sourceId,
+                nowIso,
+                undefined,
+                sameSourceUnclaimed,
+                idGen
+              );
+              if (!sameSourceUnclaimed.meta?.userEdited?.includes('notes')) {
+                settledTx.notes =
+                  stripPendingFromNotes(sameSourceUnclaimed.notes) ||
+                  stripPendingFromNotes(primary.notes);
               }
+              if (
+                !sameSourceUnclaimed.meta?.userEdited?.includes('description') &&
+                /\bpending\b/i.test(sameSourceUnclaimed.description) &&
+                !/\bpending\b/i.test(primary.description)
+              ) {
+                settledTx.description = primary.description;
+              }
+              settledTx.meta = {
+                ...(settledTx.meta || {}),
+                provisional: false,
+              };
+              const ledgerIdx = workingLedger.findIndex(
+                t => t.id === sameSourceUnclaimed.id
+              );
+              if (ledgerIdx >= 0) workingLedger[ledgerIdx] = settledTx;
+              upsertOp({
+                type: 'update',
+                tx: settledTx,
+                previousId: sameSourceUnclaimed.id,
+              });
+              summary.updatedFromSource += 1;
+              records.push({
+                inputIndex,
+                externalId: raw.externalId,
+                status: 'updated_from_source',
+                transactions: [settledTx],
+                matchedExistingId: sameSourceUnclaimed.id,
+                confidence: settledTx.meta?.confidence ?? primary.confidence,
+                categorizedBy:
+                  settledTx.meta?.categorizedBy || primary.categorizedBy,
+              });
+              continue;
             }
 
             summary.skippedDuplicate += 1;
@@ -1539,14 +1740,138 @@ export async function planIngestion(
               inputIndex,
               externalId: raw.externalId,
               status: 'skipped_exact_duplicate',
-              transactions: [sameSourceExact],
-              matchedExistingId: sameSourceExact.id,
-              confidence: sameSourceExact.meta?.confidence ?? primary.confidence,
-              categorizedBy: sameSourceExact.meta?.categorizedBy || primary.categorizedBy,
+              transactions: [sameSourceUnclaimed],
+              matchedExistingId: sameSourceUnclaimed.id,
+              confidence: sameSourceUnclaimed.meta?.confidence ?? primary.confidence,
+              categorizedBy:
+                sameSourceUnclaimed.meta?.categorizedBy || primary.categorizedBy,
             });
             continue;
           }
         }
+
+        const sameSourceClaimedOrBatch = exactHashMatches.find(
+          t =>
+            (t.meta?.sources || []).includes(sourceId) &&
+            (createdInBatchIds.has(t.id) || claimedExistingIds.has(t.id))
+        );
+
+        if (sameSourceClaimedOrBatch && !primary.externalId) {
+          if (triggerMode === 'interactive') {
+            summary.needsConfirmation += 1;
+            records.push({
+              inputIndex,
+              externalId: raw.externalId,
+              status: 'needs_confirmation',
+              transactions: [],
+              matchedExistingId: sameSourceClaimedOrBatch.id,
+              reviewReason: 'duplicate',
+              reviewDetail:
+                'Identical transaction in the same import batch; confirm if this is a separate charge.',
+              confidence: primary.confidence,
+              categorizedBy: primary.categorizedBy,
+            });
+            continue;
+          } else {
+            const flaggedTx = buildTransactionFromCandidate(
+              primary,
+              sourceId,
+              nowIso,
+              {
+                reason: 'duplicate',
+                detail: `Same-day identical charge ($${primary.amount.toFixed(2)} at ${primary.description}); verify not a duplicate.`,
+              },
+              undefined,
+              idGen
+            );
+            workingLedger.push(flaggedTx);
+            createdInBatchIds.add(flaggedTx.id);
+            ops.push({ type: 'insert', tx: flaggedTx });
+            flaggedTransactions.push(flaggedTx);
+            summary.insertedFlagged += 1;
+            records.push({
+              inputIndex,
+              externalId: raw.externalId,
+              status: 'inserted_flagged',
+              transactions: [flaggedTx],
+              matchedExistingId: sameSourceClaimedOrBatch.id,
+              reviewReason: 'duplicate',
+              reviewDetail: flaggedTx.meta?.review?.detail,
+              confidence: primary.confidence,
+              categorizedBy: primary.categorizedBy,
+            });
+            continue;
+          }
+        }
+      }
+    }
+
+    // STEP 5b: Same-Source Pending -> Settled Upgrade (Without externalId, e.g. Google Wallet +/-3d date shift or description change)
+    if (candidates.length === 1 && !primary.provisional && !raw.externalId) {
+      const pendingMatches = workingLedger
+        .filter(t => {
+          if (createdInBatchIds.has(t.id) || claimedExistingIds.has(t.id)) return false;
+          if (!isTxPending(t)) return false;
+          if (!accountsAreCompatible(t.meta?.account, rawAccount)) return false;
+          if (t.type !== primary.type) return false;
+          if (Math.abs(t.amount - primary.amount) > 0.01) return false;
+          if (daysBetween(t.date, primary.date) > 3) return false;
+          const isBothCcPayoff =
+            t.type === 'transfer' &&
+            primary.type === 'transfer' &&
+            t.subCategory === 'transfers-cc' &&
+            primary.subCategory === 'transfers-cc';
+          return (
+            isBothCcPayoff ||
+            merchantsMatch(t.description, raw.description, undefined, raw.merchant)
+          );
+        })
+        .sort(
+          (a, b) =>
+            daysBetween(a.date, primary.date) - daysBetween(b.date, primary.date)
+        );
+
+      if (pendingMatches.length >= 1) {
+        const targetPending = pendingMatches[0];
+        claimedExistingIds.add(targetPending.id);
+        const settledTx = buildTransactionFromCandidate(
+          primary,
+          sourceId,
+          nowIso,
+          undefined,
+          targetPending,
+          idGen
+        );
+        if (!targetPending.meta?.userEdited?.includes('notes')) {
+          settledTx.notes =
+            stripPendingFromNotes(targetPending.notes) ||
+            stripPendingFromNotes(primary.notes);
+        }
+        if (
+          !targetPending.meta?.userEdited?.includes('description') &&
+          /\bpending\b/i.test(targetPending.description) &&
+          !/\bpending\b/i.test(primary.description)
+        ) {
+          settledTx.description = primary.description;
+        }
+        settledTx.meta = {
+          ...(settledTx.meta || {}),
+          provisional: false,
+        };
+        const ledgerIdx = workingLedger.findIndex(t => t.id === targetPending.id);
+        if (ledgerIdx >= 0) workingLedger[ledgerIdx] = settledTx;
+        upsertOp({ type: 'update', tx: settledTx, previousId: targetPending.id });
+        summary.updatedFromSource += 1;
+        records.push({
+          inputIndex,
+          externalId: raw.externalId,
+          status: 'updated_from_source',
+          transactions: [settledTx],
+          matchedExistingId: targetPending.id,
+          confidence: settledTx.meta?.confidence ?? primary.confidence,
+          categorizedBy: settledTx.meta?.categorizedBy || primary.categorizedBy,
+        });
+        continue;
       }
     }
 
@@ -1824,23 +2149,30 @@ export async function planIngestion(
 
     // STEP 7: Opt-In Provisional Tip Drift (`merged_tip_adjusted`)
     if (candidates.length === 1 && !primary.provisional) {
-      const provisionalMatches = workingLedger.filter(t => {
-        if (!matchProvisionalTipDrift && !t.meta?.provisional) return false;
-        if (!accountsAreCompatible(t.meta?.account, rawAccount)) return false;
-        if (t.type !== 'expense' || primary.type !== 'expense') return false;
-        const deltaDays = signedDaysBetween(t.date, primary.date);
-        if (deltaDays < 0 || deltaDays > 3) return false;
-        if (!merchantsMatch(t.description, raw.description, undefined, raw.merchant)) {
-          return false;
-        }
-        const tipDelta = primary.amount - t.amount;
-        const minTip = Math.max(1.0, t.amount * 0.01);
-        const maxTip = Math.max(5.0, t.amount * 0.35);
-        return tipDelta >= minTip - 0.005 && tipDelta <= maxTip + 0.005;
-      });
+      const provisionalMatches = workingLedger
+        .filter(t => {
+          if (createdInBatchIds.has(t.id) || claimedExistingIds.has(t.id)) return false;
+          if (!matchProvisionalTipDrift && !isTxPending(t)) return false;
+          if (!accountsAreCompatible(t.meta?.account, rawAccount)) return false;
+          if (t.type !== 'expense' || primary.type !== 'expense') return false;
+          const deltaDays = signedDaysBetween(t.date, primary.date);
+          if (deltaDays < 0 || deltaDays > 3) return false;
+          if (!merchantsMatch(t.description, raw.description, undefined, raw.merchant)) {
+            return false;
+          }
+          const tipDelta = primary.amount - t.amount;
+          const minTip = Math.max(1.0, t.amount * 0.01);
+          const maxTip = Math.max(5.0, t.amount * 0.35);
+          return tipDelta >= minTip - 0.005 && tipDelta <= maxTip + 0.005;
+        })
+        .sort(
+          (a, b) =>
+            daysBetween(a.date, primary.date) - daysBetween(b.date, primary.date)
+        );
 
-      if (provisionalMatches.length === 1) {
+      if (provisionalMatches.length >= 1) {
         const provTarget = provisionalMatches[0];
+        claimedExistingIds.add(provTarget.id);
         const updatedTipTx = buildTransactionFromCandidate(
           primary,
           sourceId,
@@ -1849,6 +2181,15 @@ export async function planIngestion(
           provTarget,
           idGen
         );
+        if (!provTarget.meta?.userEdited?.includes('notes')) {
+          updatedTipTx.notes =
+            stripPendingFromNotes(provTarget.notes) ||
+            stripPendingFromNotes(primary.notes);
+        }
+        updatedTipTx.meta = {
+          ...(updatedTipTx.meta || {}),
+          provisional: false,
+        };
         const ledgerIdx = workingLedger.findIndex(t => t.id === provTarget.id);
         if (ledgerIdx >= 0) workingLedger[ledgerIdx] = updatedTipTx;
         upsertOp({ type: 'update', tx: updatedTipTx, previousId: provTarget.id });
@@ -1940,7 +2281,7 @@ export async function planIngestion(
     for (const cand of candidates) {
       const needsCategoryFlag =
         cand.confidence < confidenceThreshold ||
-        cand.category === 'misc' ||
+        isUnclassifiedMisc(cand.category, cand.subCategory) ||
         Boolean(cand.reviewReason);
 
       const overrideRev = needsCategoryFlag
@@ -2123,14 +2464,19 @@ async function collectLlmClassifications(
         const itemTextOnly = `${item.title} ${hint || ''}`;
         const combined = `${desc} ${hint || ''}`;
         if (raw.type === 'income' && !detectRefund(combined, raw.type)) continue;
-        const kwCat =
-          suggestCategory(itemTextOnly, hint, allCategories) !== 'misc'
-            ? suggestCategory(itemTextOnly, hint, allCategories)
-            : suggestCategory(combined, hint, allCategories);
+        const itemCat = suggestCategory(itemTextOnly, hint, allCategories);
+        const itemSub = suggestSubCategory(itemTextOnly, itemCat, allCategories);
+        const useItem = !isUnclassifiedMisc(itemCat, itemSub);
+        const kwCat = useItem
+          ? itemCat
+          : suggestCategory(combined, hint, allCategories);
+        const kwSub = useItem
+          ? itemSub
+          : suggestSubCategory(combined, kwCat, allCategories);
         if (
           !isTransfer(combined) &&
           !lookupHistoryClassification(desc, merchantPrefix, snapshot.existingTransactions) &&
-          kwCat === 'misc'
+          isUnclassifiedMisc(kwCat, kwSub)
         ) {
           pendingBatch.push({
             id: `item:${i}:${j}`,
@@ -2149,10 +2495,15 @@ async function collectLlmClassifications(
         raw.description.includes(':') && !isOpaqueDescription(raw.description)
           ? `${raw.description.split(':').slice(1).join(':')} ${raw.categoryHint || ''}`
           : combined;
-      const kwCat =
-        suggestCategory(itemTextOnly, raw.categoryHint, allCategories) !== 'misc'
-          ? suggestCategory(itemTextOnly, raw.categoryHint, allCategories)
-          : suggestCategory(combined, raw.categoryHint, allCategories);
+      const itemCat = suggestCategory(itemTextOnly, raw.categoryHint, allCategories);
+      const itemSub = suggestSubCategory(itemTextOnly, itemCat, allCategories);
+      const useItem = !isUnclassifiedMisc(itemCat, itemSub);
+      const kwCat = useItem
+        ? itemCat
+        : suggestCategory(combined, raw.categoryHint, allCategories);
+      const kwSub = useItem
+        ? itemSub
+        : suggestSubCategory(combined, kwCat, allCategories);
       if (
         !isTransfer(combined) &&
         !lookupHistoryClassification(
@@ -2160,7 +2511,7 @@ async function collectLlmClassifications(
           raw.merchant,
           snapshot.existingTransactions
         ) &&
-        kwCat === 'misc'
+        isUnclassifiedMisc(kwCat, kwSub)
       ) {
         pendingBatch.push({
           id: `tx:${i}`,

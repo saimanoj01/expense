@@ -1,0 +1,520 @@
+{
+  "defaultSpreadsheetId": "1Whmjhktu_sgdw9WYFYx9JydpB61JU2RGuCm7AT_USLY",
+  "spreadsheetName": "Nebula Expense - PriyMan",
+  "sourceId": "gpay-plaid",
+  "lookbackDays": 7,
+  "sheetWindowDays": 14,
+  "accountMap": {
+    "7702": {
+      "label": "bilt",
+      "displayName": "Bilt Palladium (7702)"
+    },
+    "9666": {
+      "label": "manoj bofa",
+      "displayName": "BofA SafeBalance (9666)"
+    },
+    "8885": {
+      "label": "priyanka chase",
+      "displayName": "Chase Total Checking (8885)"
+    },
+    "4692": {
+      "label": "bofa atmos",
+      "displayName": "BofA Atmos Ascent Visa (4692)"
+    },
+    "4359": {
+      "label": "wells fargo",
+      "displayName": "Wells Fargo Checking (4359)"
+    },
+    "6823": {
+      "label": "priyanka chase",
+      "displayName": "Chase Savings (6823)"
+    },
+    "4558": {
+      "label": "wells fargo",
+      "displayName": "Wells Fargo Way2Save (4558)"
+    }
+  },
+  "biltHousingRules": [
+    {
+      "pattern": "^bilt\\s+housing\\s+payment$",
+      "account": "7702",
+      "type": "expense",
+      "category": "housing",
+      "subCategory": "housing-mortgage",
+      "spendingBucket": "fixed",
+      "description": "Bilt Housing Payment",
+      "normalizeMonthEndToFirstOfNextMonth": true,
+      "minAmount": 1000
+    },
+    {
+      "pattern": "^payment\\s*-\\s*bilt\\s+housing$",
+      "account": "7702",
+      "type": "transfer",
+      "category": "housing",
+      "subCategory": "housing-mortgage",
+      "spendingBucket": null,
+      "description": "Payment - Bilt Housing",
+      "normalizeMonthEndToFirstOfNextMonth": true,
+      "minAmount": 1000
+    },
+    {
+      "pattern": "bilt\\s+card\\s+des:housing",
+      "account": "9666",
+      "type": "transfer",
+      "category": "housing",
+      "subCategory": "housing-mortgage",
+      "spendingBucket": null,
+      "description": "Bilt",
+      "preserveRawInNotes": true
+    }
+  ],
+  "creditCardPayoffPatterns": [
+    "\\bbilt\\s+card\\s+pmt\\b",
+    "\\bamazon\\s+corp\\s+syf\\s+paymn?t\\b",
+    "\\bsyf\\s+paymn?t\\b",
+    "\\bpayment\\s+to\\s+crd\\b",
+    "\\bpending\\s+payment\\b",
+    "^payment$",
+    "\\bpayment\\s*-?\\s*thank\\s+you\\b",
+    "\\bcredit\\s+card\\s+payment\\b",
+    "\\bsynchrony\\s+bank\\s+payment\\b",
+    "\\bchase\\s+credit\\s+crd\\b",
+    "\\bciti\\s+autopay\\b",
+    "\\bamex\\s+epayment\\b",
+    "\\bwells\\s+fargo\\s+payment\\b",
+    "\\bpayment\\s+from\\s+chk\\b"
+  ],
+  "knownRecurringRules": [
+    {
+      "pattern": "\\bwoodinville\\s+8609257058\\b",
+      "type": "expense",
+      "category": "child-care",
+      "subCategory": null,
+      "spendingBucket": "fixed",
+      "confidence": 0.96
+    },
+    {
+      "pattern": "\\bzg\\s*-\\s*your\\s+rental\\b|\\byour\\s+rental\\s+rent\\b",
+      "type": "income",
+      "category": "income",
+      "subCategory": "income-investment",
+      "spendingBucket": null,
+      "confidence": 0.96
+    },
+    {
+      "pattern": "\\bgoogle\\s+llc\\s+payroll\\b|^google$",
+      "requireIncomeContext": true,
+      "type": "income",
+      "category": "income",
+      "subCategory": "income-salary",
+      "spendingBucket": null,
+      "confidence": 0.96
+    },
+    {
+      "pattern": "\\bpuget\\s+sound\\s+energy\\b|\\bpuget\\s+heating\\b",
+      "type": "expense",
+      "category": "utilities",
+      "subCategory": "utilities-gas",
+      "spendingBucket": "fixed",
+      "confidence": 0.95
+    },
+    {
+      "pattern": "\\bsnohomish\\s+county\\s+pud\\b",
+      "type": "expense",
+      "category": "utilities",
+      "subCategory": "utilities-electric",
+      "spendingBucket": "fixed",
+      "confidence": 0.95
+    },
+    {
+      "pattern": "\\balderwood\\s+water\\b|\\bwaste\\s+management\\b",
+      "type": "expense",
+      "category": "utilities",
+      "subCategory": "utilities-water",
+      "spendingBucket": "fixed",
+      "confidence": 0.95
+    },
+    {
+      "pattern": "\\bgoogle\\s+fi\\b",
+      "type": "expense",
+      "category": "utilities",
+      "subCategory": "utilities-phone",
+      "spendingBucket": "fixed",
+      "confidence": 0.95
+    },
+    {
+      "pattern": "\\bziply\\b",
+      "type": "expense",
+      "category": "utilities",
+      "subCategory": "utilities-internet",
+      "spendingBucket": "fixed",
+      "confidence": 0.95
+    },
+    {
+      "pattern": "\\bgoogle\\s+one\\b",
+      "type": "expense",
+      "category": "entertainment",
+      "subCategory": "entertainment-subs",
+      "spendingBucket": "fixed",
+      "confidence": 0.95
+    },
+    {
+      "pattern": "\\beastside\\s+exterminators\\b",
+      "type": "expense",
+      "category": "housing",
+      "subCategory": "housing-hoa",
+      "spendingBucket": "fixed",
+      "confidence": 0.95
+    },
+    {
+      "pattern": "\\bgoogle\\s+store\\b",
+      "type": "expense",
+      "category": "merchandise",
+      "subCategory": "merchandise-electronics",
+      "spendingBucket": "flexible",
+      "confidence": 0.92
+    },
+    {
+      "pattern": "\\bmel'?s\\s+barber\\b",
+      "type": "expense",
+      "category": "misc",
+      "subCategory": "misc-salon",
+      "spendingBucket": "flexible",
+      "confidence": 0.92
+    }
+  ],
+  "wordBoundaryKeywords": [
+    "bar",
+    "pub",
+    "inn",
+    "vet",
+    "gas",
+    "shell",
+    "76",
+    "gap",
+    "rei",
+    "ups",
+    "irs",
+    "hoa",
+    "pud",
+    "pse",
+    "spa",
+    "nail"
+  ],
+  "categoryKeywords": [
+    {
+      "category": "groceries",
+      "subCategory": "groceries-costco",
+      "spendingBucket": "flexible",
+      "keywords": ["costco"]
+    },
+    {
+      "category": "groceries",
+      "subCategory": "groceries-instacart",
+      "spendingBucket": "flexible",
+      "keywords": ["instacart"]
+    },
+    {
+      "category": "groceries",
+      "subCategory": "groceries-supermarket",
+      "spendingBucket": "flexible",
+      "keywords": [
+        "whole foods",
+        "trader joe",
+        "safeway",
+        "kroger",
+        "aldi",
+        "sprouts",
+        "mayuri",
+        "fred meyer",
+        "jd's market",
+        "jds market",
+        "ranch 99",
+        "99 ranch",
+        "qfc",
+        "h mart",
+        "hmart",
+        "grocery",
+        "groceries",
+        "supermarket"
+      ]
+    },
+    {
+      "category": "food",
+      "subCategory": "food-takeout",
+      "spendingBucket": "flexible",
+      "keywords": [
+        "doordash",
+        "ubereats",
+        "uber eats",
+        "grubhub",
+        "chipotle",
+        "sweetgreen",
+        "starbucks",
+        "blue bottle",
+        "coffee",
+        "cafe",
+        "bakery",
+        "takeout",
+        "delivery"
+      ]
+    },
+    {
+      "category": "food",
+      "subCategory": "food-dine-in",
+      "spendingBucket": "flexible",
+      "keywords": [
+        "restaurant",
+        "diner",
+        "bistro",
+        "sushi",
+        "osteria",
+        "pizza",
+        "dining",
+        "food & drink",
+        "food and drink"
+      ]
+    },
+    {
+      "category": "utilities",
+      "subCategory": "utilities-electric",
+      "spendingBucket": "fixed",
+      "keywords": [
+        "electric",
+        "power",
+        "pge",
+        "pg&e",
+        "snohomish county pud"
+      ]
+    },
+    {
+      "category": "utilities",
+      "subCategory": "utilities-water",
+      "spendingBucket": "fixed",
+      "keywords": [
+        "water",
+        "sewer",
+        "trash",
+        "waste management",
+        "alderwood water"
+      ]
+    },
+    {
+      "category": "utilities",
+      "subCategory": "utilities-gas",
+      "spendingBucket": "fixed",
+      "keywords": [
+        "puget sound energy",
+        "puget heating",
+        "heating"
+      ]
+    },
+    {
+      "category": "utilities",
+      "subCategory": "utilities-internet",
+      "spendingBucket": "fixed",
+      "keywords": [
+        "internet",
+        "wifi",
+        "comcast",
+        "xfinity",
+        "broadband",
+        "ziply"
+      ]
+    },
+    {
+      "category": "utilities",
+      "subCategory": "utilities-phone",
+      "spendingBucket": "fixed",
+      "keywords": [
+        "verizon",
+        "at&t",
+        "t-mobile",
+        "google fi"
+      ]
+    },
+    {
+      "category": "entertainment",
+      "subCategory": "entertainment-subs",
+      "spendingBucket": "fixed",
+      "keywords": [
+        "netflix",
+        "spotify",
+        "hulu",
+        "hbo",
+        "youtube premium",
+        "apple tv",
+        "disney",
+        "google one",
+        "subscription"
+      ]
+    },
+    {
+      "category": "entertainment",
+      "subCategory": "entertainment-movies",
+      "spendingBucket": "flexible",
+      "keywords": [
+        "movie",
+        "cinema",
+        "theater",
+        "concert",
+        "ticket",
+        "amusement",
+        "recreation center"
+      ]
+    },
+    {
+      "category": "transport",
+      "subCategory": "transport-fuel",
+      "spendingBucket": "flexible",
+      "keywords": [
+        "chevron",
+        "shell",
+        "7-eleven",
+        "arco",
+        "mobil",
+        "exxon",
+        "fuel"
+      ]
+    },
+    {
+      "category": "transport",
+      "subCategory": "transport-transit",
+      "spendingBucket": "flexible",
+      "keywords": [
+        "uber",
+        "lyft",
+        "transit",
+        "subway",
+        "train",
+        "parking",
+        "waymo",
+        "good to go",
+        "wsdot",
+        "supercharger",
+        "tesla"
+      ]
+    },
+    {
+      "category": "transport",
+      "subCategory": "transport-maint",
+      "spendingBucket": "non-monthly",
+      "keywords": [
+        "car wash",
+        "geico",
+        "progressive",
+        "auto repair"
+      ]
+    },
+    {
+      "category": "travel",
+      "subCategory": "travel-flights",
+      "spendingBucket": "non-monthly",
+      "keywords": [
+        "airline",
+        "delta air",
+        "united air",
+        "american air",
+        "alaska air",
+        "flight"
+      ]
+    },
+    {
+      "category": "travel",
+      "subCategory": "travel-hotels",
+      "spendingBucket": "non-monthly",
+      "keywords": [
+        "hotel",
+        "airbnb",
+        "marriott",
+        "hilton",
+        "hyatt",
+        "resort",
+        "lodging"
+      ]
+    },
+    {
+      "category": "travel",
+      "subCategory": "travel-car",
+      "spendingBucket": "non-monthly",
+      "keywords": [
+        "hertz",
+        "avis",
+        "enterprise rent"
+      ]
+    },
+    {
+      "category": "healthcare",
+      "subCategory": "healthcare-pharmacy",
+      "spendingBucket": "flexible",
+      "keywords": [
+        "pharmacy",
+        "cvs",
+        "walgreens"
+      ]
+    },
+    {
+      "category": "healthcare",
+      "subCategory": "healthcare-dental",
+      "spendingBucket": "flexible",
+      "keywords": [
+        "dentist",
+        "dental",
+        "vision",
+        "optometry"
+      ]
+    },
+    {
+      "category": "healthcare",
+      "subCategory": "healthcare-doctor",
+      "spendingBucket": "flexible",
+      "keywords": [
+        "doctor",
+        "medical",
+        "copay",
+        "clinic",
+        "hospital",
+        "harborview",
+        "evergreenhealth",
+        "uw medicine"
+      ]
+    },
+    {
+      "category": "shopping",
+      "subCategory": "shopping-amazon",
+      "spendingBucket": "flexible",
+      "keywords": [
+        "amazon",
+        "amzn",
+        "amz*"
+      ]
+    },
+    {
+      "category": "shopping",
+      "subCategory": "shopping-apparel",
+      "spendingBucket": "flexible",
+      "keywords": [
+        "apparel",
+        "clothing",
+        "nike",
+        "uniqlo",
+        "nordstrom",
+        "macys",
+        "zara",
+        "stitch fix"
+      ]
+    },
+    {
+      "category": "misc",
+      "subCategory": "misc-salon",
+      "spendingBucket": "flexible",
+      "keywords": [
+        "salon",
+        "barber",
+        "haircut",
+        "spa",
+        "nail"
+      ]
+    }
+  ]
+}
