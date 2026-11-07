@@ -1308,7 +1308,7 @@ test('19. [M1, M3, M5, Nits] Mutex concurrency, Step 6b split externalId suffixi
 
 test('20. [B3] CLI rejects non-dry-run without storage target and filters superseded Plaid removed IDs', async () => {
   const { execFileSync } = await import('node:child_process');
-  const cliPath = path.join(repoRoot, '.agents/skills/expense-ingest/scripts/ingest_transactions.mjs');
+  const cliPath = path.join(repoRoot, '.agents/skills/expense-ingest/scripts/ingest_transactions.py');
   const tmpDir = fs.mkdtempSync('/tmp/expense-cli-test-');
   const inputPath = path.join(tmpDir, 'plaid_sync.json');
   const statePath = path.join(tmpDir, 'state.json');
@@ -1334,7 +1334,7 @@ test('20. [B3] CLI rejects non-dry-run without storage target and filters supers
   // 1. Running without --state-file, --spreadsheet-id, or --dry-run must exit with error
   let failedAsExpected = false;
   try {
-    execFileSync('node', [cliPath, '--input', inputPath, '--source', 'bilt-plaid'], {
+    execFileSync('python3', [cliPath, '--input', inputPath, '--source', 'bilt-plaid'], {
       stdio: 'pipe',
     });
   } catch (err) {
@@ -1346,7 +1346,7 @@ test('20. [B3] CLI rejects non-dry-run without storage target and filters supers
   // 2. Running with --state-file succeeds and filters out the redundant removed item
   const out = JSON.parse(
     execFileSync(
-      'node',
+      'python3',
       [cliPath, '--input', inputPath, '--source', 'bilt-plaid', '--state-file', statePath, '--skip-llm'],
       { encoding: 'utf8' }
     )

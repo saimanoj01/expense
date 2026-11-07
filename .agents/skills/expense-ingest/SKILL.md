@@ -35,7 +35,7 @@ Convert the upstream source into the canonical `RawTransactionInput` array (see 
      - `metadataRichness`: `'medium'`
    - Map `removed` items to `op: 'remove'`:
      - `externalId`: `removedTx.transaction_id`
-   - *Note*: The CLI script (`scripts/ingest_transactions.mjs`) also accepts raw Plaid `{ added, modified, removed }` JSON directly and performs this mapping automatically.
+   - *Note*: The CLI script (`scripts/ingest_transactions.py`) also accepts raw Plaid `{ added, modified, removed }` JSON directly and performs this mapping automatically.
 
 2. **Amazon Order / Shipment Confirmation Emails (`sourceId: 'amazon-email'`)**:
    - Extract Order ID (`orderId`, e.g., `"112-3456789-0123456"`), shipment/order total (`amount`), date (`YYYY-MM-DD`), and `items: [{ title, price, quantity, categoryHint }]`.
@@ -54,13 +54,13 @@ Convert the upstream source into the canonical `RawTransactionInput` array (see 
 
 ### Step 2: Execute the Ingestion CLI or Programmatic API
 
-#### Option A: Node 24 CLI (`scripts/ingest_transactions.mjs`)
+#### Option A: Python CLI (`scripts/ingest_transactions.py`)
 
-Run the bundled CLI script from `/home/antigravity/saimanoj01/expense` targeting either Google Sheets (`--spreadsheet-id` with `--access-token` or `--service-account`) or a local JSON ledger file (`--state-file`):
+Run the bundled Python CLI script from `/home/antigravity/saimanoj01/expense` targeting either Google Sheets (`--spreadsheet-id` with `--access-token` or `--service-account`) or a local JSON ledger file (`--state-file`):
 
 ```bash
 # Option A1: Sync directly to Google Sheets (OAuth token or Service Account JSON)
-node .agents/skills/expense-ingest/scripts/ingest_transactions.mjs \
+python3 .agents/skills/expense-ingest/scripts/ingest_transactions.py \
   --input /path/to/payload.json \
   --spreadsheet-id <google-spreadsheet-id> \
   --service-account /path/to/service-account.json \
@@ -69,7 +69,7 @@ node .agents/skills/expense-ingest/scripts/ingest_transactions.mjs \
   --mode automated
 
 # Option A2: Sync to a local JSON ledger file
-node .agents/skills/expense-ingest/scripts/ingest_transactions.mjs \
+python3 .agents/skills/expense-ingest/scripts/ingest_transactions.py \
   --input /path/to/payload.json \
   --project personal-finances \
   --source bilt-plaid \
@@ -77,7 +77,7 @@ node .agents/skills/expense-ingest/scripts/ingest_transactions.mjs \
   --state-file /path/to/ledger_state.json
 ```
 
-Use `--dry-run` to preview the `IngestPlan` without writing to storage, or `--skip-llm` for fast offline execution using only Stage 1 (History Memory) + Stage 2 (Enhanced Keyword Rules). Non-dry-run invocations require either `--spreadsheet-id` or `--state-file` so runs never silently write to ephemeral memory.
+Use `--dry-run` to preview the `IngestPlan` without writing to storage, `--format summary` for a Markdown report, or `--skip-llm` for fast offline execution using only Stage 1 (History Memory) + Stage 2 (Enhanced Keyword Rules). Non-dry-run invocations require either `--spreadsheet-id` or `--state-file` so runs never silently write to ephemeral memory.
 
 #### Option B: Programmatic TypeScript API
 
