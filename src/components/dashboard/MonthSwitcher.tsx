@@ -100,12 +100,12 @@ export const MonthSwitcher: React.FC<MonthSwitcherProps> = ({
           </option>
           {availableMonths.map(m => (
             <option key={m} value={m} className="bg-popover text-popover-foreground">
-              {formatMonthLabel(m)} ({m})
+              {formatMonthLabel(m)}
             </option>
           ))}
           {selectedMonth && !availableMonths.includes(selectedMonth) && selectedMonth !== 'all' && (
             <option value={selectedMonth} className="bg-popover text-popover-foreground">
-              {formatMonthLabel(selectedMonth)} ({selectedMonth})
+              {formatMonthLabel(selectedMonth)}
             </option>
           )}
         </select>

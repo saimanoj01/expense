@@ -62,7 +62,7 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
 
       <div className="flex items-center gap-1.5 shrink-0">
         {isOverview && (
-          <div className="flex items-center gap-1 mr-1">
+          <div className="hidden sm:flex items-center gap-1 mr-1">
             {onOpenCategoryManager && (
               <button
                 type="button"
