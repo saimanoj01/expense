@@ -285,6 +285,7 @@ export const Level1MonthOverview: React.FC<Level1MonthOverviewProps> = ({
           totalExpenses={effectiveTotalExpenses}
           totalBudget={totalBudget}
           isOverview={isOverview}
+          isSmoothed={smoothNonMonthly && Math.abs(nonMonthlyExpenses - effectiveNonMonthly) > 0.005}
         />
       </div>
     </motion.div>

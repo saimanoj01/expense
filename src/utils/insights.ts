@@ -6,6 +6,7 @@ import { BucketKey } from '../theme/buckets';
 export interface InsightItem {
   id: string;
   bucket: BucketKey;
+  tone?: 'positive' | 'negative';
   text: string;
   href: string;
   impact: number;
@@ -134,6 +135,7 @@ export function generateInsights(
       candidates.push({
         id: 'variable-pace',
         bucket: 'flexible',
+        tone: diff < 0 ? 'negative' : 'positive',
         text:
           diff >= 0
             ? `You finished Variable ${formatMoney(diff)} under budget.`
@@ -202,6 +204,7 @@ export function generateInsights(
     candidates.push({
       id: 'savings-summary',
       bucket: 'saved',
+      tone: saved < 0 ? 'negative' : 'positive',
       text:
         saved >= 0
           ? `You kept ${rate}% of income (${formatMoney(saved)}) this month.`

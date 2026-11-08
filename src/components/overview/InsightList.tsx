@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { ArrowRight } from 'lucide-react';
 import { Transaction, Category, Budget } from '../../services/storage';
 import { generateInsights } from '../../utils/insights';
-import { bucketColor } from '../../theme/buckets';
+import { bucketColor, negativeColor } from '../../theme/buckets';
 import { formatCurrency } from '../../utils/formatters';
 import { useNavigation } from '../../hooks/useNavigation';
 
@@ -73,7 +73,7 @@ export const InsightList: React.FC<InsightListProps> = ({
       return `In ${monthTitle}, no income or expenses have been recorded yet.`;
     }
     if (savingsAmount < 0) {
-      return `In ${monthTitle}, you earned ${formatCurrency(totalIncome)}. Fixed commitments absorbed ${formatCurrency(fixedExpenses)} (${fixedPct.toFixed(1)}%) and variable spend was ${formatCurrency(flexibleExpenses)} (${flexSpentPct.toFixed(1)}%), resulting in a net cash deficit of ${formatCurrency(Math.abs(savingsAmount))}.`;
+      return `In ${monthTitle}, you earned ${formatCurrency(totalIncome)} and spent ${formatCurrency(totalExpenses)}. Fixed commitments were ${formatCurrency(fixedExpenses)} (${fixedPct.toFixed(1)}% of spend) and variable spend was ${formatCurrency(flexibleExpenses)} (${flexSpentPct.toFixed(1)}% of spend), resulting in a net cash deficit of ${formatCurrency(Math.abs(savingsAmount))}.`;
     }
     let base = `In ${monthTitle}, you earned ${formatCurrency(totalIncome)}. Fixed commitments absorbed ${formatCurrency(fixedExpenses)} (${fixedPct.toFixed(1)}%), leaving a flexible pool of ${formatCurrency(flexNumber)}. Day-to-day variable spend was ${formatCurrency(flexibleExpenses)} (${flexSpentPct.toFixed(1)}%) and non-monthly expenses were ${formatCurrency(nonMonthlyExpenses)}, resulting in ${formatCurrency(savingsAmount)} in Net Savings (${savingsRate.toFixed(1)}% rate).`;
     if (unclassifiedExpenses > 0) {
@@ -95,9 +95,9 @@ export const InsightList: React.FC<InsightListProps> = ({
 
   return (
     <div data-testid="story-narrative" className={`space-y-1.5 ${className}`}>
-      <div className="flex items-baseline justify-between gap-3">
-        <h3 className="text-heading text-foreground shrink-0">What changed</h3>
-        <p className="text-label text-muted-foreground truncate" title={srNarrative}>
+      <div className="space-y-0.5">
+        <h3 className="text-heading text-foreground">What changed</h3>
+        <p className="text-label text-muted-foreground leading-snug">
           {srNarrative}
         </p>
       </div>
@@ -120,7 +120,10 @@ export const InsightList: React.FC<InsightListProps> = ({
               <div className="flex items-center gap-2.5 min-w-0">
                 <span
                   className="w-1.5 h-1.5 rounded-full shrink-0"
-                  style={{ backgroundColor: bucketColor(item.bucket) }}
+                  style={{
+                    backgroundColor:
+                      item.tone === 'negative' ? negativeColor() : bucketColor(item.bucket),
+                  }}
                 />
                 <span className="text-body text-foreground truncate">
                   {item.text}

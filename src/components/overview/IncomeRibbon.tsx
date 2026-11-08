@@ -77,6 +77,7 @@ export const IncomeRibbon: React.FC<IncomeRibbonProps> = ({
         {segments.map((seg, idx) => {
           if (seg.amount <= 0 && totalIncome === 0 && totalExpenses === 0) return null;
           const pct = Math.round((seg.amount / total) * 100);
+          const pctLabel = totalExpenses > totalIncome ? `${pct}% of spend` : `${pct}% of income`;
           return (
             <motion.button
               key={seg.key}
@@ -88,7 +89,7 @@ export const IncomeRibbon: React.FC<IncomeRibbonProps> = ({
                 shouldAnimateIntro ? { ...spring, delay: idx * 0.06 } : spring
               }
               onClick={() => navigate(`#/month/${selectedMonth}/bucket/${seg.route}`)}
-              aria-label={`${seg.label}, ${formatMoney(seg.amount)}, ${pct}% of income. Open ${seg.label}`}
+              aria-label={`${seg.label}, ${formatMoney(seg.amount)}, ${pctLabel}. Open ${seg.label}`}
               style={{
                 flexGrow: Math.max(seg.amount, 0),
                 minWidth: seg.amount > 0 ? 4 : 0,
@@ -100,26 +101,7 @@ export const IncomeRibbon: React.FC<IncomeRibbonProps> = ({
           );
         })}
 
-        {isDeficit ? (
-          <motion.button
-            key="overspent"
-            type="button"
-            data-testid="ribbon-overspent-segment"
-            initial={shouldAnimateIntro ? { scaleX: 0 } : false}
-            animate={{ scaleX: 1 }}
-            transition={shouldAnimateIntro ? { ...spring, delay: 0.18 } : spring}
-            onClick={() => navigate(`#/month/${selectedMonth}/bucket/income`)}
-            aria-label={`Overspent, ${formatMoney(Math.abs(savingsAmount))}. Open Income & saved`}
-            style={{
-              flexGrow: Math.abs(savingsAmount),
-              minWidth: 8,
-              backgroundImage:
-                'repeating-linear-gradient(45deg, hsl(var(--c-negative)), hsl(var(--c-negative)) 4px, hsl(var(--c-negative) / 0.25) 4px, hsl(var(--c-negative) / 0.25) 8px)',
-              transformOrigin: 'left',
-            }}
-            className="h-full transition-opacity hover:opacity-85 focus-visible:ring-2 ring-ring/40 ring-offset-2 ring-offset-background"
-          />
-        ) : (
+        {!isDeficit && (
           <motion.button
             key="saved"
             type="button"
@@ -140,10 +122,31 @@ export const IncomeRibbon: React.FC<IncomeRibbonProps> = ({
         )}
       </div>
 
+      {isDeficit && incomeMarkerPct !== null && (
+        <motion.button
+          key="overspent"
+          type="button"
+          data-testid="ribbon-overspent-segment"
+          initial={shouldAnimateIntro ? { scaleX: 0 } : false}
+          animate={{ scaleX: 1 }}
+          transition={shouldAnimateIntro ? { ...spring, delay: 0.18 } : spring}
+          onClick={() => navigate(`#/month/${selectedMonth}/bucket/income`)}
+          aria-label={`Overspent, ${formatMoney(Math.abs(savingsAmount))}. Open Income & saved`}
+          style={{
+            left: `${incomeMarkerPct}%`,
+            width: `${100 - incomeMarkerPct}%`,
+            backgroundImage:
+              'repeating-linear-gradient(45deg, hsl(var(--c-negative) / 0.55) 0px, hsl(var(--c-negative) / 0.55) 4px, transparent 4px, transparent 8px)',
+            transformOrigin: 'left',
+          }}
+          className="absolute top-0 h-3 rounded-r-[6px] border border-negative/80 transition-opacity hover:opacity-90 focus-visible:ring-2 ring-ring/40 ring-offset-2 ring-offset-background z-10"
+        />
+      )}
+
       {incomeMarkerPct !== null && (
         <div
           style={{ left: `${incomeMarkerPct}%` }}
-          className="absolute -top-4 flex flex-col items-center pointer-events-none -translate-x-1/2"
+          className="absolute -top-4 flex flex-col items-center pointer-events-none -translate-x-1/2 z-20"
         >
           <span className="text-[11px] leading-none text-muted-foreground mb-0.5 whitespace-nowrap">
             Income

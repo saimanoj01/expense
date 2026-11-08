@@ -2,37 +2,33 @@ import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronLeft } from 'lucide-react';
 import { useNavigation } from '../../hooks/useNavigation';
+import { formatMonthLabel } from '../../utils/navigation';
 import { spring } from '../../theme/motion';
 
 interface BreadcrumbTrailProps {
   className?: string;
 }
 
-function formatEyebrow(monthStr?: string, short = false, smoothed = false): string {
-  if (!monthStr || monthStr === 'all') return smoothed ? 'ALL TIME · SMOOTHED' : 'ALL TIME';
+function formatEyebrow(monthStr?: string, smoothed = false): string {
+  if (!monthStr || monthStr === 'all') return smoothed ? 'All Time · Smoothed' : 'All Time';
   if (/^\d{4}-\d{2}$/.test(monthStr)) {
     const [yStr, mStr] = monthStr.split('-');
     const y = parseInt(yStr, 10);
     const m = parseInt(mStr, 10);
-    const date = new Date(Date.UTC(y, m - 1, 1));
-    const label = date
-      .toLocaleDateString('en-US', { month: short ? 'short' : 'long', year: 'numeric', timeZone: 'UTC' })
-      .toUpperCase();
+    const label = formatMonthLabel(monthStr);
     if (smoothed) {
-      return `${label} · SMOOTHED`;
+      return `${label} · Smoothed`;
     }
     const now = new Date();
     const currKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     if (monthStr === currKey) {
       const daysInMonth = new Date(y, m, 0).getDate();
       const daysLeft = Math.max(0, daysInMonth - now.getDate());
-      return short
-        ? `${label} · ${daysLeft}D LEFT`
-        : `${label} · ${daysLeft} DAY${daysLeft === 1 ? '' : 'S'} LEFT`;
+      return `${label} · ${daysLeft} day${daysLeft === 1 ? '' : 's'} left`;
     }
     return label;
   }
-  return smoothed ? `${monthStr.toUpperCase()} · SMOOTHED` : monthStr.toUpperCase();
+  return smoothed ? `${monthStr} · Smoothed` : monthStr;
 }
 
 export const BreadcrumbTrail: React.FC<BreadcrumbTrailProps> = ({ className = '' }) => {
@@ -94,8 +90,7 @@ export const BreadcrumbTrail: React.FC<BreadcrumbTrailProps> = ({ className = ''
                     aria-current="page"
                     className="text-eyebrow uppercase text-muted-foreground truncate"
                   >
-                    <span className="sm:hidden">{formatEyebrow(currentRoute.month, true, smoothNonMonthly)} ({item.label})</span>
-                    <span className="hidden sm:inline">{formatEyebrow(currentRoute.month, false, smoothNonMonthly)} ({item.label})</span>
+                    {formatEyebrow(currentRoute.month, smoothNonMonthly)}
                   </motion.span>
                 ) : isLast ? (
                   <motion.span

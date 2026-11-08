@@ -1,7 +1,8 @@
-import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { motion, useMotionValue, useSpring } from 'framer-motion';
 import { Transaction } from '../../services/storage';
 import { formatMoney, splitMoneyParts } from '../../utils/formatters';
+import { isRefundTransaction } from '../../utils/metrics';
 import { dur, ease } from '../../theme/motion';
 import { useNavigation } from '../../hooks/useNavigation';
 
@@ -12,6 +13,7 @@ export interface SpendTimelineProps {
   totalExpenses: number;
   totalBudget?: number;
   isOverview?: boolean;
+  isSmoothed?: boolean;
   className?: string;
 }
 
@@ -35,9 +37,27 @@ export const SpendTimeline: React.FC<SpendTimelineProps> = ({
   totalExpenses,
   totalBudget = 0,
   isOverview = true,
+  isSmoothed = false,
   className = '',
 }) => {
   const { navigate } = useNavigation();
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [svgWidth, setSvgWidth] = useState(1080);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const updateWidth = () => {
+      const w = Math.round(el.getBoundingClientRect().width);
+      if (w > 100) setSvgWidth(w);
+    };
+    updateWidth();
+    if (typeof ResizeObserver !== 'undefined') {
+      const ro = new ResizeObserver(() => updateWidth());
+      ro.observe(el);
+      return () => ro.disconnect();
+    }
+  }, []);
 
   const daysInMonth = useMemo(() => getDaysInMonth(selectedMonth), [selectedMonth]);
   const priorDaysInMonth = useMemo(
@@ -50,7 +70,7 @@ export const SpendTimeline: React.FC<SpendTimelineProps> = ({
     const monthPrefix = selectedMonth === 'all' ? '' : selectedMonth;
     const expTxns = allTransactions.filter(
       t =>
-        t.type === 'expense' &&
+        (t.type === 'expense' || isRefundTransaction(t)) &&
         (selectedMonth === 'all' || (t.date && t.date.startsWith(monthPrefix)))
     );
 
@@ -60,7 +80,8 @@ export const SpendTimeline: React.FC<SpendTimelineProps> = ({
       const d = parseInt((t.date || '').split('-')[2] || '1', 10);
       const clamped = Math.min(daysInMonth, Math.max(1, d));
       maxTxnDay = Math.max(maxTxnDay, clamped);
-      byDay[clamped - 1] += Number(t.amount) || 0;
+      const amt = Number(t.amount) || 0;
+      byDay[clamped - 1] += isRefundTransaction(t) ? -amt : amt;
     });
 
     const now = new Date();
@@ -76,7 +97,7 @@ export const SpendTimeline: React.FC<SpendTimelineProps> = ({
     let running = 0;
     for (let i = 0; i < daysInMonth; i++) {
       running += byDay[i];
-      cum.push(running);
+      cum.push(Math.max(0, running));
     }
 
     return { currentCum: cum, cutoffDay: cutoff };
@@ -86,7 +107,10 @@ export const SpendTimeline: React.FC<SpendTimelineProps> = ({
   const { priorCum, hasPrior } = useMemo(() => {
     if (!priorMonthKey) return { priorCum: [] as number[], hasPrior: false };
     const expTxns = allTransactions.filter(
-      t => t.type === 'expense' && t.date && t.date.startsWith(priorMonthKey)
+      t =>
+        (t.type === 'expense' || isRefundTransaction(t)) &&
+        t.date &&
+        t.date.startsWith(priorMonthKey)
     );
     if (expTxns.length === 0) return { priorCum: [] as number[], hasPrior: false };
 
@@ -94,7 +118,8 @@ export const SpendTimeline: React.FC<SpendTimelineProps> = ({
     expTxns.forEach(t => {
       const d = parseInt((t.date || '').split('-')[2] || '1', 10);
       if (d >= 1 && d <= daysInMonth) {
-        byDay[d - 1] += Number(t.amount) || 0;
+        const amt = Number(t.amount) || 0;
+        byDay[d - 1] += isRefundTransaction(t) ? -amt : amt;
       }
     });
 
@@ -102,12 +127,12 @@ export const SpendTimeline: React.FC<SpendTimelineProps> = ({
     let running = 0;
     for (let i = 0; i < daysInMonth; i++) {
       running += byDay[i];
-      cum.push(running);
+      cum.push(Math.max(0, running));
     }
     return { priorCum: cum, hasPrior: true };
   }, [allTransactions, priorMonthKey, daysInMonth]);
 
-  const width = 600;
+  const width = svgWidth;
   const height = 80;
   const padTop = 8;
   const padBottom = 18;
@@ -127,7 +152,7 @@ export const SpendTimeline: React.FC<SpendTimelineProps> = ({
       if (daysInMonth <= 1) return 0;
       return (dayIndex0 / (daysInMonth - 1)) * width;
     },
-    [daysInMonth]
+    [daysInMonth, width]
   );
 
   const getY = useCallback(
@@ -241,7 +266,7 @@ export const SpendTimeline: React.FC<SpendTimelineProps> = ({
               {expenseParts.cents && <span className="text-[0.75em] opacity-75">{expenseParts.cents}</span>}
             </span>{' '}
             so far
-            {Math.abs(totalExpenses - (currentCum[daysInMonth - 1] || 0)) >= 1 ? ' (smoothed)' : ''}
+            {isSmoothed ? ' (smoothed)' : ''}
           </span>
           {isOverview && (
             <button
@@ -257,6 +282,7 @@ export const SpendTimeline: React.FC<SpendTimelineProps> = ({
       </div>
 
       <div
+        ref={containerRef}
         tabIndex={0}
         role="slider"
         data-own-arrows="true"
@@ -275,7 +301,7 @@ export const SpendTimeline: React.FC<SpendTimelineProps> = ({
       >
         <svg
           viewBox={`0 0 ${width} ${height}`}
-          className="w-full h-full overflow-visible"
+          className="block w-full h-full overflow-visible"
           role="img"
           aria-label="Cumulative spending timeline"
         >

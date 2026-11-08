@@ -222,11 +222,14 @@ test.describe('Tier 12: v3 Progressive Disclosure Drill-Down Experience', () => 
     const ring = page.getByTestId('income-allocation-ring');
     await expect(ring).toBeVisible();
 
-    // 4 Morphing Bucket Cards
-    await expect(page.getByTestId('kpi-total-income')).toBeVisible();
+    // 5-Column Cash-Flow Grid (Income + 3 Expense Buckets + Saved/Overspent)
+    await expect(page.getByTestId('drill-down-income')).toBeVisible();
+    await expect(page.getByTestId('kpi-total-income')).toContainText('$6,000.00');
     await expect(page.getByTestId('kpi-fixed-expenses')).toBeVisible();
     await expect(page.getByTestId('kpi-flexible-spent')).toBeVisible();
     await expect(page.getByTestId('kpi-non-monthly')).toBeVisible();
+    await expect(page.getByTestId('drill-down-saved')).toBeVisible();
+    await expect(page.getByTestId('kpi-saved-stat')).toContainText('$3,450.00');
 
     // Story Narrative Card & Trends Breakdown Link
     await expect(page.getByTestId('story-narrative')).toBeVisible();
@@ -471,10 +474,15 @@ test.describe('Tier 12: v3 Progressive Disclosure Drill-Down Experience', () => 
     await expect(fixedDelta).toContainText('↑');
     await expect(fixedDelta).toHaveClass(/text-negative/);
 
-    // Deficit month displays overspent hero copy ("You overspent by") and hatched ribbon
+    // Deficit month displays overspent hero copy ("You overspent by"), hatched ribbon overlay, % of spend, and signed negative Overspent column
     const heroCard = page.getByTestId('hero-savings-card');
     await expect(heroCard).toContainText('You overspent by');
     await expect(page.getByTestId('income-allocation-ring')).toBeVisible();
+    await expect(page.getByTestId('ribbon-overspent-segment')).toBeVisible();
+    await expect(page.getByTestId('drill-down-fixed')).toContainText('% of spend');
+    await expect(page.getByTestId('drill-down-saved')).toContainText('Overspent');
+    await expect(page.getByTestId('kpi-saved-stat')).toContainText('-$1,550.00');
+    await expect(page.getByTestId('story-narrative')).toContainText('% of spend');
   });
 
   test('18. Zero-Shim Guard: no [data-testid] element or ancestor uses sr-only or opacity-0 across core routes', async ({ page }) => {

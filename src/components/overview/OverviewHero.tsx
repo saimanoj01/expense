@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
 import { formatMoney, formatCurrency, splitMoneyParts } from '../../utils/formatters';
-import { delta, deltaToneClass } from '../../utils/delta';
 import { useNavigation } from '../../hooks/useNavigation';
 import { RollingNumber } from '../motion/RollingNumber';
 
@@ -39,7 +38,6 @@ export const OverviewHero: React.FC<OverviewHeroProps> = ({
   savingsRate,
   totalBudget = 0,
   flexNumber = 0,
-  priorIncome,
   priorSavingsAmount,
   priorMonthKey,
   hasPriorMonthData = false,
@@ -76,13 +74,6 @@ export const OverviewHero: React.FC<OverviewHeroProps> = ({
   const keptParts = splitMoneyParts(Math.abs(savingsAmount));
   const incomeParts = splitMoneyParts(totalIncome);
   const expenseParts = splitMoneyParts(totalExpenses);
-
-  const incomeDelta = delta(
-    totalIncome,
-    hasPriorMonthData && priorIncome !== undefined ? priorIncome : null,
-    'income',
-    priorMonthKey || 'last month'
-  );
 
   const savingsDiff =
     hasPriorMonthData && priorSavingsAmount !== undefined
@@ -135,33 +126,27 @@ export const OverviewHero: React.FC<OverviewHeroProps> = ({
             </button>
             <span className="text-label text-muted-foreground tabular-nums num inline-flex flex-wrap items-center gap-1.5">
               <span>
-                Income{' '}
-                <span data-testid={isOverview ? 'kpi-total-income' : undefined} className="text-foreground font-medium">
-                  $0.00
-                </span>
-              </span>
-              <span className="text-faint">·</span>
-              <span>
                 Rate{' '}
                 <span data-testid={isOverview ? 'kpi-savings-rate' : undefined} className="text-foreground font-medium">
                   —
                 </span>
               </span>
-              <span className="text-faint">·</span>
-              <span
-                data-testid={isOverview ? 'mom-delta-income' : undefined}
-                className={deltaToneClass(incomeDelta.tone)}
-              >
-                {incomeDelta.text}
-              </span>
-              <span className="text-faint">·</span>
-              <span data-testid={isOverview ? 'kpi-flex-number' : undefined}>
-                Flex {formatCurrency(Math.max(0, flexNumber))}
-              </span>
-              <span className="text-faint">·</span>
-              <span data-testid={isOverview ? 'kpi-total-budget' : undefined}>
-                Target {formatCurrency(totalBudget)}
-              </span>
+              {flexNumber > 0 && (
+                <>
+                  <span className="text-faint">·</span>
+                  <span data-testid={isOverview ? 'kpi-flex-number' : undefined}>
+                    Flex {formatCurrency(flexNumber)}
+                  </span>
+                </>
+              )}
+              {totalBudget > 0 && (
+                <>
+                  <span className="text-faint">·</span>
+                  <span data-testid={isOverview ? 'kpi-total-budget' : undefined}>
+                    Target {formatCurrency(totalBudget)}
+                  </span>
+                </>
+              )}
             </span>
           </div>
         </div>
@@ -176,11 +161,7 @@ export const OverviewHero: React.FC<OverviewHeroProps> = ({
           </div>
           <p className="text-body text-muted-foreground flex flex-wrap items-center gap-1.5">
             <span>
-              No income recorded this month (
-              <span data-testid={isOverview ? 'kpi-total-income' : undefined} className="tabular-nums num">
-                $0.00
-              </span>
-              )
+              No income recorded this month (<span className="tabular-nums num">$0.00</span>)
             </span>
             <span className="text-faint">·</span>
             {onOpenAddTxn ? (
@@ -198,21 +179,22 @@ export const OverviewHero: React.FC<OverviewHeroProps> = ({
             <span data-testid={isOverview ? 'kpi-savings-rate' : undefined} className="text-muted-foreground">
               —
             </span>
-            <span className="text-faint">·</span>
-            <span
-              data-testid={isOverview ? 'mom-delta-income' : undefined}
-              className={`text-label tabular-nums num ${deltaToneClass(incomeDelta.tone)}`}
-            >
-              {incomeDelta.text}
-            </span>
-            <span className="text-faint">·</span>
-            <span data-testid={isOverview ? 'kpi-flex-number' : undefined} className="text-label tabular-nums num">
-              Flex {formatCurrency(Math.max(0, flexNumber))}
-            </span>
-            <span className="text-faint">·</span>
-            <span data-testid={isOverview ? 'kpi-total-budget' : undefined} className="text-label tabular-nums num">
-              Target {formatCurrency(totalBudget)}
-            </span>
+            {flexNumber > 0 && (
+              <>
+                <span className="text-faint">·</span>
+                <span data-testid={isOverview ? 'kpi-flex-number' : undefined} className="text-label tabular-nums num">
+                  Flex {formatCurrency(flexNumber)}
+                </span>
+              </>
+            )}
+            {totalBudget > 0 && (
+              <>
+                <span className="text-faint">·</span>
+                <span data-testid={isOverview ? 'kpi-total-budget' : undefined} className="text-label tabular-nums num">
+                  Target {formatCurrency(totalBudget)}
+                </span>
+              </>
+            )}
           </p>
         </div>
       ) : isDeficit ? (
@@ -232,10 +214,7 @@ export const OverviewHero: React.FC<OverviewHeroProps> = ({
                 {expenseParts.cents && <span className="text-[0.75em] opacity-75">{expenseParts.cents}</span>}
               </span>{' '}
               on{' '}
-              <span
-                data-testid={isOverview ? 'kpi-total-income' : undefined}
-                className="text-foreground font-medium tabular-nums num"
-              >
+              <span className="text-foreground font-medium tabular-nums num">
                 {incomeParts.whole}
                 {incomeParts.cents && <span className="text-[0.75em] opacity-75">{incomeParts.cents}</span>}
               </span>{' '}
@@ -245,20 +224,22 @@ export const OverviewHero: React.FC<OverviewHeroProps> = ({
               </span>
               )
             </span>
-            <span
-              data-testid={isOverview ? 'mom-delta-income' : undefined}
-              className={`text-label tabular-nums num ${deltaToneClass(incomeDelta.tone)}`}
-            >
-              · {incomeDelta.text}
-            </span>
-            <span className="text-faint">·</span>
-            <span data-testid={isOverview ? 'kpi-flex-number' : undefined} className="text-label tabular-nums num">
-              Flex {formatCurrency(Math.max(0, flexNumber))}
-            </span>
-            <span className="text-faint">·</span>
-            <span data-testid={isOverview ? 'kpi-total-budget' : undefined} className="text-label tabular-nums num">
-              Target {formatCurrency(totalBudget)}
-            </span>
+            {flexNumber > 0 && (
+              <>
+                <span className="text-faint">·</span>
+                <span data-testid={isOverview ? 'kpi-flex-number' : undefined} className="text-label tabular-nums num">
+                  Flex {formatCurrency(flexNumber)}
+                </span>
+              </>
+            )}
+            {totalBudget > 0 && (
+              <>
+                <span className="text-faint">·</span>
+                <span data-testid={isOverview ? 'kpi-total-budget' : undefined} className="text-label tabular-nums num">
+                  Target {formatCurrency(totalBudget)}
+                </span>
+              </>
+            )}
           </p>
         </div>
       ) : (
@@ -287,10 +268,7 @@ export const OverviewHero: React.FC<OverviewHeroProps> = ({
                 {savingsRate.toFixed(1)}%
               </span>{' '}
               of your{' '}
-              <span
-                data-testid={isOverview ? 'kpi-total-income' : undefined}
-                className="text-foreground font-medium tabular-nums num"
-              >
+              <span className="text-foreground font-medium tabular-nums num">
                 {incomeParts.whole}
                 {incomeParts.cents && <span className="text-[0.75em] opacity-75">{incomeParts.cents}</span>}
               </span>{' '}
@@ -305,21 +283,22 @@ export const OverviewHero: React.FC<OverviewHeroProps> = ({
                 </span>
               </>
             )}
-            <span className="text-faint">·</span>
-            <span
-              data-testid={isOverview ? 'mom-delta-income' : undefined}
-              className={`text-label tabular-nums num ${deltaToneClass(incomeDelta.tone)}`}
-            >
-              {incomeDelta.text}
-            </span>
-            <span className="text-faint">·</span>
-            <span data-testid={isOverview ? 'kpi-flex-number' : undefined} className="text-label tabular-nums num">
-              Flex {formatCurrency(Math.max(0, flexNumber))}
-            </span>
-            <span className="text-faint">·</span>
-            <span data-testid={isOverview ? 'kpi-total-budget' : undefined} className="text-label tabular-nums num">
-              Target {formatCurrency(totalBudget)}
-            </span>
+            {flexNumber > 0 && (
+              <>
+                <span className="text-faint">·</span>
+                <span data-testid={isOverview ? 'kpi-flex-number' : undefined} className="text-label tabular-nums num">
+                  Flex {formatCurrency(flexNumber)}
+                </span>
+              </>
+            )}
+            {totalBudget > 0 && (
+              <>
+                <span className="text-faint">·</span>
+                <span data-testid={isOverview ? 'kpi-total-budget' : undefined} className="text-label tabular-nums num">
+                  Target {formatCurrency(totalBudget)}
+                </span>
+              </>
+            )}
           </p>
         </div>
       )}
