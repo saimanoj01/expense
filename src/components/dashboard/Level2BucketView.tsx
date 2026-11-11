@@ -6,7 +6,11 @@ import { useNavigation } from '../../hooks/useNavigation';
 import { formatMoney, splitMoneyParts } from '../../utils/formatters';
 import { delta, deltaToneClass } from '../../utils/delta';
 import { bucketOf } from '../../utils/categorizer';
-import { isRefundTransaction } from '../../utils/metrics';
+import {
+  computeMonthMetrics,
+  computePriorComparisonWindow,
+  isRefundTransaction,
+} from '../../utils/metrics';
 import { deriveCategoryBucket } from '../../hooks/useBudgets';
 import { BUCKETS, bucketColor, negativeColor } from '../../theme/buckets';
 import { spring } from '../../theme/motion';
@@ -103,10 +107,8 @@ export const Level2BucketView: React.FC<Level2BucketViewProps> = ({
   }, [bucketTransactions]);
 
   const monthExpensesTotal = useMemo(() => {
-    return transactions
-      .filter(t => t.type === 'expense' && (month === 'all' || (t.date && t.date.startsWith(month))))
-      .reduce((s, t) => s + (Number(t.amount) || 0), 0);
-  }, [transactions, month]);
+    return computeMonthMetrics(transactions, month, categories).expenses;
+  }, [transactions, month, categories]);
 
   const savedAmount = totalIncome - monthExpensesTotal;
   const savedPct = totalIncome > 0 ? Math.round((savedAmount / totalIncome) * 100) : 0;
@@ -119,25 +121,48 @@ export const Level2BucketView: React.FC<Level2BucketViewProps> = ({
     return `${prev.getUTCFullYear()}-${String(prev.getUTCMonth() + 1).padStart(2, '0')}`;
   }, [month]);
 
+  const compWindow = useMemo(
+    () => computePriorComparisonWindow(transactions, month, priorMonthKey),
+    [transactions, month, priorMonthKey]
+  );
+
   const priorSpent = useMemo(() => {
-    if (!priorMonthKey) return null;
-    const anyPriorMonthTxn = transactions.some(
-      t => t.date && t.date.startsWith(priorMonthKey) && t.type !== 'transfer'
-    );
-    if (!anyPriorMonthTxn) return null;
+    if (!priorMonthKey || !compWindow.hasPriorMonthData) return null;
     const pTxns = transactions.filter(t => {
       const matchMonth = t.date && t.date.startsWith(priorMonthKey);
       if (!matchMonth) return false;
-      if (bucketId === 'income') return t.type === 'income';
-      return t.type === 'expense' && bucketOf(t, categories) === bucketId;
+      if (compWindow.compMaxDay !== undefined && t.date.length >= 10) {
+        const d = parseInt(t.date.slice(8, 10), 10);
+        if (!isNaN(d) && d > compWindow.compMaxDay) return false;
+      }
+      if (bucketId === 'income') return t.type === 'income' && !isRefundTransaction(t);
+      return (
+        (t.type === 'expense' || isRefundTransaction(t)) &&
+        bucketOf(t, categories) === bucketId
+      );
     });
-    return pTxns.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
-  }, [transactions, priorMonthKey, bucketId, categories]);
+    return Math.max(
+      0,
+      pTxns.reduce(
+        (sum, t) =>
+          sum + (isRefundTransaction(t) ? -(Number(t.amount) || 0) : Number(t.amount) || 0),
+        0
+      )
+    );
+  }, [transactions, priorMonthKey, compWindow, bucketId, categories]);
 
   const momDeltaInfo = useMemo(() => {
+    if (!compWindow.hasSelectedActivity) {
+      return { text: '—', tone: 'neutral' as const };
+    }
     const kind = bucketId === 'income' ? 'income' : 'expense';
-    return delta(totalSpent, priorSpent, kind, priorMonthKey || 'last month');
-  }, [totalSpent, priorSpent, bucketId, priorMonthKey]);
+    return delta(
+      totalSpent,
+      priorSpent,
+      kind,
+      compWindow.label || priorMonthKey || 'last month'
+    );
+  }, [totalSpent, priorSpent, bucketId, compWindow, priorMonthKey]);
 
   // Category or Income Source rows
   const categoryBreakdown = useMemo(() => {
@@ -226,10 +251,12 @@ export const Level2BucketView: React.FC<Level2BucketViewProps> = ({
     }
 
     const items = Object.values(map).map(item => {
-      const pctOfBucket = totalSpent > 0 ? (item.spent / totalSpent) * 100 : 0;
-      const budgetUtilization = item.budget > 0 ? (item.spent / item.budget) * 100 : 0;
+      const clampedSpent = item.isIncomeSource ? item.spent : Math.max(0, item.spent);
+      const pctOfBucket = totalSpent > 0 ? (clampedSpent / totalSpent) * 100 : 0;
+      const budgetUtilization = item.budget > 0 ? (clampedSpent / item.budget) * 100 : 0;
       return {
         ...item,
+        spent: clampedSpent,
         pctOfBucket,
         budgetUtilization,
       };
@@ -317,9 +344,19 @@ export const Level2BucketView: React.FC<Level2BucketViewProps> = ({
           <div className="flex flex-wrap items-center gap-2 text-body text-muted-foreground tabular-nums num">
             <span>Income {formatMoney(totalIncome)}</span>
             <span className="text-faint">·</span>
-            <span className="text-bucket-saved font-medium">
-              Saved {formatMoney(Math.max(0, savedAmount))} ({savedPct}%)
-            </span>
+            {totalIncome > 0 && savedAmount < 0 ? (
+              <span className="text-negative font-medium">
+                Overspent {formatMoney(Math.abs(savedAmount))} ({Math.abs(savedPct)}% over)
+              </span>
+            ) : totalIncome === 0 && monthExpensesTotal > 0 ? (
+              <span className="text-muted-foreground font-medium">
+                Net outflow {formatMoney(monthExpensesTotal)} (no income)
+              </span>
+            ) : (
+              <span className="text-bucket-saved font-medium">
+                Saved {formatMoney(Math.max(0, savedAmount))} ({savedPct}%)
+              </span>
+            )}
           </div>
         ) : (
           <div className="flex flex-wrap items-center gap-2 text-body text-muted-foreground tabular-nums num">
@@ -490,10 +527,13 @@ export const Level2BucketView: React.FC<Level2BucketViewProps> = ({
         <button
           type="button"
           data-testid="view-bucket-txns-btn"
-          onClick={() => navigate(`#/month/${month}/transactions`)}
+          onClick={() => navigate(`#/transactions?month=${month}&bucket=${bucketId}`)}
           className="inline-flex items-center gap-1.5 text-body font-medium text-muted-foreground hover:text-foreground transition-colors focus-visible:ring-2 ring-ring/40 rounded px-1 -mx-1"
         >
-          <span>All {bucketTransactions.length} transactions</span>
+          <span>
+            All {bucketTransactions.length}{' '}
+            {bucketTransactions.length === 1 ? 'transaction' : 'transactions'}
+          </span>
           <ArrowRight className="w-4 h-4" />
         </button>
       </div>

@@ -32,7 +32,7 @@ export function Navbar({
   // On mobile (<768px), render a clean 52px top bar with zero overflow.
   return (
     <header
-      className={`sticky top-0 z-30 h-[52px] border-b border-border bg-background/85 backdrop-blur-md px-4 flex items-center justify-between gap-2 ${
+      className={`shrink-0 sticky top-0 z-30 h-[52px] border-b border-border bg-background/85 backdrop-blur-md px-4 flex items-center justify-between gap-2 ${
         isAuthenticated ? 'md:hidden' : ''
       }`}
     >

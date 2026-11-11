@@ -4,7 +4,7 @@ import { Modal } from '../common/Modal';
 import { Category, Transaction, DEFAULT_CATEGORIES, SpendingBucket } from '../../services/storage';
 import { computeTxHash } from '../../utils/crypto';
 import { suggestCategory, detectTransactionType, suggestSpendingBucket } from '../../utils/categorizer';
-import { isRefundTransaction } from '../../utils/metrics';
+import { getLocalTodayDate, isRefundTransaction } from '../../utils/metrics';
 import {
   KNOWN_ACCOUNT_DISPLAY_MAP,
   resolveTransactionAccount,
@@ -86,7 +86,7 @@ export function TransactionModal({
       );
       setIsRefund(initialRefund);
       setTxnAmount(initialData?.amount?.toString() || '');
-      setTxnDate(initialData?.date || '');
+      setTxnDate(initialData?.date || getLocalTodayDate());
       const cat = initialData?.category || categories[0]?.id || 'food';
       setTxnCategory(cat);
       setTxnSubCategory(initialData?.subCategory || null);
@@ -459,13 +459,15 @@ export function TransactionModal({
           )}
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="space-y-4">
           <div>
-            <div className="flex justify-between items-center mb-1">
-              <label className="block text-sm font-bold text-muted-foreground">Category *</label>
-              <div className="flex items-center gap-2">
+            <div className="flex justify-between items-center gap-2 mb-1">
+              <label className="block text-sm font-bold text-muted-foreground whitespace-nowrap shrink-0">
+                Category *
+              </label>
+              <div className="flex items-center gap-2 shrink-0">
                 {!userManuallySelectedCategory && txnDescription.trim() && (
-                  <span className="text-[11px] text-primary font-semibold flex items-center gap-1">
+                  <span className="text-[11px] text-primary font-semibold flex items-center gap-1 whitespace-nowrap">
                     <Sparkles className="w-3 h-3" /> Auto
                   </span>
                 )}
@@ -473,7 +475,7 @@ export function TransactionModal({
                   <button
                     type="button"
                     onClick={() => setShowCategoryManagerModal(true)}
-                    className="text-[11px] text-primary font-bold hover:underline flex items-center gap-1"
+                    className="text-[11px] text-primary font-bold hover:underline flex items-center gap-1 whitespace-nowrap"
                   >
                     + Manage Categories
                   </button>

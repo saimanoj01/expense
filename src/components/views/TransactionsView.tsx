@@ -109,7 +109,13 @@ export function TransactionsView({
   );
   const [selectedType, setSelectedType] = useState<LedgerTypeFilter>(null);
   const [selectedAccount, setSelectedAccount] = useState<string | null>(null);
-  const [needsReviewOnly, setNeedsReviewOnly] = useState<boolean>(false);
+  const [needsReviewOnly, setNeedsReviewOnly] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    const qIdx = window.location.hash.indexOf('?');
+    if (qIdx === -1) return false;
+    const params = new URLSearchParams(window.location.hash.slice(qIdx + 1));
+    return params.get('review') === '1' || params.get('tag') === 'needs-review';
+  });
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDay, setSelectedDay] = useState<number | null>(() =>
     typeof window !== 'undefined' ? parseQueryDay(window.location.hash) : null
@@ -148,9 +154,15 @@ export function TransactionsView({
         if (params.get('review') === '1') {
           setNeedsReviewOnly(true);
         }
-        const b = params.get('bucket');
-        if (b && ['income', 'fixed', 'flexible', 'non-monthly'].includes(b)) {
-          onSelectBucket?.(b as 'income' | 'fixed' | 'flexible' | 'non-monthly');
+        const rawBucket = params.get('bucket');
+        const normalizedBucket = rawBucket === 'variable' ? 'flexible' : rawBucket;
+        if (
+          normalizedBucket &&
+          ['income', 'fixed', 'flexible', 'non-monthly'].includes(normalizedBucket)
+        ) {
+          onSelectBucket?.(
+            normalizedBucket as 'income' | 'fixed' | 'flexible' | 'non-monthly'
+          );
         }
         const tag = params.get('tag');
         if (tag) {

@@ -31,6 +31,17 @@ export function formatExpenseCurrency(val: number): string {
   return `-${formatCurrency(Math.abs(normalized))}`;
 }
 
+/**
+ * Formats a signed currency figure (e.g. $5,000.00 when >= 0, -$500.00 when < 0).
+ */
+export function formatSignedCurrency(val: number): string {
+  const normalized = normalizeZero(val);
+  if (normalized < 0) {
+    return `-${formatCurrency(Math.abs(normalized))}`;
+  }
+  return formatCurrency(normalized);
+}
+
 export interface FormatMoneyOptions {
   cents?: boolean;
   sign?: 'never' | 'auto' | 'always';

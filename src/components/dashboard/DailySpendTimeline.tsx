@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Transaction } from '../../services/storage';
 import { formatMoney } from '../../utils/formatters';
+import { isRefundTransaction } from '../../utils/metrics';
 
 export interface DailySpendTimelineProps {
   month: string;
@@ -43,7 +44,7 @@ export const DailySpendTimeline: React.FC<DailySpendTimelineProps> = ({
     const now = new Date();
     const currKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     const maxTxnDay = transactions.reduce((maxD, t) => {
-      if (t.type === 'expense' && t.date) {
+      if ((t.type === 'expense' || isRefundTransaction(t)) && t.date) {
         const d = parseInt(t.date.split('-')[2] || '0', 10);
         return Math.max(maxD, d);
       }
@@ -62,12 +63,12 @@ export const DailySpendTimeline: React.FC<DailySpendTimelineProps> = ({
     }
 
     transactions.forEach(t => {
-      if (t.type === 'expense' && t.date) {
+      if ((t.type === 'expense' || isRefundTransaction(t)) && t.date) {
         const day = parseInt(t.date.split('-')[2] || '0', 10);
         if (day >= 1 && day <= daysInMonth) {
           const amt = Number(t.amount) || 0;
-          map[day].amount += amt;
-          if (amt >= map[day].topAmt) {
+          map[day].amount += isRefundTransaction(t) ? -amt : amt;
+          if (!isRefundTransaction(t) && amt >= map[day].topAmt) {
             map[day].topAmt = amt;
             map[day].topMerchant = t.description || '';
           }
@@ -77,7 +78,7 @@ export const DailySpendTimeline: React.FC<DailySpendTimelineProps> = ({
 
     return Object.entries(map).map(([dStr, val]) => ({
       day: parseInt(dStr, 10),
-      amount: val.amount,
+      amount: Math.max(0, val.amount),
       topMerchant: val.topMerchant,
     }));
   }, [transactions, daysInMonth]);

@@ -75,6 +75,7 @@ export function CsvImportWizard({
       isOpen={showCsvWizard}
       onClose={() => setShowCsvWizard(false)}
       title={csvStep === 1 ? 'Map Columns & Batch Tags' : 'Preview Import & Categorize'}
+      dataTestId="csv-wizard-modal"
       maxWidth="max-w-5xl"
       className="max-h-[90vh] p-6 overflow-hidden flex flex-col"
     >
@@ -130,6 +131,9 @@ export function CsvImportWizard({
                       data-testid="csv-wizard-file-input"
                       className="hidden"
                       onChange={handleCsvFileUpload}
+                      onClick={(e: React.MouseEvent<HTMLInputElement>) => {
+                        (e.target as HTMLInputElement).value = '';
+                      }}
                     />
                   </label>
                 </div>

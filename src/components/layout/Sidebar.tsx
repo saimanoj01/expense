@@ -34,6 +34,7 @@ export interface SidebarProps {
   onOpenCommandPalette?: () => void;
   logout?: () => void;
   onOpenAddTxn: () => void;
+  isLockedMonth?: boolean;
   className?: string;
 }
 
@@ -46,6 +47,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenCommandPalette,
   logout,
   onOpenAddTxn,
+  isLockedMonth = false,
   className = '',
 }) => {
   const { currentRoute, navigate } = useNavigation();
@@ -113,20 +115,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
     <motion.aside
       data-testid="sidebar"
       initial={false}
-      animate={{ width: collapsed ? 64 : 240 }}
+      animate={{ width: collapsed ? 64 : 244 }}
       transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
       className={`hidden md:flex flex-col shrink-0 border-r border-border bg-background z-30 select-none ${className}`}
     >
       {/* Top Workspace Header + Quick Add '+' + Collapse Toggle */}
-      <div className="h-14 flex items-center justify-between gap-1.5 px-3 border-b border-border">
+      <div className="h-14 flex items-center justify-between gap-1.5 px-2.5 border-b border-border">
         <div
-          className={`flex items-center gap-1.5 min-w-0 flex-1 ${
+          className={`flex items-center gap-1 min-w-0 flex-1 ${
             collapsed ? 'hidden' : ''
           }`}
         >
           <span
             data-testid="project-selector"
-            className="text-body font-semibold text-foreground truncate px-2"
+            className="text-body font-semibold text-foreground truncate px-1.5"
           >
             {activeProject?.name || 'Workspace'}
           </span>
@@ -137,9 +139,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <button
               type="button"
               data-testid="sidebar-add-txn-btn"
-              onClick={onOpenAddTxn}
-              className="w-8 h-8 rounded-[10px] flex items-center justify-center bg-surface2 hover:bg-secondary text-foreground border border-border transition-colors focus-visible:ring-2 ring-ring/40"
-              title="Add Transaction (N)"
+              disabled={isLockedMonth}
+              onClick={() => {
+                if (!isLockedMonth) onOpenAddTxn();
+              }}
+              className={`w-7 h-7 rounded-[8px] flex items-center justify-center bg-surface2 text-foreground border border-border transition-colors focus-visible:ring-2 ring-ring/40 ${
+                isLockedMonth
+                  ? 'opacity-50 cursor-not-allowed'
+                  : 'hover:bg-secondary'
+              }`}
+              title={isLockedMonth ? 'Month is locked' : 'Add Transaction (N)'}
               aria-label="Add Transaction"
             >
               <Plus className="w-4 h-4" />
@@ -245,9 +254,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   <span
                     data-testid="mock-banner"
                     className="mock-mode-banner text-label text-muted-foreground truncate block"
-                    title="Demo data active"
+                    title="Demo data (Mock Mode)"
                   >
-                    Demo data (Mock Mode)
+                    Mock Mode
                   </span>
                 ) : (
                   user.email && (
@@ -260,13 +269,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>
           )}
 
-          <div className="flex items-center gap-1 shrink-0">
+          <div className="flex items-center gap-0.5 shrink-0">
             {toggleTheme && (
               <button
                 type="button"
                 onClick={toggleTheme}
                 data-testid="theme-toggle-btn"
-                className="w-8 h-8 rounded-[10px] flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-surface2 transition-colors focus-visible:ring-2 ring-ring/40"
+                className="w-7 h-7 rounded-[8px] flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-surface2 transition-colors focus-visible:ring-2 ring-ring/40"
                 title="Toggle Light/Dark Theme"
                 aria-label="Toggle Light/Dark Theme"
               >
@@ -283,7 +292,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 type="button"
                 onClick={logout}
                 data-testid="logout-btn"
-                className="w-8 h-8 rounded-[10px] flex items-center justify-center text-muted-foreground hover:text-negative hover:bg-negative/10 transition-colors focus-visible:ring-2 ring-ring/40"
+                className="w-7 h-7 rounded-[8px] flex items-center justify-center text-muted-foreground hover:text-negative hover:bg-negative/10 transition-colors focus-visible:ring-2 ring-ring/40"
                 title="Logout"
                 aria-label="Logout"
               >

@@ -1,7 +1,12 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { Transaction, MonthlyLock, Category, DEFAULT_CATEGORIES, SpendingBucket, Project, StorageAdapter } from '../services/storage';
 import { bucketOf, bucketSource } from '../utils/categorizer';
-import { computeMonthMetrics, isRefundTransaction } from '../utils/metrics';
+import {
+  computeMonthMetrics,
+  isRefundTransaction,
+  pickDefaultLandingMonth,
+} from '../utils/metrics';
+import { getCurrentLocalMonth } from '../utils/navigation';
 import {
   recordDeletionTombstones,
   markUserEditedFields,
@@ -163,16 +168,18 @@ export function useTransactions(
         if (rawTxs) {
           const parsed = JSON.parse(rawTxs);
           if (Array.isArray(parsed) && parsed.length > 0) {
-            let latest = '';
+            const months: string[] = [];
             for (const t of parsed) {
               if (t.date && t.date.length >= 7) {
                 const m = t.date.substring(0, 7);
                 if (/^\d{4}-\d{2}$/.test(m)) {
-                  if (!latest || m > latest) latest = m;
+                  months.push(m);
                 }
               }
             }
-            if (latest) return latest;
+            if (months.length > 0) {
+              return pickDefaultLandingMonth(months, getCurrentLocalMonth());
+            }
           }
         }
         const rawLocks = localStorage.getItem(`expense_locks_${projId}`);
@@ -212,22 +219,25 @@ export function useTransactions(
     if (userExplicitlySelectedMonth.current) return;
     if (transactions.length === 0) return;
 
-    let latest = '';
+    const txMonths: string[] = [];
     transactions.forEach(t => {
       if (t.date && t.date.length >= 7) {
         const m = t.date.substring(0, 7);
         if (/^\d{4}-\d{2}$/.test(m)) {
-          if (!latest || m > latest) latest = m;
+          txMonths.push(m);
         }
       }
     });
 
-    if (latest && latest !== selectedMonth) {
-      setSelectedMonthState(latest);
+    if (txMonths.length === 0) return;
+    const preferred = pickDefaultLandingMonth(txMonths, getCurrentLocalMonth());
+
+    if (preferred && preferred !== selectedMonth) {
+      setSelectedMonthState(preferred);
       try {
         const hash = window.location.hash;
         if (!hash || hash === '#' || hash === '#/' || hash === `#/month/${selectedMonth}`) {
-          window.history.replaceState(null, '', `#/month/${latest}`);
+          window.history.replaceState(null, '', `#/month/${preferred}`);
         }
       } catch {
         // Ignore history errors

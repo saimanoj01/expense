@@ -16,12 +16,17 @@ export const RollingNumber: React.FC<RollingNumberProps> = ({
   className = '',
 }) => {
   const reducedMotion = useReducedMotion();
+  const accessibleText = `${value}${srSuffix ?? ''}`;
 
   if (reducedMotion) {
     return (
-      <span className={className}>
-        {value}
-        {srSuffix && <span className="text-[0.55em] opacity-70 font-normal">{srSuffix}</span>}
+      <span role="img" aria-label={accessibleText} className={className}>
+        <span aria-hidden="true">{value}</span>
+        {srSuffix && (
+          <span aria-hidden="true" className="text-[0.55em] opacity-70 font-normal">
+            {srSuffix}
+          </span>
+        )}
       </span>
     );
   }
@@ -29,12 +34,20 @@ export const RollingNumber: React.FC<RollingNumberProps> = ({
   const chars = Array.from(value);
 
   return (
-    <span className={`inline-flex items-baseline tabular-nums num ${className}`}>
+    <span
+      role="img"
+      aria-label={accessibleText}
+      className={`inline-flex items-baseline tabular-nums num ${className}`}
+    >
       {chars.map((char, idx) => {
         const posFromRight = chars.length - 1 - idx;
         if (!/^\d$/.test(char)) {
           return (
-            <span key={`sep-${posFromRight}-${char}`} className="inline-block">
+            <span
+              key={`sep-${posFromRight}-${char}`}
+              aria-hidden="true"
+              className="inline-block"
+            >
               {char}
             </span>
           );
@@ -44,6 +57,7 @@ export const RollingNumber: React.FC<RollingNumberProps> = ({
         return (
           <span
             key={`digit-${posFromRight}`}
+            aria-hidden="true"
             className="inline-block h-[1em] leading-[1em] overflow-hidden align-baseline"
           >
             <motion.span
@@ -76,7 +90,11 @@ export const RollingNumber: React.FC<RollingNumberProps> = ({
           </span>
         );
       })}
-      {srSuffix && <span className="text-[0.55em] opacity-70 font-normal">{srSuffix}</span>}
+      {srSuffix && (
+        <span aria-hidden="true" className="text-[0.55em] opacity-70 font-normal">
+          {srSuffix}
+        </span>
+      )}
     </span>
   );
 };

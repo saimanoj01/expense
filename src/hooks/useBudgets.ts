@@ -1,24 +1,12 @@
 import { useState, useMemo, useCallback } from 'react';
 import { Budget, Category, Transaction, BudgetNote, Project, StorageAdapter } from '../services/storage';
-import { isRefundTransaction } from '../utils/metrics';
+import {
+  isRefundTransaction,
+  deriveCategoryBucket,
+  isNonBudgetableCategory,
+} from '../utils/metrics';
 
-export function deriveCategoryBucket(catIdOrName: string, catObj?: Category): 'fixed' | 'flexible' | 'non-monthly' {
-  if (catObj?.defaultBucket) {
-    if (catObj.defaultBucket === 'fixed') return 'fixed';
-    if (catObj.defaultBucket === 'non-monthly') return 'non-monthly';
-    return 'flexible';
-  }
-  const lower = (catIdOrName || '').toLowerCase();
-  if (lower === 'housing' || lower === 'rent' || lower === 'utilities') return 'fixed';
-  if (lower === 'travel' || lower === 'insurance' || lower === 'taxes') return 'non-monthly';
-  return 'flexible';
-}
-
-export function isNonBudgetableCategory(catIdOrName?: string): boolean {
-  if (!catIdOrName) return false;
-  const lower = catIdOrName.toLowerCase();
-  return lower === 'income' || lower === 'transfers' || lower === 'transfer' || lower === 'salary';
-}
+export { deriveCategoryBucket, isNonBudgetableCategory };
 
 export function useBudgets(
   storageAdapter: StorageAdapter | null,
@@ -71,7 +59,7 @@ export function useBudgets(
           id: b.category,
           name: b.category,
           emoji: '🏷️',
-          color: '#845EF7'
+          color: '#0B79A8'
         });
         existingKeys.add(catKey);
       }
@@ -208,7 +196,7 @@ export function useBudgets(
   const piePaths = useMemo(() => {
     const expenseTxns = monthTransactions.filter(t => t.type === 'expense' || isRefundTransaction(t));
     const catMap = new Map<string, { total: number; name: string; color: string; id: string }>();
-    const PALETTE = ['#FF6B6B', '#4DABF7', '#51CF66', '#FCC419', '#845EF7', '#FF8787', '#20C997', '#38BDF8', '#ADB5BD', '#E64980'];
+    const PALETTE = ['#FF6B6B', '#4DABF7', '#51CF66', '#FCC419', '#0B79A8', '#FF8787', '#20C997', '#38BDF8', '#ADB5BD', '#E64980'];
     let pIdx = 0;
 
     expenseTxns.forEach(t => {
@@ -288,14 +276,17 @@ export function useBudgets(
 
     const lastMonthTotals: Record<string, number> = {};
     const total3moTotals: Record<string, number> = {};
+    const activePriorMonths = new Set<string>();
 
     allTransactions.forEach(t => {
-      if (t.type !== 'expense' && !isRefundTransaction(t)) return;
+      if (t.type === 'transfer') return;
       const tMonth = (t.date || '').substring(0, 7);
       const isPrev1 = tMonth === prev1Month;
       const isPrev3 = isPrev1 || tMonth === prev2Month || tMonth === prev3Month;
       if (!isPrev3) return;
+      activePriorMonths.add(tMonth);
 
+      if (t.type !== 'expense' && !isRefundTransaction(t)) return;
       const targetCatId = catMap.get(t.subCategory || '') || catMap.get(t.category) || catMap.get((t.category || '').toLowerCase());
       if (!targetCatId) return;
 
@@ -307,11 +298,12 @@ export function useBudgets(
       total3moTotals[targetCatId] = (total3moTotals[targetCatId] || 0) + amt;
     });
 
+    const activePriorMonthsCount = Math.max(1, activePriorMonths.size);
     const history: Record<string, { lastMonth: number; avg3mo: number }> = {};
     categories.forEach(cat => {
       history[cat.id] = {
         lastMonth: Math.max(0, lastMonthTotals[cat.id] || 0),
-        avg3mo: Math.max(0, Math.round((total3moTotals[cat.id] || 0) / 3))
+        avg3mo: Math.max(0, Math.round((total3moTotals[cat.id] || 0) / activePriorMonthsCount))
       };
     });
 

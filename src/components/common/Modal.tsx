@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion } from 'framer-motion';
 
 export interface ModalProps {
   isOpen: boolean;
@@ -86,6 +86,8 @@ export function Modal({
     };
   }, [isOpen, onClose]);
 
+  if (!isOpen) return null;
+
   const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (e.target === e.currentTarget) {
       onClose();
@@ -95,41 +97,36 @@ export function Modal({
   const isSheet = variant === 'sheet';
 
   return (
-    <AnimatePresence>
-      {isOpen && (
-        <div
-          ref={modalRef}
-          role="dialog"
-          aria-modal="true"
-          aria-label={ariaLabel || title || 'Dialog'}
-          data-testid={dataTestId}
-          onClick={handleBackdropClick}
-          tabIndex={-1}
-          className={
-            isSheet
-              ? `fixed inset-0 z-50 flex items-end sm:items-stretch sm:justify-end bg-background/60 backdrop-blur-sm ${overlayClassName}`
-              : `fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm ${overlayClassName}`
-          }
-        >
-          <motion.div
-            initial={isSheet ? { opacity: 0, x: 24 } : { opacity: 0, scale: 0.95, y: 10 }}
-            animate={isSheet ? { opacity: 1, x: 0 } : { opacity: 1, scale: 1, y: 0 }}
-            exit={isSheet ? { opacity: 0, x: 24 } : { opacity: 0, scale: 0.95, y: 10 }}
-            transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
-            className={
-              isSheet
-                ? `w-full sm:w-[420px] sm:h-full max-h-[90vh] sm:max-h-screen rounded-t-[18px] sm:rounded-none sm:border-l border-t sm:border-t-0 border-border bg-popover p-6 shadow-2xl relative overflow-y-auto custom-scrollbar ${className}`
-                : `glass-panel w-full ${maxWidth} rounded-[14px] p-6 shadow-2xl border border-border relative overflow-hidden ${className}`
-            }
-            onClick={e => e.stopPropagation()}
-          >
-            {isSheet && (
-              <div className="sm:hidden w-10 h-1 rounded-full bg-border mx-auto mb-4" />
-            )}
-            {children}
-          </motion.div>
-        </div>
-      )}
-    </AnimatePresence>
+    <div
+      ref={modalRef}
+      role="dialog"
+      aria-modal="true"
+      aria-label={ariaLabel || title || 'Dialog'}
+      data-testid={dataTestId}
+      onClick={handleBackdropClick}
+      tabIndex={-1}
+      className={
+        isSheet
+          ? `fixed inset-0 z-50 flex items-end sm:items-stretch sm:justify-end bg-background/60 backdrop-blur-sm ${overlayClassName}`
+          : `fixed inset-0 z-50 flex items-center justify-center p-4 bg-background/80 backdrop-blur-sm ${overlayClassName}`
+      }
+    >
+      <motion.div
+        initial={isSheet ? { opacity: 0, x: 24 } : { opacity: 0, scale: 0.95, y: 10 }}
+        animate={isSheet ? { opacity: 1, x: 0 } : { opacity: 1, scale: 1, y: 0 }}
+        transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+        className={
+          isSheet
+            ? `w-full sm:w-[420px] sm:h-full max-h-[90vh] sm:max-h-screen rounded-t-[18px] sm:rounded-none sm:border-l border-t sm:border-t-0 border-border bg-popover p-6 shadow-2xl relative overflow-y-auto custom-scrollbar ${className}`
+            : `glass-panel w-full ${maxWidth} rounded-[14px] p-6 shadow-2xl border border-border relative overflow-hidden ${className}`
+        }
+        onClick={e => e.stopPropagation()}
+      >
+        {isSheet && (
+          <div className="sm:hidden w-10 h-1 rounded-full bg-border mx-auto mb-4" />
+        )}
+        {children}
+      </motion.div>
+    </div>
   );
 }

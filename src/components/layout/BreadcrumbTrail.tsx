@@ -9,8 +9,13 @@ interface BreadcrumbTrailProps {
   className?: string;
 }
 
-function formatEyebrow(monthStr?: string): string {
-  if (!monthStr || monthStr === 'all') return 'All Time';
+function formatEyebrow(monthStr?: string): { full: string; compact: string } {
+  if (!monthStr || monthStr === 'all') {
+    return {
+      full: 'All Time',
+      compact: 'All Time',
+    };
+  }
   if (/^\d{4}-\d{2}$/.test(monthStr)) {
     const [yStr, mStr] = monthStr.split('-');
     const y = parseInt(yStr, 10);
@@ -18,14 +23,36 @@ function formatEyebrow(monthStr?: string): string {
     const label = formatMonthLabel(monthStr);
     const now = new Date();
     const currKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
     if (monthStr === currKey) {
       const daysInMonth = new Date(y, m, 0).getDate();
       const daysLeft = Math.max(0, daysInMonth - now.getDate());
-      return `${label} · ${daysLeft} day${daysLeft === 1 ? '' : 's'} left`;
+      if (daysLeft === 0) {
+        return {
+          full: `${label} · Last day`,
+          compact: 'Overview · Last day',
+        };
+      }
+      return {
+        full: `${label} · ${daysLeft} day${daysLeft === 1 ? '' : 's'} left`,
+        compact: `Overview · ${daysLeft}d left`,
+      };
     }
-    return label;
+    if (monthStr > currKey) {
+      return {
+        full: `${label} · Upcoming`,
+        compact: 'Upcoming',
+      };
+    }
+    return {
+      full: label,
+      compact: 'Overview',
+    };
   }
-  return monthStr;
+  return {
+    full: monthStr,
+    compact: 'Overview',
+  };
 }
 
 export const BreadcrumbTrail: React.FC<BreadcrumbTrailProps> = ({ className = '' }) => {
@@ -57,11 +84,12 @@ export const BreadcrumbTrail: React.FC<BreadcrumbTrailProps> = ({ className = ''
         )}
       </AnimatePresence>
 
-      <ol className="flex items-center flex-wrap gap-1.5 list-none p-0 m-0 min-w-0">
+      <ol className="flex items-center flex-nowrap gap-1.5 list-none p-0 m-0 min-w-0 overflow-hidden">
         <AnimatePresence mode="popLayout" initial={false}>
           {breadcrumbs.map((item, index) => {
             const isLast = index === breadcrumbs.length - 1;
             const isOverviewRoot = currentRoute.view === 'overview' && item.id === 'month-overview';
+            const eyebrow = isOverviewRoot ? formatEyebrow(currentRoute.month) : null;
 
             return (
               <motion.li
@@ -75,19 +103,20 @@ export const BreadcrumbTrail: React.FC<BreadcrumbTrailProps> = ({ className = ''
                 className="flex items-center gap-1.5 min-w-0"
               >
                 {index > 0 && (
-                  <span className="text-faint select-none px-0.5" aria-hidden="true">
+                  <span className="text-faint select-none px-0.5 shrink-0" aria-hidden="true">
                     /
                   </span>
                 )}
-                {isOverviewRoot ? (
+                {isOverviewRoot && eyebrow ? (
                   <motion.span
                     layoutId="page-title"
                     layout="position"
                     transition={spring}
                     aria-current="page"
-                    className="text-eyebrow uppercase text-muted-foreground truncate"
+                    className="text-eyebrow uppercase text-muted-foreground truncate tabular-nums num"
                   >
-                    {formatEyebrow(currentRoute.month)}
+                    <span className="sm:hidden">{eyebrow.compact}</span>
+                    <span className="hidden sm:inline">{eyebrow.full}</span>
                   </motion.span>
                 ) : isLast ? (
                   <motion.span

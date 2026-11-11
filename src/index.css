@@ -31,7 +31,7 @@
     --ring: 220 14% 94%;
     /* data colors */
     --c-fixed: 221 83% 66%;        /* #5B8DEF */
-    --c-variable: 258 90% 76%;     /* #A78BFA */
+    --c-variable: 194 86% 56%;     /* #2DC3F0 */
     --c-nonmonthly: 38 92% 62%;    /* #F5B544 */
     --c-saved: 152 62% 52%;        /* #3DD68C */
     --c-negative: 357 85% 64%;     /* #F2555A, overspend/deficit only */
@@ -61,7 +61,7 @@
     --destructive-foreground: 0 0% 100%;
     --ring: 228 12% 8%;
     --c-fixed: 221 70% 52%;        /* #3A6FE0 */
-    --c-variable: 262 72% 58%;     /* #8457E8 */
+    --c-variable: 196 88% 35%;     /* #0B79A8 */
     --c-nonmonthly: 36 84% 43%;    /* #C98712 */
     --c-saved: 156 80% 36%;        /* #12A26A */
     --c-negative: 357 70% 54%;     /* #DC3B41 */

@@ -4,7 +4,7 @@ import { ArrowRight, Search, Plus, Edit2, Trash2 } from 'lucide-react';
 import { Transaction, Category, Budget, SpendingBucket, DEFAULT_CATEGORIES } from '../../services/storage';
 import { useNavigation } from '../../hooks/useNavigation';
 import { formatMoney, splitMoneyParts } from '../../utils/formatters';
-import { suggestSpendingBucket } from '../../utils/categorizer';
+import { deriveCategoryBucket, isRefundTransaction } from '../../utils/metrics';
 import { DailySpendTimeline } from './DailySpendTimeline';
 import { BUCKETS, bucketColor, negativeColor } from '../../theme/buckets';
 import { spring } from '../../theme/motion';
@@ -85,10 +85,10 @@ export const Level3CategoryView: React.FC<Level3CategoryViewProps> = ({
     };
   }, [categories, categoryId]);
 
-  const bucketId: SpendingBucket = useMemo(() => {
-    if (category.defaultBucket) return category.defaultBucket as SpendingBucket;
-    return suggestSpendingBucket('', category.id);
-  }, [category]);
+  const bucketId: SpendingBucket = useMemo(
+    () => deriveCategoryBucket(category.id || category.name, category),
+    [category]
+  );
 
   const bucketRouteSlug = bucketId === 'flexible' ? 'variable' : bucketId;
   const bucketLabel = BUCKETS[bucketId]?.label || 'Variable';
@@ -111,12 +111,19 @@ export const Level3CategoryView: React.FC<Level3CategoryViewProps> = ({
         (t.category || '').toLowerCase() === category.id.toLowerCase() ||
         (t.category || '').toLowerCase() === category.name.toLowerCase() ||
         (t.subCategory || '').toLowerCase() === category.id.toLowerCase();
-      return matchCat && t.type === 'expense';
+      return matchCat && (t.type === 'expense' || isRefundTransaction(t));
     });
   }, [transactions, month, category]);
 
   const totalSpent = useMemo(() => {
-    return categoryTransactions.reduce((sum, t) => sum + (Number(t.amount) || 0), 0);
+    return Math.max(
+      0,
+      categoryTransactions.reduce(
+        (sum, t) =>
+          sum + (isRefundTransaction(t) ? -(Number(t.amount) || 0) : Number(t.amount) || 0),
+        0
+      )
+    );
   }, [categoryTransactions]);
 
   const remainingBudget = Math.max(0, budget - totalSpent);
@@ -137,7 +144,7 @@ export const Level3CategoryView: React.FC<Level3CategoryViewProps> = ({
     };
   }, [month]);
 
-  // Top 5 merchants
+  // Top 5 merchants (net of refunds)
   const merchantBreakdown = useMemo(() => {
     const map: Record<string, { name: string; amount: number; count: number }> = {};
 
@@ -149,11 +156,14 @@ export const Level3CategoryView: React.FC<Level3CategoryViewProps> = ({
       if (!map[payee]) {
         map[payee] = { name: payee, amount: 0, count: 0 };
       }
-      map[payee].amount += Number(t.amount) || 0;
-      map[payee].count += 1;
+      const amt = Number(t.amount) || 0;
+      map[payee].amount += isRefundTransaction(t) ? -amt : amt;
+      if (!isRefundTransaction(t)) {
+        map[payee].count += 1;
+      }
     });
 
-    const list = Object.values(map);
+    const list = Object.values(map).filter(m => m.amount > 0);
     list.sort((a, b) => b.amount - a.amount);
     return list.slice(0, 5);
   }, [categoryTransactions]);
@@ -177,7 +187,8 @@ export const Level3CategoryView: React.FC<Level3CategoryViewProps> = ({
     const groups: { date: string; txns: Transaction[]; dayTotal: number }[] = [];
     filteredTxns.forEach(t => {
       const d = t.date || '';
-      const amt = Number(t.amount) || 0;
+      const rawAmt = Number(t.amount) || 0;
+      const amt = isRefundTransaction(t) ? -rawAmt : rawAmt;
       const last = groups[groups.length - 1];
       if (!last || last.date !== d) {
         groups.push({ date: d, txns: [t], dayTotal: amt });
@@ -382,7 +393,9 @@ export const Level3CategoryView: React.FC<Level3CategoryViewProps> = ({
                 <div className="flex items-center justify-between py-1.5 text-label font-semibold text-muted-foreground tabular-nums num">
                   <span>{formatDayGroupHeader(group.date)}</span>
                   <span>
-                    {formatMoney(-group.dayTotal, { cents: true, sign: 'auto' })}
+                    {group.dayTotal >= 0
+                      ? formatMoney(-group.dayTotal, { cents: true, sign: 'auto' })
+                      : formatMoney(Math.abs(group.dayTotal), { cents: true, sign: 'always' })}
                   </span>
                 </div>
                 <div className="space-y-0.5">
@@ -433,8 +446,19 @@ export const Level3CategoryView: React.FC<Level3CategoryViewProps> = ({
                       </div>
 
                       <div className="flex items-center gap-2 shrink-0">
-                        <span className="text-body font-semibold text-foreground tabular-nums num">
-                          {formatMoney(-(Number(t.amount) || 0), { cents: true, sign: 'auto' })}
+                        {isRefundTransaction(t) && (
+                          <span className="px-1.5 py-0.5 rounded bg-bucket-saved/15 text-bucket-saved text-label font-medium">
+                            Refund
+                          </span>
+                        )}
+                        <span
+                          className={`text-body font-semibold tabular-nums num ${
+                            isRefundTransaction(t) ? 'text-bucket-saved' : 'text-foreground'
+                          }`}
+                        >
+                          {isRefundTransaction(t)
+                            ? formatMoney(Number(t.amount) || 0, { cents: true, sign: 'always' })
+                            : formatMoney(-(Number(t.amount) || 0), { cents: true, sign: 'auto' })}
                         </span>
 
                         {onEditTxn && (

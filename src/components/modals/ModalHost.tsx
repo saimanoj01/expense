@@ -1,5 +1,4 @@
 import React from 'react';
-import { AnimatePresence } from 'framer-motion';
 import { Transaction, Project, StorageAdapter, MonthlyLock } from '../../services/storage';
 import { useTransactions } from '../../hooks/useTransactions';
 import { useBudgets } from '../../hooks/useBudgets';
@@ -86,84 +85,76 @@ export const ModalHost: React.FC<ModalHostProps> = ({
 
   return (
     <>
-      <AnimatePresence>
-        {showTxnModal && (
-          <TransactionModal
-            showTxnModal={showTxnModal}
-            setShowTxnModal={setShowTxnModal}
-            categories={budgetHooks.categories}
-            editingTxnId={editingTxnId}
-            initialData={editingTxnData}
-            transactions={txnHooks.transactions}
-            executeSaveTransaction={txnHooks.executeSaveTransaction}
-            setPendingDuplicateTxn={setPendingDuplicateTxn}
-            setShowDuplicateWarningModal={setShowDuplicateWarningModal}
-            setShowCategoryManagerModal={setShowCategoryManagerModal}
-            isTxnLocked={isEditingTxnLocked}
-            onDeleteTransaction={id => {
-              txnHooks.handleDeleteTxn(id, () => {
-                setSelectedTxnIds(prev => {
-                  const next = new Set(prev);
-                  next.delete(id);
-                  return next;
-                });
-                setShowTxnModal(false);
+      {showTxnModal && (
+        <TransactionModal
+          showTxnModal={showTxnModal}
+          setShowTxnModal={setShowTxnModal}
+          categories={budgetHooks.categories}
+          editingTxnId={editingTxnId}
+          initialData={editingTxnData}
+          transactions={txnHooks.transactions}
+          executeSaveTransaction={txnHooks.executeSaveTransaction}
+          setPendingDuplicateTxn={setPendingDuplicateTxn}
+          setShowDuplicateWarningModal={setShowDuplicateWarningModal}
+          setShowCategoryManagerModal={setShowCategoryManagerModal}
+          isTxnLocked={isEditingTxnLocked}
+          onDeleteTransaction={id => {
+            txnHooks.handleDeleteTxn(id, () => {
+              setSelectedTxnIds(prev => {
+                const next = new Set(prev);
+                next.delete(id);
+                return next;
               });
-            }}
-          />
-        )}
-      </AnimatePresence>
+              setShowTxnModal(false);
+            });
+          }}
+        />
+      )}
 
-      <AnimatePresence>
-        {showCategoryManagerModal && (
-          <CategoryManagerModal
-            showModal={showCategoryManagerModal}
-            setShowModal={setShowCategoryManagerModal}
-            categories={budgetHooks.categories}
-            transactions={txnHooks.transactions}
-            handleSaveCategory={budgetHooks.handleSaveCategory}
-            handleDeleteCategory={budgetHooks.handleDeleteCategory}
-            handleExecuteBulkCategoryUpdate={txnHooks.handleExecuteBulkCategoryUpdate}
-          />
-        )}
-      </AnimatePresence>
+      {showCategoryManagerModal && (
+        <CategoryManagerModal
+          showModal={showCategoryManagerModal}
+          setShowModal={setShowCategoryManagerModal}
+          categories={budgetHooks.categories}
+          transactions={txnHooks.transactions}
+          handleSaveCategory={budgetHooks.handleSaveCategory}
+          handleDeleteCategory={budgetHooks.handleDeleteCategory}
+          handleExecuteBulkCategoryUpdate={txnHooks.handleExecuteBulkCategoryUpdate}
+        />
+      )}
 
-      <AnimatePresence>
-        {showCreateModal && (
-          <CreateProjectModal
-            showModal={showCreateModal}
-            onClose={() => setShowCreateModal(false)}
-            onCreate={async name => {
-              await createNewProject(name);
-              showToast('Project created successfully');
-            }}
-          />
-        )}
-      </AnimatePresence>
+      {showCreateModal && (
+        <CreateProjectModal
+          showModal={showCreateModal}
+          onClose={() => setShowCreateModal(false)}
+          onCreate={async name => {
+            await createNewProject(name);
+            showToast('Project created successfully');
+          }}
+        />
+      )}
 
-      <AnimatePresence>
-        {showShareModal && activeProject && (
-          <ShareProjectModal
-            showModal={showShareModal}
-            onClose={() => setShowShareModal(false)}
-            collaborators={activeProject.collaborators || []}
-            onAddCollaborator={async email => {
-              if (!storageAdapter || !activeProject) return;
-              try {
-                await storageAdapter.shareProject(activeProject.id, email);
-                showToast('Collaborator added');
-                await loadProjects();
-                refreshProjectData();
-              } catch (err: unknown) {
-                showToast(
-                  err instanceof Error ? err.message : 'Failed to share project',
-                  'error'
-                );
-              }
-            }}
-          />
-        )}
-      </AnimatePresence>
+      {showShareModal && activeProject && (
+        <ShareProjectModal
+          showModal={showShareModal}
+          onClose={() => setShowShareModal(false)}
+          collaborators={activeProject.collaborators || []}
+          onAddCollaborator={async email => {
+            if (!storageAdapter || !activeProject) return;
+            try {
+              await storageAdapter.shareProject(activeProject.id, email);
+              showToast('Collaborator added');
+              await loadProjects();
+              refreshProjectData();
+            } catch (err: unknown) {
+              showToast(
+                err instanceof Error ? err.message : 'Failed to share project',
+                'error'
+              );
+            }
+          }}
+        />
+      )}
 
       {csvHooks.showCsvWizard && (
         <CsvImportWizard
@@ -173,35 +164,31 @@ export const ModalHost: React.FC<ModalHostProps> = ({
         />
       )}
 
-      <AnimatePresence>
-        {showDuplicateWarningModal && (
-          <DuplicateWarningModal
-            showModal={showDuplicateWarningModal}
-            pendingTxn={pendingDuplicateTxn}
-            onCancel={() => setShowDuplicateWarningModal(false)}
-            onProceed={async () => {
-              if (pendingDuplicateTxn) {
-                await txnHooks.executeSaveTransaction(
-                  pendingDuplicateTxn,
-                  !!editingTxnId
-                );
-                setShowTxnModal(false);
-                setShowDuplicateWarningModal(false);
-              }
-            }}
-          />
-        )}
-      </AnimatePresence>
+      {showDuplicateWarningModal && (
+        <DuplicateWarningModal
+          showModal={showDuplicateWarningModal}
+          pendingTxn={pendingDuplicateTxn}
+          onCancel={() => setShowDuplicateWarningModal(false)}
+          onProceed={async () => {
+            if (pendingDuplicateTxn) {
+              await txnHooks.executeSaveTransaction(
+                pendingDuplicateTxn,
+                !!editingTxnId
+              );
+              setShowTxnModal(false);
+              setShowDuplicateWarningModal(false);
+            }
+          }}
+        />
+      )}
 
-      <AnimatePresence>
-        {csvHooks.showCsvDuplicateWarningModal && (
-          <CsvDuplicateWarningModal
-            showModal={csvHooks.showCsvDuplicateWarningModal}
-            onCancel={() => csvHooks.setShowCsvDuplicateWarningModal(false)}
-            onProceed={csvHooks.executeCommitCsvImport}
-          />
-        )}
-      </AnimatePresence>
+      {csvHooks.showCsvDuplicateWarningModal && (
+        <CsvDuplicateWarningModal
+          showModal={csvHooks.showCsvDuplicateWarningModal}
+          onCancel={() => csvHooks.setShowCsvDuplicateWarningModal(false)}
+          onProceed={csvHooks.executeCommitCsvImport}
+        />
+      )}
 
       <Modal
         isOpen={showBulkDeleteConfirmModal}

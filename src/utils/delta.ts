@@ -1,3 +1,5 @@
+import { formatMoney } from './formatters';
+
 export type DeltaKind = 'income' | 'expense' | 'saved' | 'rate';
 export type DeltaTone = 'positive' | 'negative' | 'neutral';
 
@@ -36,7 +38,23 @@ export function delta(
       pct: diffPts,
     };
   }
-  if (prev === 0) return { text: curr === 0 ? '—' : 'New', tone: 'neutral' };
+  if (prev === 0 && curr === 0) return { text: '—', tone: 'neutral' };
+  if (
+    kind === 'saved' &&
+    (curr < 0 || prev <= 0 || Math.abs(((curr - prev) / Math.abs(prev)) * 100) > 200)
+  ) {
+    const diff = curr - prev;
+    if (Math.abs(diff) < 1) {
+      return { text: `≈ same as ${shortLabel}`, tone: 'neutral', pct: 0 };
+    }
+    const formatted = formatMoney(Math.abs(diff));
+    const significant = Math.abs(diff) >= 50;
+    return {
+      text: `${diff > 0 ? '↑ +' : '↓ −'}${formatted} vs ${shortLabel}`,
+      tone: !significant ? 'neutral' : diff > 0 ? 'positive' : 'negative',
+    };
+  }
+  if (prev === 0) return { text: 'New', tone: 'neutral' };
   const pct = ((curr - prev) / Math.abs(prev)) * 100;
   if (Math.abs(pct) < 3) return { text: `≈ same as ${shortLabel}`, tone: 'neutral', pct };
   const good = kind === 'expense' ? pct < 0 : pct > 0;

@@ -1,7 +1,13 @@
-import { Transaction, Category, Budget } from '../services/storage';
-import { bucketOf, bucketSource } from './categorizer';
+import type { Transaction, Category, Budget } from '../services/storage';
+import { bucketOf } from './categorizer';
 import { formatMoney } from './formatters';
-import { BucketKey } from '../theme/buckets';
+import type { BucketKey } from '../theme/buckets';
+import {
+  computeBucketBudgets,
+  getMonthPhase,
+  isRefundTransaction,
+} from './metrics';
+import { canonicalizeCategory } from './overviewCategories';
 
 export interface InsightItem {
   id: string;
@@ -10,6 +16,10 @@ export interface InsightItem {
   text: string;
   href: string;
   impact: number;
+}
+
+export interface GenerateInsightsOptions {
+  referenceDate?: Date;
 }
 
 function getPreviousMonths(month: string, count: number): string[] {
@@ -29,107 +39,156 @@ export function generateInsights(
   allTransactions: Transaction[],
   selectedMonth: string,
   categories: Category[],
-  budgets: Budget[] = []
+  budgets: Budget[] = [],
+  options?: GenerateInsightsOptions
 ): InsightItem[] {
   const candidates: InsightItem[] = [];
   const monthPrefix = selectedMonth === 'all' ? '' : selectedMonth;
 
   const currentTxns = allTransactions.filter(
-    t => t.type !== 'transfer' && (selectedMonth === 'all' || (t.date && t.date.startsWith(monthPrefix)))
+    t =>
+      t.type !== 'transfer' &&
+      (selectedMonth === 'all' || (t.date && t.date.startsWith(monthPrefix)))
   );
 
   if (currentTxns.length === 0) {
     return [];
   }
 
+  const phaseInfo = getMonthPhase(selectedMonth, options?.referenceDate);
   const prevMonths = getPreviousMonths(selectedMonth, 3);
   const prevMonthsWithData = prevMonths.filter(pm =>
     allTransactions.some(t => t.type !== 'transfer' && t.date && t.date.startsWith(pm))
   );
 
-  // 1. Largest category increase vs trailing 3-month average (>= $50 and >= 20%)
-  if (prevMonthsWithData.length > 0) {
-    const currentByCat: Record<string, number> = {};
-    currentTxns
-      .filter(t => t.type === 'expense' && bucketOf(t, categories) !== 'non-monthly')
-      .forEach(t => {
-        const cid = (t.category || 'misc').toLowerCase();
-        currentByCat[cid] = (currentByCat[cid] || 0) + t.amount;
-      });
+  // 1. Largest refund-netted category spike vs trailing active-month average (>= $50 and >= 20%)
+  if (selectedMonth !== 'all' && prevMonthsWithData.length > 0) {
+    const currentByCat = new Map<
+      string,
+      { id: string; name: string; bucket: BucketKey; netAmt: number }
+    >();
+
+    for (const t of currentTxns) {
+      if (t.type !== 'expense' && !isRefundTransaction(t)) continue;
+      const b = bucketOf(t, categories);
+      if (b === 'non-monthly') continue;
+
+      const canon = canonicalizeCategory(t.category, categories);
+      if (canon.isNonBudgetable) continue;
+
+      const amt = Number(t.amount) || 0;
+      const signed = isRefundTransaction(t) ? -amt : amt;
+      const bucketKey: BucketKey = b === 'fixed' ? 'fixed' : 'flexible';
+
+      const existing = currentByCat.get(canon.id);
+      if (existing) {
+        existing.netAmt += signed;
+      } else {
+        currentByCat.set(canon.id, {
+          id: canon.id,
+          name: canon.name,
+          bucket: bucketKey,
+          netAmt: signed,
+        });
+      }
+    }
 
     let bestCat: { id: string; name: string; diff: number; bucket: BucketKey } | null = null;
 
-    Object.entries(currentByCat).forEach(([cid, currAmt]) => {
+    for (const entry of currentByCat.values()) {
+      const currAmt = Math.max(0, entry.netAmt);
+      if (currAmt <= 0) continue;
+
       const prevTotal = prevMonthsWithData.reduce((sum, pm) => {
-        const pmCatSpend = allTransactions
+        const pmNet = allTransactions
           .filter(
             t =>
-              t.type === 'expense' &&
+              (t.type === 'expense' || isRefundTransaction(t)) &&
               t.date &&
               t.date.startsWith(pm) &&
-              (t.category || 'misc').toLowerCase() === cid
+              bucketOf(t, categories) !== 'non-monthly' &&
+              canonicalizeCategory(t.category, categories).id === entry.id
           )
-          .reduce((s, t) => s + t.amount, 0);
-        return sum + pmCatSpend;
+          .reduce((s, t) => {
+            const amt = Number(t.amount) || 0;
+            return s + (isRefundTransaction(t) ? -amt : amt);
+          }, 0);
+        return sum + Math.max(0, pmNet);
       }, 0);
+
       const avgAmt = prevTotal / prevMonthsWithData.length;
       const diff = currAmt - avgAmt;
       const pct = avgAmt > 0 ? (diff / avgAmt) * 100 : currAmt >= 50 ? 100 : 0;
 
       if (diff >= 50 && pct >= 20) {
         if (!bestCat || diff > bestCat.diff) {
-          const catObj = categories.find(
-            c => c.id.toLowerCase() === cid || c.name.toLowerCase() === cid
-          );
-          const sampleTxn = currentTxns.find(
-            t => t.type === 'expense' && (t.category || 'misc').toLowerCase() === cid
-          );
-          const b = sampleTxn ? bucketOf(sampleTxn, categories) : 'flexible';
-          const bucketKey: BucketKey =
-            b === 'fixed' ? 'fixed' : b === 'non-monthly' ? 'non-monthly' : 'flexible';
           bestCat = {
-            id: catObj?.id || cid,
-            name: catObj?.name || cid.charAt(0).toUpperCase() + cid.slice(1),
+            id: entry.id,
+            name: entry.name,
             diff,
-            bucket: bucketKey,
+            bucket: entry.bucket,
           };
         }
       }
-    });
+    }
 
     if (bestCat) {
-      const found = bestCat as { id: string; name: string; diff: number; bucket: BucketKey };
       candidates.push({
-        id: `cat-spike-${found.id}`,
-        bucket: found.bucket,
-        text: `${found.name} ran ${formatMoney(found.diff)} above its usual month.`,
-        href: `#/month/${selectedMonth}/category/${found.id}`,
-        impact: found.diff,
+        id: `cat-spike-${bestCat.id}`,
+        bucket: bestCat.bucket,
+        tone: 'negative',
+        text: `${bestCat.name} ran ${formatMoney(bestCat.diff)} above its usual month.`,
+        href: `#/month/${selectedMonth}/category/${bestCat.id}`,
+        impact: bestCat.diff,
       });
     }
   }
 
-  // 2. Budget pace for Variable: projected vs budget, only after day 7 or for past months
-  const now = new Date();
-  const currentLocalMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  const isCurrentMonth = selectedMonth === currentLocalMonth;
-  const isPastMonth = selectedMonth !== 'all' && selectedMonth < currentLocalMonth;
-  const dayOfMonth = now.getDate();
+  // 2. Variable budget pace: pro-rata progressive copy on active month, final verdict on closed past month (BUG-01, BUG-03, BUG-09)
+  const { variableBudget } = computeBucketBudgets(budgets, categories);
+  const variableSpent = Math.max(
+    0,
+    currentTxns
+      .filter(
+        t =>
+          (t.type === 'expense' || isRefundTransaction(t)) &&
+          bucketOf(t, categories) === 'flexible'
+      )
+      .reduce((s, t) => {
+        const amt = Number(t.amount) || 0;
+        return s + (isRefundTransaction(t) ? -amt : amt);
+      }, 0)
+  );
 
-  const variableBudget = budgets
-    .filter(b => {
-      const catObj = categories.find(
-        c => c.id.toLowerCase() === b.category.toLowerCase() || c.name.toLowerCase() === b.category.toLowerCase()
-      );
-      return !catObj?.defaultBucket || catObj.defaultBucket === 'flexible';
-    })
-    .reduce((s, b) => s + b.amount, 0);
-
-  const variableSpent = currentTxns
-    .filter(t => t.type === 'expense' && bucketOf(t, categories) === 'flexible')
-    .reduce((s, t) => s + t.amount, 0);
-
-  if (variableBudget > 0 && (isPastMonth || (isCurrentMonth && dayOfMonth > 7))) {
+  if (variableBudget > 0 && phaseInfo.phase === 'current') {
+    if (variableSpent > variableBudget) {
+      const over = variableSpent - variableBudget;
+      candidates.push({
+        id: 'variable-pace',
+        bucket: 'flexible',
+        tone: 'negative',
+        text: `Variable is already ${formatMoney(over)} over its ${formatMoney(variableBudget)} target.`,
+        href: `#/month/${selectedMonth}/bucket/variable`,
+        impact: over + 50,
+      });
+    } else if (phaseInfo.today > 7) {
+      const proRataTarget = variableBudget * (phaseInfo.today / phaseInfo.daysInMonth);
+      const paceDiff = proRataTarget - variableSpent;
+      if (Math.abs(paceDiff) >= 25) {
+        candidates.push({
+          id: 'variable-pace',
+          bucket: 'flexible',
+          tone: paceDiff >= 0 ? 'positive' : 'negative',
+          text:
+            paceDiff >= 0
+              ? `Variable is tracking ${formatMoney(paceDiff)} under pace.`
+              : `Variable is tracking ${formatMoney(Math.abs(paceDiff))} over pace.`,
+          href: `#/month/${selectedMonth}/bucket/variable`,
+          impact: Math.abs(paceDiff),
+        });
+      }
+    }
+  } else if (variableBudget > 0 && phaseInfo.phase === 'past') {
     const diff = variableBudget - variableSpent;
     if (Math.abs(diff) >= 20) {
       candidates.push({
@@ -139,45 +198,47 @@ export function generateInsights(
         text:
           diff >= 0
             ? `You finished Variable ${formatMoney(diff)} under budget.`
-            : `Variable spending ran ${formatMoney(Math.abs(diff))} over budget.`,
+            : `You finished Variable ${formatMoney(Math.abs(diff))} over budget.`,
         href: `#/month/${selectedMonth}/bucket/variable`,
         impact: Math.abs(diff),
       });
     }
   }
 
-  // 3. A notable non-monthly transaction this month
-  const nonMonthlyTxns = currentTxns
-    .filter(t => t.type === 'expense' && bucketOf(t, categories) === 'non-monthly')
-    .sort((a, b) => b.amount - a.amount);
-
-  if (nonMonthlyTxns.length > 0) {
-    const topNm = nonMonthlyTxns[0];
-    candidates.push({
-      id: `non-monthly-${topNm.id}`,
-      bucket: 'non-monthly',
-      text: `${topNm.description || 'Non-monthly expense'} ${formatMoney(topNm.amount)} — occasional & annual.`,
-      href: `#/month/${selectedMonth}/bucket/non-monthly`,
-      impact: topNm.amount,
-    });
-  }
-
-  // 4. Auto-sorted fallback transactions into Variable (§3.6)
-  const autoSortedTxns = currentTxns.filter(
-    t => t.type === 'expense' && bucketSource(t, categories) === 'fallback'
+  // 3. Notable net non-monthly irregular item
+  const netNonMonthly = Math.max(
+    0,
+    currentTxns
+      .filter(
+        t =>
+          (t.type === 'expense' || isRefundTransaction(t)) &&
+          bucketOf(t, categories) === 'non-monthly'
+      )
+      .reduce((s, t) => {
+        const amt = Number(t.amount) || 0;
+        return s + (isRefundTransaction(t) ? -amt : amt);
+      }, 0)
   );
-  if (autoSortedTxns.length > 0) {
-    const autoTotal = autoSortedTxns.reduce((s, t) => s + t.amount, 0);
-    candidates.push({
-      id: 'auto-sorted',
-      bucket: 'flexible',
-      text: `${autoSortedTxns.length} transaction${
-        autoSortedTxns.length === 1 ? ' was' : 's were'
-      } auto-sorted into Variable. Review`,
-      href: `#/transactions?month=${selectedMonth}&auto=1`,
-      impact: Math.max(autoTotal, 100),
-    });
+
+  if (netNonMonthly > 0) {
+    const nonMonthlyExpenses = currentTxns
+      .filter(t => t.type === 'expense' && bucketOf(t, categories) === 'non-monthly')
+      .sort((a, b) => (Number(b.amount) || 0) - (Number(a.amount) || 0));
+
+    if (nonMonthlyExpenses.length > 0) {
+      const topNm = nonMonthlyExpenses[0];
+      const shownAmt = Math.min(Number(topNm.amount) || 0, netNonMonthly);
+      if (shownAmt > 0) {
+        candidates.push({
+          id: `non-monthly-${topNm.id}`,
+          bucket: 'non-monthly',
+          text: `${topNm.description || 'Non-monthly expense'} ${formatMoney(shownAmt)} — occasional & annual.`,
+          href: `#/month/${selectedMonth}/bucket/non-monthly`,
+          impact: shownAmt,
+        });
+      }
+    }
   }
 
-  return candidates.sort((a, b) => b.impact - a.impact).slice(0, 3);
+  return candidates.sort((a, b) => b.impact - a.impact).slice(0, 2);
 }

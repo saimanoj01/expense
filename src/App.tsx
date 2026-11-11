@@ -6,6 +6,7 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { AppProvider, useApp } from './context/AppContext';
 import { useNavigation } from './hooks/useNavigation';
 import { getCurrentLocalMonth } from './utils/navigation';
+import { getLocalTodayDate } from './utils/metrics';
 import { bucketSource, suggestSpendingBucket } from './utils/categorizer';
 import { Transaction, SpendingBucket, Category, Project, MonthlyLock } from './services/storage';
 import { NavigationProvider } from './context/NavigationContext';
@@ -60,6 +61,7 @@ interface MainRouterProps {
   setShowShareModal: (v: boolean) => void;
   theme?: 'light' | 'dark';
   setTheme?: React.Dispatch<React.SetStateAction<'light' | 'dark'>>;
+  isMockMode?: boolean;
   onLoadSampleData?: () => void;
 }
 
@@ -83,6 +85,7 @@ function MainRouter({
   setShowShareModal,
   theme,
   setTheme,
+  isMockMode,
   onLoadSampleData
 }: MainRouterProps) {
   const { currentRoute, direction } = useNavigation();
@@ -104,7 +107,8 @@ function MainRouter({
   // Level 2: Bucket View
   if (currentRoute.view === 'bucket') {
     const rawBucket = currentRoute.bucketId || 'variable';
-    const normalizedBucket: SpendingBucket = rawBucket === 'variable' ? 'flexible' : (rawBucket as SpendingBucket);
+    const normalizedBucket: SpendingBucket | 'income' =
+      rawBucket === 'variable' ? 'flexible' : (rawBucket as SpendingBucket | 'income');
     screen = (
       <Level2BucketView
         bucketId={normalizedBucket}
@@ -269,78 +273,72 @@ function MainRouter({
   } else {
     // Level 1: Month Overview (Default Canonical Route)
     screen = (
-      <>
-        {txnHooks.unclassifiedCount > 0 && (
-          <div
-            data-testid="backfill-banner"
-            className="max-w-[1120px] mx-auto mb-3 px-3.5 py-2 rounded-[10px] bg-surface2 border border-border flex items-center justify-between gap-3 text-label text-foreground"
-          >
-            <span>
-              {txnHooks.unclassifiedCount} transaction{txnHooks.unclassifiedCount === 1 ? '' : 's'} need bucket classification
-            </span>
-            <button
-              type="button"
-              data-testid="backfill-btn"
-              onClick={() => {
-                const map: Record<string, SpendingBucket> = {};
-                txnHooks.monthTransactions.forEach(t => {
-                  if (t.type === 'expense' && bucketSource(t, budgetHooks.categories) === 'fallback') {
-                    map[t.id] = suggestSpendingBucket(t.description, t.category);
-                  }
-                });
-                txnHooks.backfillSpendingBuckets(map);
-              }}
-              className="px-2.5 py-1 rounded-[8px] bg-primary text-primary-foreground font-medium hover:opacity-90 transition-opacity"
-            >
-              Classify
-            </button>
-          </div>
-        )}
-
-        <Level1MonthOverview
-          selectedMonth={txnHooks.selectedMonth}
-          availableMonths={txnHooks.availableMonths}
-          onSelectMonth={txnHooks.setSelectedMonth}
-          activeProject={activeProject}
-          totalBudget={budgetHooks.totalBudget}
-          totalExpenses={txnHooks.totalExpenses}
-          totalIncome={txnHooks.totalIncome}
-          totalTransfers={txnHooks.totalTransfers}
-          fixedExpenses={txnHooks.fixedExpenses}
-          flexibleExpenses={txnHooks.flexibleExpenses}
-          nonMonthlyExpenses={txnHooks.nonMonthlyExpenses}
-          unclassifiedExpenses={txnHooks.unclassifiedExpenses}
-          unclassifiedCount={txnHooks.unclassifiedCount}
-          flexNumber={txnHooks.flexNumber}
-          savingsAmount={txnHooks.savingsAmount}
-          savingsRate={txnHooks.savingsRate}
-          allTransactions={txnHooks.transactions}
-          categories={budgetHooks.categories}
-          budgets={budgetHooks.budgets}
-          selectedBucket={txnHooks.selectedBucket}
-          onSelectBucket={txnHooks.setSelectedBucket}
-          onOpenAddTxn={handleOpenAddTxn}
-          isCanonicalOverview={true}
-        />
-      </>
+      <Level1MonthOverview
+        selectedMonth={txnHooks.selectedMonth}
+        availableMonths={txnHooks.availableMonths}
+        onSelectMonth={txnHooks.setSelectedMonth}
+        activeProject={activeProject}
+        totalBudget={budgetHooks.totalBudget}
+        totalExpenses={txnHooks.totalExpenses}
+        totalIncome={txnHooks.totalIncome}
+        totalTransfers={txnHooks.totalTransfers}
+        fixedExpenses={txnHooks.fixedExpenses}
+        flexibleExpenses={txnHooks.flexibleExpenses}
+        nonMonthlyExpenses={txnHooks.nonMonthlyExpenses}
+        unclassifiedExpenses={txnHooks.unclassifiedExpenses}
+        unclassifiedCount={txnHooks.unclassifiedCount}
+        flexNumber={txnHooks.flexNumber}
+        savingsAmount={txnHooks.savingsAmount}
+        savingsRate={txnHooks.savingsRate}
+        allTransactions={txnHooks.transactions}
+        categories={budgetHooks.categories}
+        budgets={budgetHooks.budgets}
+        categorySummary={budgetHooks.categorySummary}
+        duplicateTxnIds={txnHooks.duplicateTxnIds}
+        isLockedMonth={isCurrentMonthLocked}
+        isMockMode={isMockMode}
+        selectedBucket={txnHooks.selectedBucket}
+        onSelectBucket={txnHooks.setSelectedBucket}
+        onOpenAddTxn={handleOpenAddTxn}
+        onEditTxn={handleEditTxn}
+        onOpenCsvWizard={() => {
+          csvHooks.setCsvStep(1);
+          csvHooks.setShowCsvWizard(true);
+        }}
+        onLoadSampleData={onLoadSampleData}
+        onLockMonth={handleLockCurrentMonth}
+        onClassifyBuckets={() => {
+          const map: Record<string, SpendingBucket> = {};
+          txnHooks.monthTransactions.forEach(t => {
+            if (t.type === 'expense' && bucketSource(t, budgetHooks.categories) === 'fallback') {
+              map[t.id] = suggestSpendingBucket(t.description, t.category);
+            }
+          });
+          txnHooks.backfillSpendingBuckets(map);
+        }}
+        isCanonicalOverview={true}
+      />
     );
   }
 
   return (
     <LayoutGroup id="drill">
       {headerNode}
-      <AnimatePresence mode="popLayout" initial={false} custom={direction}>
+      <AnimatePresence mode="wait" initial={false}>
         <motion.div
           key={routeKey}
-          custom={direction}
-          variants={{
-            enter: (d: number) => ({ opacity: 0, x: reducedMotion ? 0 : d > 0 ? 32 : d < 0 ? -32 : 0 }),
-            center: { opacity: 1, x: 0, pointerEvents: 'auto', transition: reducedMotion ? { duration: 0 } : { duration: dur.page, ease } },
-            exit: (d: number) => ({ opacity: 0, x: reducedMotion ? 0 : d > 0 ? -16 : d < 0 ? 16 : 0, pointerEvents: 'none', transition: reducedMotion ? { duration: 0 } : { duration: dur.small } }),
-          }}
-          initial="enter"
-          animate="center"
-          exit="exit"
+          initial={
+            reducedMotion
+              ? { opacity: 1, x: 0 }
+              : { opacity: 0, x: direction > 0 ? 24 : direction < 0 ? -24 : 0 }
+          }
+          animate={{ opacity: 1, x: 0 }}
+          exit={
+            reducedMotion
+              ? { opacity: 1, x: 0 }
+              : { opacity: 0, x: direction > 0 ? -12 : direction < 0 ? 12 : 0 }
+          }
+          transition={reducedMotion ? { duration: 0 } : { duration: dur.small, ease }}
           className="w-full"
         >
           {screen}
@@ -499,9 +497,18 @@ function AppInner() {
   };
 
   const handleOpenAddTxn = () => {
+    if (isCurrentMonthLocked) {
+      showToast(`Month ${txnHooks.selectedMonth} is locked.`);
+      return;
+    }
     setEditingTxnId(null);
+    const currLocalMonth = getCurrentLocalMonth();
+    const defaultDate =
+      txnHooks.selectedMonth === 'all' || txnHooks.selectedMonth === currLocalMonth
+        ? getLocalTodayDate()
+        : `${txnHooks.selectedMonth}-01`;
     setEditingTxnData({
-      date: `${txnHooks.selectedMonth === 'all' ? getCurrentLocalMonth() : txnHooks.selectedMonth}-15`
+      date: defaultDate
     });
     setShowTxnModal(true);
   };
@@ -520,7 +527,13 @@ function AppInner() {
       ) {
         return;
       }
-      if (e.key.toLowerCase() === 'n' && isAuthenticated && activeProject && !showTxnModal) {
+      if (
+        e.key.toLowerCase() === 'n' &&
+        isAuthenticated &&
+        activeProject &&
+        !showTxnModal &&
+        !isCurrentMonthLocked
+      ) {
         e.preventDefault();
         handleOpenAddTxn();
       }
@@ -528,7 +541,7 @@ function AppInner() {
     window.addEventListener('keydown', handleNShortcut);
     return () => window.removeEventListener('keydown', handleNShortcut);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAuthenticated, activeProject, showTxnModal, txnHooks.selectedMonth]);
+  }, [isAuthenticated, activeProject, showTxnModal, txnHooks.selectedMonth, isCurrentMonthLocked]);
 
   const handleEditTxn = (txn: Transaction) => {
     setEditingTxnId(txn.id);
@@ -625,7 +638,7 @@ function AppInner() {
         onOpenCommandPalette={isAuthenticated && activeProject ? () => setShowCommandPalette(true) : undefined}
       />
 
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex overflow-hidden min-h-0">
         {isAuthenticated && (
           <Sidebar
             activeProject={activeProject}
@@ -636,10 +649,11 @@ function AppInner() {
             onOpenCommandPalette={activeProject ? () => setShowCommandPalette(true) : undefined}
             logout={logout}
             onOpenAddTxn={handleOpenAddTxn}
+            isLockedMonth={isCurrentMonthLocked}
           />
         )}
 
-        <main ref={mainRef} className="flex-1 overflow-y-auto px-4 md:px-6 pt-0 pb-24 md:pb-6 w-full relative z-10 custom-scrollbar">
+        <main ref={mainRef} className="flex-1 overflow-y-auto px-4 md:px-6 pt-0 pb-24 md:pb-4 w-full relative z-10 custom-scrollbar">
           <div className="max-w-6xl mx-auto w-full">
             {!isAuthenticated ? (
           <div className="flex flex-col items-center justify-center h-[60vh] text-center">
@@ -649,7 +663,7 @@ function AppInner() {
               <button
                 onClick={login}
                 data-testid="google-login-btn"
-                className="px-8 py-4 bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl font-bold shadow-[0_0_20px_rgba(20,184,166,0.3)] transition-all hover:scale-105 active:scale-95"
+                className="px-8 py-4 bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl font-bold shadow-sm transition-all hover:scale-105 active:scale-95"
               >
                 Sign In with Google
               </button>
@@ -683,6 +697,7 @@ function AppInner() {
             setShowShareModal={setShowShareModal}
             theme={theme}
             setTheme={setTheme}
+            isMockMode={isMockMode}
             onLoadSampleData={isMockMode ? handleLoadSampleData : undefined}
           />
         ) : !isProjectsLoaded || isLoading ? (

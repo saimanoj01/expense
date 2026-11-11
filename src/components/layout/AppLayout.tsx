@@ -16,9 +16,9 @@ export function AppLayout({
   }, [toastMessage]);
 
   return (
-    <div className="relative min-h-screen bg-background text-foreground flex flex-col font-sans overflow-x-hidden selection:bg-primary selection:text-primary-foreground">
+    <div className="relative h-screen h-[100dvh] overflow-hidden bg-background text-foreground flex flex-col font-sans selection:bg-primary selection:text-primary-foreground">
       {/* Main Content Wrapper */}
-      <div className="relative z-10 flex flex-col min-h-screen">
+      <div className="relative z-10 flex flex-col flex-1 min-h-0">
         {children}
       </div>
 

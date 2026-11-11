@@ -26,18 +26,21 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
 
   useEffect(() => {
     const mainEl = document.querySelector('main');
-    if (!mainEl) return;
     const handleScroll = () => {
-      setScrolled(mainEl.scrollTop > 8);
+      setScrolled((mainEl?.scrollTop ?? 0) > 8 || window.scrollY > 8);
     };
-    mainEl.addEventListener('scroll', handleScroll, { passive: true });
-    return () => mainEl.removeEventListener('scroll', handleScroll);
+    mainEl?.addEventListener('scroll', handleScroll, { passive: true });
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => {
+      mainEl?.removeEventListener('scroll', handleScroll);
+      window.removeEventListener('scroll', handleScroll);
+    };
   }, []);
 
   return (
     <header
       data-testid="dashboard-header"
-      className={`sticky top-0 z-20 h-14 flex items-center justify-between gap-3 bg-background/85 backdrop-blur-md transition-colors mb-3 ${
+      className={`sticky top-0 z-20 h-12 flex items-center justify-between gap-2 bg-background/95 backdrop-blur-md transition-colors mb-2 ${
         scrolled ? 'border-b border-border' : 'border-b border-transparent'
       } ${className}`}
     >
@@ -50,7 +53,7 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
             data-testid={isLockedMonth ? 'unlock-month-btn' : 'lock-month-btn'}
             onClick={isLockedMonth ? onUnlockMonth : onLockMonth}
             title={isLockedMonth ? 'Unlock Month' : 'Lock Month'}
-            className={`inline-flex items-center gap-1.5 h-8 px-2.5 rounded-[10px] text-label font-medium transition-colors focus-visible:ring-2 ring-ring/40 ${
+            className={`inline-flex items-center gap-1.5 h-8 px-2 sm:px-2.5 rounded-[10px] text-label font-medium transition-colors focus-visible:ring-2 ring-ring/40 ${
               isLockedMonth
                 ? 'bg-warning/15 border border-warning/30 text-warning hover:bg-warning/20'
                 : 'text-muted-foreground hover:text-foreground hover:bg-surface2'
