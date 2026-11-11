@@ -20,7 +20,7 @@ function getSafeLocalStorage(): Storage | null {
 }
 
 /**
- * Retrieves the Gemini API key from localStorage, falling back to VITE_GEMINI_API_KEY / GEMINI_API_KEY env var if present.
+ * Retrieves the Gemini API key from GEMINI_API_KEY / VITE_GEMINI_API_KEY environment variables (or localStorage if present).
  */
 export function getGeminiApiKey(): string | null {
   const storage = getSafeLocalStorage();
@@ -38,25 +38,8 @@ export function getGeminiApiKey(): string | null {
   return null;
 }
 
-export function setGeminiApiKey(key: string): void {
-  getSafeLocalStorage()?.setItem(GEMINI_KEY_STORAGE_KEY, key.trim());
-}
-
-export function clearGeminiApiKey(): void {
-  getSafeLocalStorage()?.removeItem(GEMINI_KEY_STORAGE_KEY);
-}
-
 export function hasGeminiApiKey(): boolean {
   return !!getGeminiApiKey();
-}
-
-/**
- * Returns true only if the user has explicitly stored a key in localStorage
- * (as opposed to the key coming from VITE_GEMINI_API_KEY env var).
- */
-export function hasUserStoredKey(): boolean {
-  const stored = getSafeLocalStorage()?.getItem(GEMINI_KEY_STORAGE_KEY);
-  return !!stored && !!stored.trim();
 }
 
 export interface GeminiConfig {
@@ -91,13 +74,13 @@ interface GeminiRequestBody {
 }
 
 /**
- * Calls the Google Gemini REST API using client-side fetch.
+ * Calls the Google Gemini REST API using fetch.
  * Returns the raw parsed text or parsed JSON object if jsonSchema is provided.
  */
 export async function callGemini(config: GeminiConfig): Promise<unknown> {
   const apiKey = getGeminiApiKey();
   if (!apiKey) {
-    throw new GeminiApiError('Gemini API key is not configured. Please add your key in AI Settings.');
+    throw new GeminiApiError('Gemini API key is not configured. Set the GEMINI_API_KEY environment variable.');
   }
 
   const model = config.model || DEFAULT_GEMINI_MODEL;

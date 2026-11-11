@@ -1,10 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { Upload, Check, X, Sparkles, Loader2, AlertCircle } from 'lucide-react';
+import React from 'react';
+import { Upload, Check, X } from 'lucide-react';
 import { Modal } from '../common/Modal';
 import { CsvItem } from '../../hooks/useCsvImport';
 import { Category, DEFAULT_CATEGORIES } from '../../services/storage';
-import { classifyTransactionsWithLLM } from '../../services/llmCategorizer';
-import { hasGeminiApiKey } from '../../services/ai/geminiClient';
 import { formatTransactionAmount } from '../../utils/formatters';
 
 interface CsvImportWizardProps {
@@ -34,7 +32,7 @@ interface CsvImportWizardProps {
   setParsedCsvItems: React.Dispatch<React.SetStateAction<CsvItem[]>>;
   updateItemTags?: (index: number, newTags: string[]) => void;
   setShowCategoryManagerModal?: (v: boolean) => void;
-  onRequestGeminiKey?: () => void;
+  handleCsvFileUpload?: (e: React.ChangeEvent<HTMLInputElement>) => void;
   handleCsvNextStep: () => void;
   handleCommitCsvImport: () => void;
 }
@@ -66,78 +64,11 @@ export function CsvImportWizard({
   setParsedCsvItems,
   updateItemTags,
   setShowCategoryManagerModal,
-  onRequestGeminiKey,
+  handleCsvFileUpload,
   handleCsvNextStep,
   handleCommitCsvImport
 }: CsvImportWizardProps) {
-  const [isAiClassifying, setIsAiClassifying] = useState(false);
-  const [aiError, setAiError] = useState<string | null>(null);
-  const [hasAutoClassified, setHasAutoClassified] = useState(false);
-
-  useEffect(() => {
-    if (!showCsvWizard || csvStep === 1) {
-      setHasAutoClassified(false);
-    }
-  }, [showCsvWizard, csvStep]);
-
-  useEffect(() => {
-    if (showCsvWizard && csvStep === 2 && !hasAutoClassified && !isAiClassifying && parsedCsvItems.length > 0) {
-      if (hasGeminiApiKey()) {
-        setHasAutoClassified(true);
-        handleRunAiClassification();
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showCsvWizard, csvStep, hasAutoClassified, isAiClassifying, parsedCsvItems.length]);
-
   if (!showCsvWizard) return null;
-
-  const handleRunAiClassification = async () => {
-    setAiError(null);
-    if (!hasGeminiApiKey()) {
-      if (onRequestGeminiKey) {
-        onRequestGeminiKey();
-      } else {
-        setAiError('Gemini API key is required. Please set your key in AI Settings.');
-      }
-      return;
-    }
-
-    setIsAiClassifying(true);
-    let classificationError: string | null = null;
-    try {
-      const itemsToClassify = parsedCsvItems.map((item, idx) => ({
-        id: String(idx),
-        description: item.description,
-        amount: item.amount,
-        type: item.type,
-        rawCategory: item.category
-      }));
-
-      const results = await classifyTransactionsWithLLM(itemsToClassify, categories);
-      applyClassificationResults(results);
-    } catch (e: unknown) {
-      console.error("AI classification failed:", e);
-      classificationError = e instanceof Error ? e.message : "AI classification failed. Check API Key or network connection.";
-      setAiError(classificationError);
-    } finally {
-      setIsAiClassifying(false);
-    }
-  };
-
-  const applyClassificationResults = (results: Record<string, { categoryId: string; subCategoryId?: string }>) => {
-    setParsedCsvItems(prev => prev.map((item, idx) => {
-      const aiRes = results[String(idx)];
-      if (aiRes) {
-        return {
-          ...item,
-          category: aiRes.categoryId,
-          subCategory: aiRes.subCategoryId || null
-        };
-      }
-      return item;
-    }));
-  };
 
   return (
     <Modal
@@ -172,7 +103,39 @@ export function CsvImportWizard({
 
         <div className="flex-1 overflow-y-auto custom-scrollbar">
           {csvStep === 1 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="space-y-6">
+              {handleCsvFileUpload && (
+                <div className="p-4 rounded-xl bg-surface2/60 border border-border flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">
+                      {csvRawHeaders.length > 0
+                        ? `CSV loaded (${csvRawHeaders.length} columns detected)`
+                        : 'Select a CSV statement file'}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {csvRawHeaders.length > 0
+                        ? 'Review mapped columns below or choose another .csv file.'
+                        : 'Upload a .csv export from your bank or card to populate column mappings.'}
+                    </p>
+                  </div>
+                  <label
+                    data-testid="csv-wizard-upload-btn"
+                    className="px-4 py-2 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90 font-semibold text-xs cursor-pointer transition-colors inline-flex items-center gap-2 shrink-0"
+                  >
+                    <Upload className="w-4 h-4" />
+                    {csvRawHeaders.length > 0 ? 'Change CSV File' : 'Choose CSV File'}
+                    <input
+                      type="file"
+                      accept=".csv"
+                      data-testid="csv-wizard-file-input"
+                      className="hidden"
+                      onChange={handleCsvFileUpload}
+                    />
+                  </label>
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-4">
                 <p className="text-muted-foreground text-sm">Select the columns from your CSV that correspond to the required fields.</p>
                 <div>
@@ -247,6 +210,7 @@ export function CsvImportWizard({
                   </div>
                 )}
               </div>
+              </div>
             </div>
           ) : (
             <div className="space-y-4">
@@ -264,67 +228,8 @@ export function CsvImportWizard({
                       + Manage Categories
                     </button>
                   )}
-                  <button
-                    type="button"
-                    onClick={handleRunAiClassification}
-                    disabled={isAiClassifying}
-                    className="px-3 py-1.5 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 font-bold text-xs flex items-center gap-1.5 transition-all"
-                  >
-                    {isAiClassifying ? (
-                      <>
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" /> Classifying...
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles className="w-3.5 h-3.5" /> Auto-Classify with AI
-                      </>
-                    )}
-                  </button>
                 </div>
               </div>
-
-              {isAiClassifying && (
-                <div className="p-3 rounded-xl bg-primary/10 border border-primary/20 text-primary text-xs font-semibold flex items-center gap-2 animate-pulse">
-                  <Loader2 className="w-4 h-4 animate-spin shrink-0" />
-                  <span>AI is categorizing your transactions in the background...</span>
-                </div>
-              )}
-
-              {!hasGeminiApiKey() && !aiError && (
-                <div className="p-3 rounded-xl bg-card border border-border/70 text-muted-foreground text-xs flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <Sparkles className="w-4 h-4 text-primary shrink-0" />
-                    <span>AI auto-categorization is inactive because no Gemini API Key is configured.</span>
-                  </div>
-                  {onRequestGeminiKey && (
-                    <button
-                      type="button"
-                      onClick={onRequestGeminiKey}
-                      className="px-2.5 py-1 rounded-md bg-primary/10 hover:bg-primary/20 text-primary font-bold text-xs shrink-0 transition-colors"
-                    >
-                      Configure Key
-                    </button>
-                  )}
-                </div>
-              )}
-
-              {aiError && (
-                <div className="p-3 rounded-xl bg-destructive/10 border border-destructive/20 text-destructive text-xs font-semibold flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <AlertCircle className="w-4 h-4 shrink-0" />
-                    <span>{aiError}</span>
-                  </div>
-                  {onRequestGeminiKey && aiError.toLowerCase().includes('key') && (
-                    <button
-                      type="button"
-                      onClick={() => { setAiError(null); onRequestGeminiKey(); }}
-                      className="px-2.5 py-1 rounded-md bg-destructive/20 hover:bg-destructive/30 text-destructive font-bold text-xs shrink-0 transition-colors"
-                    >
-                      Configure Key
-                    </button>
-                  )}
-                </div>
-              )}
 
               <div className="overflow-x-auto">
                 <table className="w-full text-left border-collapse" data-testid="csv-preview-table">

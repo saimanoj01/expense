@@ -65,42 +65,6 @@ test.describe('Tier 5 Part 1: State Transitions, OAuth Edge Cases & Corruption H
   });
 
   test.describe('1. State Transitions & Remote Sync Edge Cases', () => {
-    test.skip('1.1 Monthly Lock Email Report Timeout (HTTP 408) rolls back lock state and shows error toast', async ({ page }) => {
-      await preseedMockData(page, {
-        mockSession: 'true',
-        projects: [{ id: 'p-lock', name: 'Lock Rollback Project' }],
-        activeProjectId: 'p-lock',
-        locks: {
-          'p-lock': []
-        }
-      });
-
-      // Intercept Gmail send endpoint returning HTTP 408 Request Timeout
-      await page.route('**/gmail/v1/users/me/messages/send', async route => {
-        await route.fulfill({
-          status: 408,
-          contentType: 'application/json',
-          body: JSON.stringify({ error: 'Request Timeout' })
-        });
-      });
-
-      await appPage.goto();
-      await expect(page.getByTestId('dashboard-header')).toBeVisible();
-
-      // Click lock month button
-      const lockBtn = page.getByTestId('lock-month-btn');
-      await lockBtn.click();
-
-      // Should show rollback notification toast
-      await expect(page.getByTestId('notification-toast')).toContainText('Lock failed: email report could not send');
-
-      // Verify lock state rolled back in localStorage
-      const locksRaw = await page.evaluate(() => window.localStorage.getItem('expense_locks_p-lock'));
-      expect(locksRaw).not.toBeNull();
-      const parsedLocks = JSON.parse(locksRaw!);
-      expect(parsedLocks.some((l: any) => l.month === '2026-07' && l.locked === true)).toBe(false);
-    });
-
     test.skip('1.2 Spreadsheet 404 missing cloud sheet renders Spreadsheet Not Found modal', async ({ page }) => {
       await preseedMockData(page, {
         mockSession: 'true',

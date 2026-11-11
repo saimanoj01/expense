@@ -36,9 +36,7 @@ export interface TransactionsViewProps {
   isLockedMonth: boolean;
   selectedTxnIds: Set<string>;
   duplicateTxnIds: Set<string>;
-  availableMonths: string[];
   availableTags?: string[];
-  onSelectMonth: (m: string) => void;
   onSelectBucket?: (b: 'income' | 'fixed' | 'flexible' | 'non-monthly' | null) => void;
   onSelectTagFilter?: (t: string | null) => void;
   onSetSortBy?: (s: string) => void;
@@ -46,10 +44,6 @@ export interface TransactionsViewProps {
   onEditTxn: (t: Transaction) => void;
   onDeleteTxn: (id: string) => void;
   onCsvFileUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  onLockMonth: () => void;
-  onUnlockMonth: () => void;
-  onOpenShareModal: () => void;
-  onOpenReportModal: () => void;
   onToggleSelectTxn: (id: string) => void;
   onToggleSelectAllTxns: (visibleIds: string[]) => void;
   onClearSelectedTxns: () => void;

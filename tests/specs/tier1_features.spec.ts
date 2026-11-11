@@ -71,8 +71,7 @@ test.describe('Tier 1: Feature Coverage (Happy Paths)', () => {
     test('2. Mock Authentication Flow: Login via Mock Auth mode button navigates to dashboard', async ({ page }) => {
       await appPage.goto();
       await appPage.loginAsMock();
-      // Should show project dashboard/list and bypass auth
-      await expect(page.locator('[data-testid="create-project-btn"], [data-testid="dashboard-header"]')).toBeVisible();
+      await expect(page.getByTestId('dashboard-header')).toBeVisible();
     });
 
     test('3. Session Verification: Session persists on page reload under mock mode', async ({ page }) => {
@@ -111,17 +110,24 @@ test.describe('Tier 1: Feature Coverage (Happy Paths)', () => {
   // Feature 2: Project Storage (Drive/Sheets)
   // =========================================================================
   test.describe('Project Storage', () => {
-    test('6. Onboarding Project Creation: Default project creation prompt shown to new users', async ({ page }) => {
+    test('6. Onboarding Project Creation: Default project creation prompt shown to new users and recoverable if dismissed', async ({ page }) => {
       await preseedMockData(page, { mockSession: 'true', projects: [] });
       await appPage.goto();
       // Should prompt onboarding modal since projects list is empty
       await expect(page.getByTestId('onboarding-modal')).toBeVisible();
+      // Dismissing onboarding modal shows empty-workspace CTA to reopen it
+      await page.keyboard.press('Escape');
+      await expect(page.getByTestId('onboarding-modal')).not.toBeVisible();
+      await expect(page.getByTestId('no-projects-prompt')).toBeVisible();
+      await page.getByTestId('create-project-btn').click();
+      await expect(page.getByTestId('onboarding-modal')).toBeVisible();
       await page.getByTestId('project-name-input').fill('First Project');
       await page.locator('[data-testid="project-submit-btn"], button[type="submit"]').click();
       await expect(page.getByTestId('onboarding-modal')).not.toBeVisible();
+      await expect(page.getByTestId('dashboard-header')).toBeVisible();
     });
 
-    test('7. Multiple Projects Listing: Display multiple projects in project selector dropdown', async ({ page }) => {
+    test('7. Active Workspace Display: Display active project name in sidebar header', async ({ page }) => {
       await preseedMockData(page, {
         mockSession: 'true',
         projects: [
@@ -133,29 +139,7 @@ test.describe('Tier 1: Feature Coverage (Happy Paths)', () => {
       await appPage.goto();
       const selector = page.getByTestId('project-selector');
       await expect(selector).toBeVisible();
-      await expect(page.getByTestId('project-item-p1')).toBeAttached();
-      await expect(page.getByTestId('project-item-p2')).toBeAttached();
-    });
-
-    test('8. Switching Projects: Selecting/switching projects updates the active context', async ({ page }) => {
-      await preseedMockData(page, {
-        mockSession: 'true',
-        projects: [
-          { id: 'p1', name: 'Personal Expenses' },
-          { id: 'p2', name: 'Business Expenses' }
-        ],
-        activeProjectId: 'p1',
-        transactions: {
-          p1: [{ id: 't1', date: '2026-07-01', amount: 10, category: 'Food', type: 'expense', description: 't1 description', notes: '', labels: [], hash: 'h1' }],
-          p2: [{ id: 't2', date: '2026-07-02', amount: 50, category: 'Utilities', type: 'expense', description: 't2 description', notes: '', labels: [], hash: 'h2' }]
-        }
-      });
-      await appPage.goto();
-      await dashboardPage.ensureTransactionsView();
-      await expect(page.locator('text=t1 description')).toBeVisible();
-      await projectPage.selectProject('p2');
-      await expect(page.locator('text=t2 description')).toBeVisible();
-      await expect(page.locator('text=t1 description')).not.toBeVisible();
+      await expect(selector).toContainText('Personal Expenses');
     });
 
     test('9. Project Sharing Submission: Submitting a valid collaborator email shows it in list', async ({ page }) => {
@@ -296,6 +280,7 @@ test.describe('Tier 1: Feature Coverage (Happy Paths)', () => {
     });
 
     test('17. New Category Creation: Adding a new category with color/emoji renders it in list', async ({ page }) => {
+      await dashboardPage.ensureBudgetsView();
       const openAddCategoryBtn = page.getByTestId('open-add-category-btn');
       await openAddCategoryBtn.click();
       await page.getByTestId('new-category-name-input').fill('Vacation');
@@ -307,6 +292,7 @@ test.describe('Tier 1: Feature Coverage (Happy Paths)', () => {
       await page.keyboard.press('Escape');
 
       // Check category in dropdown list
+      await dashboardPage.ensureTransactionsView();
       if (await dashboardPage.openAddTxnModalBtn.isVisible()) {
         await dashboardPage.openAddTxnModalBtn.click();
       }
@@ -350,6 +336,7 @@ test.describe('Tier 1: Feature Coverage (Happy Paths)', () => {
 
     test('20. Custom Category Editing: Modifying category color/emoji propagates change to items', async ({ page }) => {
       await page.getByTestId('dashboard-header').waitFor({ state: 'visible' });
+      await dashboardPage.ensureBudgetsView();
       // Open Category Manager Modal first
       await page.getByTestId('open-add-category-btn').click();
 
@@ -358,7 +345,7 @@ test.describe('Tier 1: Feature Coverage (Happy Paths)', () => {
       await page.getByTestId('edit-category-color-input').fill('#0000ff');
       await page.getByTestId('edit-category-emoji-input').fill('🍔');
       await page.getByTestId('save-edited-category-btn').click();
-      
+      await expect(page.getByTestId('save-edited-category-btn')).not.toBeVisible();
       await page.keyboard.press('Escape');
       await dashboardPage.ensureBudgetsView();
 
@@ -381,6 +368,7 @@ test.describe('Tier 1: Feature Coverage (Happy Paths)', () => {
     });
 
     test('21. Column Mapping Alignment: Mapping CSV columns updates field selectors correctly', async ({ page }) => {
+      await dashboardPage.ensureTransactionsView();
       await page.getByTestId('import-csv-trigger-btn').click();
       // Set test file
       const csvContent = 'DateHeader,DescHeader,OutflowHeader\n2026-07-05,Coffee,4.50\n';
@@ -401,6 +389,7 @@ test.describe('Tier 1: Feature Coverage (Happy Paths)', () => {
     });
 
     test('22. Transaction Preview Rendering: Uploading CSV displays parsed transactions table preview', async ({ page }) => {
+      await dashboardPage.ensureTransactionsView();
       await page.getByTestId('import-csv-trigger-btn').click();
       const csvContent = 'DateHeader,DescHeader,OutflowHeader\n2026-07-05,Coffee,4.50\n2026-07-06,Electricity,85.00';
       const buffer = Buffer.from(csvContent, 'utf-8');
@@ -420,6 +409,7 @@ test.describe('Tier 1: Feature Coverage (Happy Paths)', () => {
     });
 
     test('23. Importing Debit and Credit: Importing credit and debit compiles correct transaction types', async ({ page }) => {
+      await dashboardPage.ensureTransactionsView();
       await page.getByTestId('import-csv-trigger-btn').click();
       const csvContent = 'DateHeader,DescHeader,AmountHeader,TypeHeader\n2026-07-05,Coffee,4.50,expense\n2026-07-06,Bonus,200.00,income';
       const buffer = Buffer.from(csvContent, 'utf-8');
@@ -452,6 +442,7 @@ test.describe('Tier 1: Feature Coverage (Happy Paths)', () => {
         }
       });
       await appPage.goto();
+      await dashboardPage.ensureTransactionsView();
       await page.getByTestId('import-csv-trigger-btn').click();
       const csvContent = 'DateHeader,DescHeader,AmountHeader\n2026-07-05,Coffee,4.50\n2026-07-06,Electricity,85.00';
       const buffer = Buffer.from(csvContent, 'utf-8');
@@ -482,6 +473,7 @@ test.describe('Tier 1: Feature Coverage (Happy Paths)', () => {
         }
       });
       await appPage.goto();
+      await dashboardPage.ensureTransactionsView();
       await page.getByTestId('import-csv-trigger-btn').click();
       const csvContent = 'DateHeader,DescHeader,AmountHeader\n2026-07-05,Coffee,4.50\n2026-07-06,Electricity,85.00';
       const buffer = Buffer.from(csvContent, 'utf-8');
@@ -505,9 +497,9 @@ test.describe('Tier 1: Feature Coverage (Happy Paths)', () => {
   });
 
   // =========================================================================
-  // Feature 6: Month Locking & Email Reports
+  // Feature 6: Month Locking
   // =========================================================================
-  test.describe('Month Locking & Email Reports', () => {
+  test.describe('Month Locking', () => {
     test.beforeEach(async ({ page }) => {
       await preseedMockData(page, {
         mockSession: 'true',
@@ -527,37 +519,6 @@ test.describe('Tier 1: Feature Coverage (Happy Paths)', () => {
       await expect(page.getByTestId('delete-transaction-btn-t1')).not.toBeVisible();
     });
 
-    test('27. Lock Confirmation Console Event: Locking a month prints HTML report email in console', async ({ page }) => {
-      const consoleMessages: string[] = [];
-      page.on('console', msg => {
-        consoleMessages.push(msg.text());
-      });
-      await dashboardPage.lockCurrentMonth();
-      // Check that a message containing the email template is printed
-      const emailLog = consoleMessages.find(m => m.includes('Gmail API Mock') && m.includes('<html>'));
-      expect(emailLog).toBeDefined();
-    });
-
-    test('28. CC and Recipient Emails: Email report matches project collaborators', async ({ page }) => {
-      const consoleMessages: string[] = [];
-      page.on('console', msg => {
-        consoleMessages.push(msg.text());
-      });
-      await dashboardPage.lockCurrentMonth();
-      const emailLog = consoleMessages.find(m => m.includes('friend@test.com') && m.includes('partner@test.com'));
-      expect(emailLog).toBeDefined();
-    });
-
-    test('29. Lock Report Calculations: Lock report matches UI dashboard KPIs', async ({ page }) => {
-      const consoleMessages: string[] = [];
-      page.on('console', msg => {
-        consoleMessages.push(msg.text());
-      });
-      await dashboardPage.lockCurrentMonth();
-      const emailLog = consoleMessages.find(m => m.includes('Total Expenses: $1,500.00'));
-      expect(emailLog).toBeDefined();
-    });
-
     test('30. Month Unlocking Restore: Unlocking a month removes lock status and re-enables transaction controls', async ({ page }) => {
       await preseedMockData(page, {
         mockSession: 'true',
@@ -571,6 +532,7 @@ test.describe('Tier 1: Feature Coverage (Happy Paths)', () => {
         }
       });
       await appPage.goto();
+      await dashboardPage.ensureTransactionsView();
       await expect(dashboardPage.openAddTxnModalBtn).not.toBeVisible();
       await dashboardPage.unlockCurrentMonth();
       await expect(dashboardPage.openAddTxnModalBtn).toBeVisible();
@@ -618,15 +580,6 @@ test.describe('Tier 1: Feature Coverage (Happy Paths)', () => {
       const dAttr = await path.getAttribute('d');
       expect(dAttr).not.toBeNull();
       expect(dAttr?.length).toBeGreaterThan(10);
-    });
-
-    test('33. Budget vs Actual Chart: Budget vs Actual chart draws dual budget/actual bars', async () => {
-      await dashboardPage.ensureBudgetsView();
-      await expect(dashboardPage.budgetChart).toBeVisible();
-      const budgetBars = dashboardPage.budgetChart.locator('.budget-bar');
-      const actualBars = dashboardPage.budgetChart.locator('.actual-bar');
-      await expect(budgetBars).toBeVisible();
-      await expect(actualBars).toBeVisible();
     });
 
     test('34. Theme Switch Stylesheet: Toggling theme changes html tag class and shifts CSS styles', async ({ page }) => {

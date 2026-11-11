@@ -1,9 +1,6 @@
 import { useState, useMemo } from 'react';
-import { Sparkles, AlertTriangle, ArrowUpRight, ArrowDownRight, RefreshCw, Key, ChevronDown, ChevronRight } from 'lucide-react';
 import { TrendChartDetails } from '../../hooks/useTransactions';
-import { generateSpendingInsights, AiInsightsResult } from '../../services/ai/aiInsightsService';
-import { hasGeminiApiKey } from '../../services/ai/geminiClient';
-import { Category, Budget, Transaction } from '../../services/storage';
+import { Category, Transaction } from '../../services/storage';
 import { bucketOf } from '../../utils/categorizer';
 import { computeMonthMetrics } from '../../utils/metrics';
 import { bucketColor } from '../../theme/buckets';
@@ -12,13 +9,10 @@ import { useNavigation } from '../../hooks/useNavigation';
 
 interface TrendChartProps {
   trendDetails?: TrendChartDetails;
-  totalBudget?: number;
-  budgets?: Budget[];
   categories?: Category[];
   transactions?: Transaction[];
   selectedMonth?: string;
   onSelectMonth?: (month: string) => void;
-  onRequestGeminiKey?: () => void;
 }
 
 interface MonthBucketSummary {
@@ -65,22 +59,13 @@ function formatLongMonth(monthStr: string): string {
 }
 
 export function TrendChart({
-  totalBudget = 0,
-  budgets = [],
   categories = [],
   transactions = [],
   selectedMonth = '2026-11',
   onSelectMonth,
-  onRequestGeminiKey,
 }: TrendChartProps) {
   const { navigate } = useNavigation();
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
-  const [aiExpanded, setAiExpanded] = useState(false);
-
-  // AI Insights State
-  const [aiResult, setAiResult] = useState<AiInsightsResult | null>(null);
-  const [isGeneratingAi, setIsGeneratingAi] = useState(false);
-  const [aiError, setAiError] = useState<string | null>(null);
 
   const nonTransferTxns = useMemo(
     () => transactions.filter(t => t.type !== 'transfer'),
@@ -170,32 +155,6 @@ export function TrendChart({
       .sort((a, b) => b.total - a.total)
       .slice(0, 8);
   }, [nonTransferTxns, last6MonthKeys, categories]);
-
-  const handleGenerateAiInsights = async () => {
-    if (!hasGeminiApiKey()) {
-      if (onRequestGeminiKey) onRequestGeminiKey();
-      return;
-    }
-
-    setIsGeneratingAi(true);
-    setAiError(null);
-
-    try {
-      const res = await generateSpendingInsights({
-        transactions,
-        categories,
-        budgets,
-        selectedMonth: anchorMonth,
-        totalBudget,
-      });
-      setAiResult(res);
-    } catch (err: unknown) {
-      console.error('Failed to generate AI insights:', err);
-      setAiError(err instanceof Error ? err.message : 'Failed to generate AI insights. Please check your API key.');
-    } finally {
-      setIsGeneratingAi(false);
-    }
-  };
 
   // Chart geometry
   const width = 720;
@@ -581,140 +540,6 @@ export function TrendChart({
           </div>
         </div>
       )}
-
-      {/* Collapsible AI Insights Card (collapsed by default) */}
-      <div className="rounded-[14px] bg-card border border-border overflow-hidden">
-        <button
-          type="button"
-          onClick={() => setAiExpanded(prev => !prev)}
-          className="w-full px-5 py-3.5 flex items-center justify-between text-left hover:bg-surface2 transition-colors focus-visible:ring-2 ring-ring/40"
-        >
-          <div className="flex items-center gap-2.5">
-            <Sparkles className="w-4 h-4 text-muted-foreground" />
-            <span className="text-body font-medium text-foreground">AI Financial Analysis</span>
-            <span className="text-label text-muted-foreground">Optional Gemini summary</span>
-          </div>
-          {aiExpanded ? (
-            <ChevronDown className="w-4 h-4 text-muted-foreground" />
-          ) : (
-            <ChevronRight className="w-4 h-4 text-muted-foreground" />
-          )}
-        </button>
-
-        {aiExpanded && (
-          <div className="px-5 pb-5 pt-2 border-t border-border/60">
-            {!hasGeminiApiKey() ? (
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 py-2">
-                <p className="text-body text-muted-foreground">
-                  Connect your Google Gemini API key to generate spending summaries and anomaly checks.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => onRequestGeminiKey?.()}
-                  className="px-3.5 py-2 rounded-[10px] bg-primary text-primary-foreground text-label font-medium inline-flex items-center gap-2 shrink-0 hover:opacity-90 transition-opacity focus-visible:ring-2 ring-ring/40"
-                >
-                  <Key className="w-3.5 h-3.5" />
-                  <span>Configure API key</span>
-                </button>
-              </div>
-            ) : !aiResult && !isGeneratingAi ? (
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 py-2">
-                <div>
-                  <p className="text-body text-muted-foreground">
-                    Analyze spending patterns for {anchorMonth}.
-                  </p>
-                  {aiError && <p className="text-label text-negative mt-1">{aiError}</p>}
-                </div>
-                <button
-                  type="button"
-                  onClick={handleGenerateAiInsights}
-                  className="px-3.5 py-2 rounded-[10px] bg-primary text-primary-foreground text-label font-medium inline-flex items-center gap-2 shrink-0 hover:opacity-90 transition-opacity focus-visible:ring-2 ring-ring/40"
-                >
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span>Generate analysis</span>
-                </button>
-              </div>
-            ) : isGeneratingAi ? (
-              <div className="py-4 text-body text-muted-foreground">
-                Analyzing transaction data...
-              </div>
-            ) : aiResult ? (
-              <div className="space-y-4 pt-2">
-                <p className="text-body text-foreground leading-relaxed">{aiResult.digest}</p>
-
-                {aiResult.anomalies && aiResult.anomalies.length > 0 && (
-                  <div className="space-y-2">
-                    <h4 className="text-label font-medium uppercase tracking-[0.06em] text-muted-foreground">
-                      Notable patterns
-                    </h4>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {aiResult.anomalies.map((anom, idx) => (
-                        <div
-                          key={idx}
-                          className="p-3 rounded-[10px] bg-surface2 border border-border flex items-start gap-2.5"
-                        >
-                          {anom.type === 'spike' ? (
-                            <AlertTriangle className="w-4 h-4 shrink-0 text-negative mt-0.5" />
-                          ) : anom.type === 'positive_trend' ? (
-                            <ArrowDownRight className="w-4 h-4 shrink-0 text-bucket-saved mt-0.5" />
-                          ) : (
-                            <ArrowUpRight className="w-4 h-4 shrink-0 text-muted-foreground mt-0.5" />
-                          )}
-                          <div>
-                            <p className="text-body font-medium text-foreground">{anom.title}</p>
-                            <p className="text-label text-muted-foreground mt-0.5">
-                              {anom.description}
-                            </p>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {aiResult.recommendations && aiResult.recommendations.length > 0 && (
-                  <div className="space-y-2">
-                    <h4 className="text-label font-medium uppercase tracking-[0.06em] text-muted-foreground">
-                      Recommendations
-                    </h4>
-                    <div className="space-y-1.5">
-                      {aiResult.recommendations.map((rec, idx) => (
-                        <div
-                          key={idx}
-                          className="px-3 py-2 rounded-[10px] bg-surface2 flex items-center justify-between gap-3"
-                        >
-                          <span className="text-body text-foreground">{rec.action}</span>
-                          <span className="text-label text-bucket-saved font-medium shrink-0">
-                            {rec.impact}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                <div className="flex items-center justify-between pt-2 border-t border-border/50 text-label text-muted-foreground">
-                  <span>
-                    Generated at{' '}
-                    {new Date(aiResult.generatedAt).toLocaleTimeString([], {
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={handleGenerateAiInsights}
-                    className="inline-flex items-center gap-1 hover:text-foreground transition-colors"
-                  >
-                    <RefreshCw className="w-3 h-3" />
-                    <span>Refresh</span>
-                  </button>
-                </div>
-              </div>
-            ) : null}
-          </div>
-        )}
-      </div>
     </div>
   );
 }

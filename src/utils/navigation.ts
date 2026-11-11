@@ -75,9 +75,6 @@ export function parseHash(hashString: string, fallbackMonth: string = getCurrent
   path = path.replace(/\/+$/, '');
 
   // Secondary views
-  if (path === 'projects') {
-    return { view: 'projects', level: 1 };
-  }
   if (path === 'budgets') {
     return { view: 'budgets', level: 1, month: validQueryMonth };
   }
@@ -94,8 +91,8 @@ export function parseHash(hashString: string, fallbackMonth: string = getCurrent
     return { view: 'transactions', level: 4, month: validQueryMonth };
   }
 
-  // Dashboard route compatibility: redirect to canonical overview
-  if (path === 'dashboard' || path === '') {
+  // Legacy dashboard / projects route compatibility: redirect to canonical overview
+  if (path === 'dashboard' || path === 'projects' || path === '') {
     return {
       view: 'overview',
       level: 1,
@@ -160,8 +157,6 @@ export function routeToHash(route: AppRoute, defaultMonth: string = getCurrentLo
   const month = route.month || defaultMonth;
 
   switch (route.view) {
-    case 'projects':
-      return '#/projects';
     case 'budgets':
       return `#/budgets?month=${month}`;
     case 'trends':
@@ -263,7 +258,7 @@ export function buildBreadcrumbs(
     return items;
   }
   if (route.view === 'settings') {
-    items.push({ id: 'settings', label: 'Settings & Projects', route, isCurrent: true });
+    items.push({ id: 'settings', label: 'Settings & Workspace', route, isCurrent: true });
     return items;
   }
 

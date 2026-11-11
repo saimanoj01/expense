@@ -32,7 +32,14 @@ export function useBudgets(
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [budgetErrors, setBudgetErrors] = useState<Record<string, string>>({});
+  const [budgetDrafts, setBudgetDrafts] = useState<Record<string, string>>({});
   const [budgetNotes, setBudgetNotes] = useState<Record<string, BudgetNote>>({});
+  const prevProjectIdRef = useState<{ current: string | undefined }>(() => ({ current: activeProject?.id }))[0];
+  if (prevProjectIdRef.current !== activeProject?.id) {
+    prevProjectIdRef.current = activeProject?.id;
+    setBudgetDrafts({});
+    setBudgetErrors({});
+  }
 
   const refreshBudgetsAndCategories = useCallback(async () => {
     if (!activeProject || !storageAdapter) return;
@@ -313,6 +320,9 @@ export function useBudgets(
 
   const handleSaveBudgets = async () => {
     if (!activeProject || !storageAdapter) return;
+    if (Object.values(budgetErrors).some(Boolean)) {
+      return;
+    }
     try {
       await storageAdapter.saveBudgets(activeProject.id, budgets);
       showToast('Budgets saved successfully');
@@ -327,6 +337,20 @@ export function useBudgets(
   };
 
   const handleBudgetInputChange = (catName: string, val: string) => {
+    setBudgetDrafts(prev => ({ ...prev, [catName]: val }));
+    if (val.trim() === '') {
+      setBudgetErrors(prev => ({ ...prev, [catName]: '' }));
+      setBudgets(prev => {
+        const existing = prev.findIndex(b => b.category === catName || b.category.toLowerCase() === catName.toLowerCase());
+        if (existing > -1) {
+          const next = [...prev];
+          next[existing] = { category: catName, amount: 0 };
+          return next;
+        }
+        return prev;
+      });
+      return;
+    }
     const num = parseFloat(val);
     if (isNaN(num) || num < 0) {
       setBudgetErrors(prev => ({ ...prev, [catName]: 'Budget must be positive' }));
@@ -408,6 +432,7 @@ export function useBudgets(
     setBudgets,
     categories,
     budgetErrors,
+    budgetDrafts,
     totalBudget,
     categorySummary,
     piePaths,

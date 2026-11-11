@@ -7,9 +7,10 @@ export interface BudgetsViewProps {
   categorySummary: CategorySummary[];
   piePaths?: { segments: PieSegment[]; totalPieExpense: number };
   budgetErrors?: Record<string, string>;
+  budgetDrafts?: Record<string, string>;
   onBudgetInputChange?: (catName: string, val: string) => void;
   onSaveBudgets?: () => void;
-  onOpenAddCategoryModal?: () => void;
+  onOpenCategoryManager?: () => void;
   budgetNotes?: Record<string, BudgetNote>;
   spendingHistory?: Record<string, { lastMonth: number; avg3mo: number }>;
   onSaveBudgetNote?: (month: string, keyId: string, text: string, mood?: string) => Promise<void>;
@@ -26,9 +27,10 @@ export function BudgetsView({
   categorySummary,
   piePaths,
   budgetErrors = {},
+  budgetDrafts = {},
   onBudgetInputChange,
   onSaveBudgets,
-  onOpenAddCategoryModal,
+  onOpenCategoryManager,
   budgetNotes = {},
   spendingHistory = {},
   onSaveBudgetNote,
@@ -106,9 +108,10 @@ export function BudgetsView({
         categorySummary={categorySummary}
         piePaths={piePaths}
         budgetErrors={budgetErrors}
+        budgetDrafts={budgetDrafts}
         handleBudgetInputChange={onBudgetInputChange}
         handleSaveBudgets={onSaveBudgets}
-        setShowAddCatModal={onOpenAddCategoryModal}
+        onOpenCategoryManager={onOpenCategoryManager}
         selectedMonth={month}
         budgetNotes={budgetNotes}
         spendingHistory={spendingHistory}

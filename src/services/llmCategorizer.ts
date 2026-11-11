@@ -23,7 +23,7 @@ export async function classifyTransactionsWithLLM(
   categories: Category[]
 ): Promise<ClassificationResultMap> {
   if (!hasGeminiApiKey()) {
-    throw new Error('Gemini API Key is not configured. Please set your key in AI Settings.');
+    throw new Error('Gemini API Key is not configured. Set the GEMINI_API_KEY environment variable.');
   }
 
   if (!items || items.length === 0) {

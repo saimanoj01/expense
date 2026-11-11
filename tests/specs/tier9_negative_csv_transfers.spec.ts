@@ -37,6 +37,7 @@ test.describe('Tier 9: Negative CSV Amounts Mapped to Transfers', () => {
       transactions: { p1: [] }
     });
     await appPage.goto();
+    await page.goto('/#/transactions');
   });
 
   test('Uploading a CSV with negative amounts defaults to Transfer type and converts to positive figure', async ({ page }) => {

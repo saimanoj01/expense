@@ -56,6 +56,7 @@ export function useCsvImport(
       return;
     }
     const text = await file.text();
+    e.target.value = '';
     if (!text.trim()) {
       setCsvError('File is empty');
       setShowCsvWizard(true);
@@ -230,6 +231,7 @@ export function useCsvImport(
 
     setShowCsvWizard(false);
     setShowCsvDuplicateWarningModal(false);
+    setCsvStep(1);
     setParsedCsvItems([]);
 
     try {

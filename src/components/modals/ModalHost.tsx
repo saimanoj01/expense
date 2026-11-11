@@ -7,15 +7,11 @@ import { useCsvImport } from '../../hooks/useCsvImport';
 import { showToast } from '../../utils/toast';
 import { Modal } from '../common/Modal';
 import { TransactionModal } from './TransactionModal';
-import { CategoryModal } from './CategoryModal';
 import { CategoryManagerModal } from './CategoryManagerModal';
 import { CsvImportWizard } from './CsvImportWizard';
 import { DuplicateWarningModal, CsvDuplicateWarningModal } from './DuplicateWarningModals';
 import { CreateProjectModal } from './CreateProjectModal';
-import { ManageProjectsModal } from './ManageProjectsModal';
 import { ShareProjectModal } from './ShareProjectModal';
-import { GeminiKeyModal } from './GeminiKeyModal';
-import { MonthlyReportModal } from './MonthlyReportModal';
 
 export interface ModalHostProps {
   showTxnModal: boolean;
@@ -28,35 +24,23 @@ export interface ModalHostProps {
   setShowDuplicateWarningModal: (v: boolean) => void;
   showCategoryManagerModal: boolean;
   setShowCategoryManagerModal: (v: boolean) => void;
-  showAddCatModal: boolean;
-  setShowAddCatModal: (v: boolean) => void;
   showCreateModal: boolean;
   setShowCreateModal: (v: boolean) => void;
-  showManageProjectsModal: boolean;
-  setShowManageProjectsModal: (v: boolean) => void;
   showShareModal: boolean;
   setShowShareModal: (v: boolean) => void;
-  showGeminiKeyModal: boolean;
-  setShowGeminiKeyModal: (v: boolean) => void;
   showBulkDeleteConfirmModal: boolean;
   setShowBulkDeleteConfirmModal: (v: boolean) => void;
   showSessionExpiredModal: boolean;
   setShowSessionExpiredModal: (v: boolean) => void;
-  showMonthlyReportModal: boolean;
-  setShowMonthlyReportModal: (v: boolean) => void;
   selectedTxnIds: Set<string>;
   setSelectedTxnIds: React.Dispatch<React.SetStateAction<Set<string>>>;
-  projects: Project[];
   activeProject: Project | null;
-  selectProject: (id: string | null) => void;
   createNewProject: (name: string) => Promise<unknown>;
-  deleteProject: (id: string) => Promise<void>;
   loadProjects: () => Promise<void>;
   refreshProjectData: () => void;
   storageAdapter: StorageAdapter | null;
   logout: () => void;
   locks?: MonthlyLock[];
-  isCurrentMonthLocked: boolean;
   txnHooks: ReturnType<typeof useTransactions>;
   budgetHooks: ReturnType<typeof useBudgets>;
   csvHooks: ReturnType<typeof useCsvImport>;
@@ -73,35 +57,23 @@ export const ModalHost: React.FC<ModalHostProps> = ({
   setShowDuplicateWarningModal,
   showCategoryManagerModal,
   setShowCategoryManagerModal,
-  showAddCatModal,
-  setShowAddCatModal,
   showCreateModal,
   setShowCreateModal,
-  showManageProjectsModal,
-  setShowManageProjectsModal,
   showShareModal,
   setShowShareModal,
-  showGeminiKeyModal,
-  setShowGeminiKeyModal,
   showBulkDeleteConfirmModal,
   setShowBulkDeleteConfirmModal,
   showSessionExpiredModal,
   setShowSessionExpiredModal,
-  showMonthlyReportModal,
-  setShowMonthlyReportModal,
   selectedTxnIds,
   setSelectedTxnIds,
-  projects,
   activeProject,
-  selectProject,
   createNewProject,
-  deleteProject,
   loadProjects,
   refreshProjectData,
   storageAdapter,
   logout,
   locks,
-  isCurrentMonthLocked,
   txnHooks,
   budgetHooks,
   csvHooks,
@@ -157,17 +129,6 @@ export const ModalHost: React.FC<ModalHostProps> = ({
       </AnimatePresence>
 
       <AnimatePresence>
-        {showAddCatModal && (
-          <CategoryModal
-            showModal={showAddCatModal}
-            setShowModal={setShowAddCatModal}
-            handleSaveCategory={budgetHooks.handleSaveCategory}
-            categories={budgetHooks.categories}
-          />
-        )}
-      </AnimatePresence>
-
-      <AnimatePresence>
         {showCreateModal && (
           <CreateProjectModal
             showModal={showCreateModal}
@@ -175,26 +136,6 @@ export const ModalHost: React.FC<ModalHostProps> = ({
             onCreate={async name => {
               await createNewProject(name);
               showToast('Project created successfully');
-            }}
-          />
-        )}
-      </AnimatePresence>
-
-      <AnimatePresence>
-        {showManageProjectsModal && (
-          <ManageProjectsModal
-            showModal={showManageProjectsModal}
-            onClose={() => setShowManageProjectsModal(false)}
-            projects={projects}
-            activeProject={activeProject}
-            onSelectProject={selectProject}
-            onCreateProject={async name => {
-              await createNewProject(name);
-              showToast('Project created successfully');
-            }}
-            onDeleteProject={async projectId => {
-              await deleteProject(projectId);
-              showToast('Project deleted');
             }}
           />
         )}
@@ -229,18 +170,8 @@ export const ModalHost: React.FC<ModalHostProps> = ({
           {...csvHooks}
           categories={budgetHooks.categories}
           setShowCategoryManagerModal={setShowCategoryManagerModal}
-          onRequestGeminiKey={() => setShowGeminiKeyModal(true)}
         />
       )}
-
-      <AnimatePresence>
-        {showGeminiKeyModal && (
-          <GeminiKeyModal
-            showModal={showGeminiKeyModal}
-            onClose={() => setShowGeminiKeyModal(false)}
-          />
-        )}
-      </AnimatePresence>
 
       <AnimatePresence>
         {showDuplicateWarningModal && (
@@ -333,27 +264,6 @@ export const ModalHost: React.FC<ModalHostProps> = ({
           OK
         </button>
       </Modal>
-
-      <MonthlyReportModal
-        isOpen={showMonthlyReportModal}
-        onClose={() => setShowMonthlyReportModal(false)}
-        month={txnHooks.selectedMonth}
-        projectName={activeProject?.name || 'My Expenses'}
-        collaborators={activeProject?.collaborators || []}
-        financials={{
-          totalIncome: txnHooks.totalIncome,
-          totalExpenses: txnHooks.totalExpenses,
-          fixedExpenses: txnHooks.fixedExpenses,
-          flexibleExpenses: txnHooks.flexibleExpenses,
-          nonMonthlyExpenses: txnHooks.nonMonthlyExpenses,
-          savingsAmount: txnHooks.savingsAmount,
-          savingsRate: txnHooks.savingsRate,
-          totalBudget: budgetHooks.totalBudget,
-        }}
-        categories={budgetHooks.categorySummary}
-        transactions={txnHooks.transactions}
-        isLocked={isCurrentMonthLocked}
-      />
     </>
   );
 };

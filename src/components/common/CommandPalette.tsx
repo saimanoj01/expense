@@ -10,8 +10,6 @@ import {
   Settings, 
   Plus, 
   Upload, 
-  FolderKanban, 
-  Sparkles, 
   SunMoon, 
   Lock, 
   X
@@ -26,10 +24,7 @@ export interface CommandPaletteProps {
   categories: Category[];
   onOpenAddTxn: () => void;
   onOpenCsvImport: () => void;
-  onOpenManageProjects: () => void;
-  onOpenGeminiKey: () => void;
   onToggleTheme: () => void;
-  onOpenReport: () => void;
   onToggleLockMonth?: () => void;
   isMonthLocked?: boolean;
 }
@@ -50,10 +45,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   categories,
   onOpenAddTxn,
   onOpenCsvImport,
-  onOpenManageProjects,
-  onOpenGeminiKey,
   onToggleTheme,
-  onOpenReport,
   onToggleLockMonth,
   isMonthLocked
 }) => {
@@ -124,8 +116,8 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       },
       {
         id: 'view-settings',
-        title: 'Settings & Projects',
-        subtitle: 'Manage projects, categories, and AI keys',
+        title: 'Settings & Workspace',
+        subtitle: 'Manage workspace, categories, and imports',
         icon: Settings,
         category: 'Views',
         keywords: ['config', 'preferences', 'workspace'],
@@ -190,24 +182,6 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         action: onOpenCsvImport
       },
       {
-        id: 'action-manage-projects',
-        title: 'Manage Projects',
-        subtitle: 'Create, switch, or delete financial projects',
-        icon: FolderKanban,
-        category: 'Actions',
-        keywords: ['projects', 'switch', 'create'],
-        action: onOpenManageProjects
-      },
-      {
-        id: 'action-gemini-key',
-        title: 'Configure Gemini AI Key',
-        subtitle: 'Enable intelligent expense categorization',
-        icon: Sparkles,
-        category: 'Actions',
-        keywords: ['ai', 'gemini', 'api', 'key', 'intelligence'],
-        action: onOpenGeminiKey
-      },
-      {
         id: 'action-toggle-theme',
         title: 'Toggle Dark / Light Theme',
         subtitle: 'Switch application color mode',
@@ -215,15 +189,6 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         category: 'Actions',
         keywords: ['theme', 'mode', 'dark', 'light'],
         action: onToggleTheme
-      },
-      {
-        id: 'action-open-report',
-        title: 'Print / Export Report Modal',
-        subtitle: 'Open printable monthly financial statement',
-        icon: FileText,
-        category: 'Actions',
-        keywords: ['print', 'pdf', 'report'],
-        action: onOpenReport
       }
     ];
 
@@ -231,7 +196,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       list.push({
         id: 'action-toggle-lock',
         title: isMonthLocked ? 'Unlock Current Month' : 'Lock Current Month',
-        subtitle: isMonthLocked ? 'Re-enable editing for this month' : 'Freeze transactions and email lock report',
+        subtitle: isMonthLocked ? 'Re-enable editing for this month' : 'Freeze transactions for this month',
         icon: Lock,
         category: 'Actions',
         keywords: ['lock', 'freeze', 'unlock', 'close'],
@@ -258,10 +223,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     navigate, 
     onOpenAddTxn, 
     onOpenCsvImport, 
-    onOpenManageProjects, 
-    onOpenGeminiKey, 
     onToggleTheme, 
-    onOpenReport, 
     onToggleLockMonth, 
     isMonthLocked, 
     categories

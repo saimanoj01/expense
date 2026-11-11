@@ -156,6 +156,7 @@ test.describe('Tier 2: Boundary, Edge and Error Handling Cases', () => {
         }
       });
       await appPage.goto();
+      await dashboardPage.ensureTransactionsView();
       // App runs validation, inserts hash, and completes loading without throwing fatal errors
       await expect(page.locator('text=No hash transaction')).toBeVisible();
       // Verify details check
@@ -232,6 +233,7 @@ test.describe('Tier 2: Boundary, Edge and Error Handling Cases', () => {
         activeProjectId: 'p1'
       });
       await appPage.goto();
+      await dashboardPage.ensureTransactionsView();
     });
 
     test('11. Non-positive Amounts: Rejects negative and zero values in amount field', async ({ page }) => {
@@ -333,6 +335,7 @@ test.describe('Tier 2: Boundary, Edge and Error Handling Cases', () => {
     });
 
     test('17. Duplicate Category Rule: Prevent addition of custom categories sharing matching names', async ({ page }) => {
+      await dashboardPage.ensureBudgetsView();
       const openAddCategoryBtn = page.getByTestId('open-add-category-btn');
       await openAddCategoryBtn.click();
       await page.getByTestId('new-category-name-input').fill('Food'); // already exists by default
@@ -406,6 +409,7 @@ test.describe('Tier 2: Boundary, Edge and Error Handling Cases', () => {
         activeProjectId: 'p1'
       });
       await appPage.goto();
+      await dashboardPage.ensureTransactionsView();
     });
 
     test('21. Mismatched CSV Format: Shows errors when uploading files missing CSV syntax layouts', async ({ page }) => {
@@ -473,6 +477,7 @@ test.describe('Tier 2: Boundary, Edge and Error Handling Cases', () => {
         }
       });
       await appPage.goto();
+      await dashboardPage.ensureTransactionsView();
       await page.getByTestId('import-csv-trigger-btn').click();
       const csvContent = 'DateHeader,DescHeader,OutflowHeader\n2026-07-05,Coffee,4.50\n2026-07-06,Tea,5.00';
       const buffer = Buffer.from(csvContent, 'utf-8');
@@ -549,27 +554,6 @@ test.describe('Tier 2: Boundary, Edge and Error Handling Cases', () => {
       expect(errorThrown).toContain('Cannot write to locked month');
     });
 
-    test('28. Rollback on Timeout: Lock fails and rolls back state if Gmail client API timeouts', async ({ page }) => {
-      await preseedMockData(page, {
-        mockSession: 'true',
-        projects: [{ id: 'p1', name: 'My Project' }],
-        activeProjectId: 'p1'
-      });
-      // Force email dispatch API route to timeout or return error
-      await page.route('**/gmail/v1/users/me/messages/send*', async route => {
-        await route.fulfill({
-          status: 408, // Request Timeout
-          contentType: 'application/json',
-          body: JSON.stringify({ error: 'Gateway timeout' })
-        });
-      });
-      await appPage.goto();
-      await dashboardPage.lockCurrentMonth();
-      // Month should revert to Unlocked, display connection error toast
-      await expect(page.locator('[data-testid="notification-toast"]')).toContainText('Lock failed: email report could not send');
-      await expect(dashboardPage.lockStatus).toContainText('Unlocked');
-    });
-
     test('29. Lock Isolation: Editing transaction in June 2026 does not affect locked May 2026 stats', async ({ page }) => {
       await preseedMockData(page, {
         mockSession: 'true',
@@ -609,6 +593,7 @@ test.describe('Tier 2: Boundary, Edge and Error Handling Cases', () => {
         activeProjectId: 'p1'
       });
       await appPage.goto();
+      await dashboardPage.ensureTransactionsView();
       // Double click lock button
       await dashboardPage.lockMonthBtn.dblclick();
       await expect(dashboardPage.lockStatus).toContainText('Locked');
@@ -666,8 +651,8 @@ test.describe('Tier 2: Boundary, Edge and Error Handling Cases', () => {
       });
       await appPage.goto();
       await dashboardPage.ensureBudgetsView();
-      // Ensure budget vs actual chart handles $0 budget ratio gracefully without Nan or crash
-      await expect(dashboardPage.budgetChart).toBeVisible();
+      // Ensure pie chart and budget rows handle $0 budget ratio gracefully without NaN or crash
+      await expect(dashboardPage.pieChart).toBeVisible();
     });
 
     test('34. Long Label Truncations: Wraps or clips extremely lengthy category titles safely', async ({ page }) => {

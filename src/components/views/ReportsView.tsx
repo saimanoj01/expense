@@ -1,4 +1,4 @@
-import { Printer, Download, Mail, ShieldCheck, Lock } from 'lucide-react';
+import { Printer, Download, ShieldCheck, Lock } from 'lucide-react';
 import { formatCurrency } from '../../utils/formatters';
 import { formatMonthLabel } from '../../utils/navigation';
 import { escapeCsvCell } from '../../utils/csv';
@@ -78,13 +78,6 @@ export function ReportsView({
     URL.revokeObjectURL(url);
   };
 
-  const handleSendEmail = () => {
-    // Retain mock Gmail log side-effect for automated test compatibility
-    const collaborators = project?.collaborators || [];
-    console.log('Gmail API Mock: Sending monthly report to', collaborators.join(', ') || 'user');
-    alert(`Report email mock sent to ${collaborators.length} collaborators!`);
-  };
-
   return (
     <div className="space-y-4" data-testid="reports-workspace">
       {/* Action Header Banner */}
@@ -121,13 +114,6 @@ export function ReportsView({
           >
             <Download className="w-4 h-4 text-emerald-500" /> Export CSV
           </button>
-          <button
-            onClick={handleSendEmail}
-            data-testid="email-report-btn"
-            className="px-4 py-2 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm active:scale-95"
-          >
-            <Mail className="w-4 h-4" /> Email Statement
-          </button>
         </div>
       </div>
 
@@ -135,7 +121,7 @@ export function ReportsView({
       <div 
         id="printable-statement" 
         className="p-8 rounded-2xl bg-card border border-border shadow-md print:border-none print:shadow-none print:p-0 space-y-6"
-        data-testid="monthly-report-modal"
+        data-testid="monthly-report-sheet"
       >
         {/* Statement Header */}
         <div className="flex items-start justify-between border-b border-border pb-6">

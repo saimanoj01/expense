@@ -20,25 +20,21 @@ export class ProjectPage {
   }
 
   async createProject(name: string) {
-    if (!await this.projectNameInput.isVisible() && await this.createProjectBtn.isVisible()) {
+    await this.projectNameInput.or(this.createProjectBtn).first().waitFor({ state: 'visible' });
+    if (!(await this.projectNameInput.isVisible()) && (await this.createProjectBtn.isVisible())) {
       await this.createProjectBtn.click();
     }
     await this.projectNameInput.fill(name);
     await this.projectSubmitBtn.click();
   }
 
-  async selectProject(id: string) {
-    const item = this.page.getByTestId(`project-item-${id}`);
-    const tagName = await item.evaluate(el => el.tagName.toLowerCase()).catch(() => '');
-    if (tagName === 'option') {
-      const select = this.page.getByTestId('project-selector');
-      await select.selectOption(id);
-    } else {
-      await item.click();
-    }
-  }
-
   async shareProject(email: string) {
+    if (!(await this.shareProjectBtn.isVisible())) {
+      await this.page.evaluate(() => {
+        window.location.hash = '#/settings';
+      });
+      await this.shareProjectBtn.waitFor({ state: 'visible' });
+    }
     await this.shareProjectBtn.click();
     await this.collaboratorEmailInput.fill(email);
     await this.collaboratorSubmitBtn.click();

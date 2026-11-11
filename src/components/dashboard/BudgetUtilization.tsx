@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Target, Plus, Save, ChevronDown, ChevronRight, FileText, Edit2, Trash2, Check, Sparkles, Calendar, Edit3, X } from 'lucide-react';
+import { Target, Plus, Save, ChevronDown, ChevronRight, FileText, Edit2, Trash2, Check, Sparkles, Calendar } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { BudgetNote } from '../../services/storage';
 import { bucketColor } from '../../theme/buckets';
@@ -40,9 +40,10 @@ interface BudgetUtilizationProps {
   categorySummary: CategorySummary[];
   piePaths?: { segments: PieSegment[]; totalPieExpense: number };
   budgetErrors?: Record<string, string>;
+  budgetDrafts?: Record<string, string>;
   handleBudgetInputChange?: (catName: string, val: string) => void;
   handleSaveBudgets?: () => void;
-  setShowAddCatModal?: (show: boolean) => void;
+  onOpenCategoryManager?: () => void;
   selectedMonth?: string;
   budgetNotes?: Record<string, BudgetNote>;
   spendingHistory?: Record<string, { lastMonth: number; avg3mo: number }>;
@@ -83,9 +84,10 @@ export function BudgetUtilization({
   categorySummary,
   piePaths,
   budgetErrors = {},
+  budgetDrafts = {},
   handleBudgetInputChange,
   handleSaveBudgets,
-  setShowAddCatModal,
+  onOpenCategoryManager,
   selectedMonth = '',
   budgetNotes = {},
   spendingHistory = {},
@@ -140,11 +142,6 @@ export function BudgetUtilization({
   const overallNote = isSpecificMonth ? budgetNotes[overallKey] : undefined;
 
   const [activeBucketTab, setActiveBucketTab] = useState<'flexible' | 'fixed' | 'non-monthly' | 'all'>('all');
-  const [showEditDrawer, setShowEditDrawer] = useState(false);
-
-  const budgetableSummary = useMemo(() => {
-    return categorySummary.filter(c => !c.isNonBudgetable);
-  }, [categorySummary]);
 
   const displayedCategories = useMemo(() => {
     if (activeBucketTab === 'all') return categorySummary;
@@ -174,24 +171,15 @@ export function BudgetUtilization({
         </div>
 
         <div className="flex items-center gap-2">
-          {setShowAddCatModal && (
+          {onOpenCategoryManager && (
             <button
-              onClick={() => setShowAddCatModal(true)}
+              onClick={onOpenCategoryManager}
               data-testid="open-add-category-btn"
               className="flex items-center gap-1 text-label font-medium px-3 py-1.5 rounded-[10px] bg-card hover:bg-surface2 border border-border transition-colors focus-visible:ring-2 ring-ring/40"
             >
               <Plus className="w-3.5 h-3.5" /> Category
             </button>
           )}
-
-          <button
-            onClick={() => setShowEditDrawer(prev => !prev)}
-            data-testid="toggle-budget-drawer-btn"
-            className="flex items-center gap-1 text-label font-medium px-3 py-1.5 rounded-[10px] bg-card hover:bg-surface2 border border-border transition-colors text-foreground focus-visible:ring-2 ring-ring/40"
-          >
-            <Edit3 className="w-3.5 h-3.5" />
-            <span>{showEditDrawer ? 'Close Targets' : 'Quick Targets'}</span>
-          </button>
 
           {handleSaveBudgets && (
             <button
@@ -346,7 +334,7 @@ export function BudgetUtilization({
       )}
 
       {/* Visual Charts Container for E2E and User Analytics */}
-      <div data-testid="charts-container" className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+      <div data-testid="charts-container" className="grid grid-cols-1 gap-4 mb-4">
         {/* SVG Pie Chart */}
         <div className="bg-card p-4 rounded-[14px] border border-border flex flex-col items-center">
           <span className="text-label font-medium text-muted-foreground mb-2">Category Breakdown (Pie)</span>
@@ -382,76 +370,9 @@ export function BudgetUtilization({
             </div>
           )}
         </div>
-
-        {/* SVG Budget vs Actual Chart */}
-        <div className="bg-card p-4 rounded-[14px] border border-border flex flex-col items-center">
-          <span className="text-label font-medium text-muted-foreground mb-2">Budget vs Actual</span>
-          <svg className="w-full h-40" data-testid="chart-svg-budget" viewBox="0 0 360 180">
-            <rect width="100%" height="100%" fill="rgba(255,255,255,0.02)" rx="8" />
-            <g className="budget-bar">
-              {budgetableSummary.map((eb, idx) => {
-                const x = 20 + idx * 45;
-                const maxVal = Math.max(eb.budget, eb.spent, 1);
-                const budgetHeight = eb.budget === 0 ? 10 : Math.max(Math.min((eb.budget / maxVal) * 90, 95), 10);
-                const catKey = eb.id === 'food' ? 'Food' : eb.name;
-                return (
-                  <rect 
-                    key={`b-${eb.id}`}
-                    className={`budget-bar-${catKey}`}
-                    x={x} 
-                    y={130 - budgetHeight} 
-                    width="12" 
-                    height={budgetHeight} 
-                    fill="rgba(255,255,255,0.2)" 
-                    rx="2"
-                  />
-                );
-              })}
-            </g>
-            <g className="actual-bar">
-              {budgetableSummary.map((eb, idx) => {
-                const x = 20 + idx * 45;
-                const maxVal = Math.max(eb.budget, eb.spent, 1);
-                const spentHeight = eb.spent === 0 ? 5 : Math.max(Math.min((eb.spent / maxVal) * 90, 95), 5);
-                const catKey = eb.id === 'food' ? 'Food' : eb.name;
-                return (
-                  <rect 
-                    key={`a-${eb.id}`}
-                    className={`actual-bar-${catKey}`}
-                    x={x + 14} 
-                    y={130 - spentHeight} 
-                    width="12" 
-                    height={spentHeight} 
-                    fill={eb.color} 
-                    rx="2"
-                  />
-                );
-              })}
-            </g>
-            {budgetableSummary.map((eb, idx) => {
-              const x = 20 + idx * 45;
-              return (
-                <text key={`t-${eb.id}`} x={x + 13} y="150" textAnchor="middle" fontSize="11" fill="currentColor">
-                  {eb.emoji}
-                </text>
-              );
-            })}
-            <line x1="10" y1="130" x2="350" y2="130" stroke="rgba(255,255,255,0.15)" strokeWidth="1" />
-          </svg>
-          <div className="flex flex-wrap items-center justify-center gap-4 mt-3 pt-2 border-t border-border/30 w-full text-label text-muted-foreground">
-            <div className="flex items-center gap-1.5">
-              <span className="w-3 h-3 rounded-sm bg-white/20 inline-block border border-border/50 shadow-sm" />
-              <span className="font-medium text-foreground">Budget Limit</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="w-3 h-3 rounded-sm bg-primary inline-block shadow-sm" />
-              <span className="font-medium text-foreground">Actual Spent</span>
-            </div>
-          </div>
-        </div>
       </div>
 
-      {/* Target Policy Label & Quick Drawer (C10 & U8) */}
+      {/* Target Policy Label */}
       <div className="flex items-center justify-between text-label text-muted-foreground px-1 mb-2">
         <span className="font-medium text-foreground/90">
           Monthly Budget Target <span className="text-label font-normal text-muted-foreground">(applies across months)</span>
@@ -460,62 +381,6 @@ export function BudgetUtilization({
           {displayedCategories.length} {displayedCategories.length === 1 ? 'category' : 'categories'}
         </span>
       </div>
-
-      {/* Quick Target Drawer (U8) */}
-      <AnimatePresence>
-        {showEditDrawer && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            className="mb-4 p-3.5 bg-card/60 border border-border/60 rounded-xl space-y-3 overflow-hidden"
-          >
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-foreground flex items-center gap-1.5">
-                <Edit3 className="w-3.5 h-3.5 text-primary" />
-                <span>Quick Target Editor</span>
-              </span>
-              <button
-                onClick={() => setShowEditDrawer(false)}
-                className="p-1 rounded hover:bg-card text-muted-foreground"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-48 overflow-y-auto pr-1">
-              {budgetableSummary.map(item => (
-                <div key={`drawer-${item.id}`} className="flex items-center justify-between gap-2 p-2 rounded-lg bg-card/40 border border-border/40 text-xs">
-                  <span className="truncate flex items-center gap-1.5 font-medium">
-                    <span>{item.emoji}</span>
-                    <span className="truncate">{item.name}</span>
-                  </span>
-                  <div className="flex items-center gap-1 bg-card border border-border/80 focus-within:ring-2 focus-within:ring-primary/40 rounded px-2 py-0.5 shrink-0">
-                    <span className="text-[10px] text-muted-foreground">$</span>
-                    <input
-                      disabled={isLockedMonth}
-                      type="number"
-                      min="0"
-                      value={item.budget === 0 ? '0' : (item.budget || '')}
-                      onChange={e => handleBudgetInputChange?.(item.id, e.target.value)}
-                      className="w-14 bg-transparent text-xs font-bold text-right outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded"
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-            {handleSaveBudgets && (
-              <div className="flex justify-end pt-1 border-t border-border/30">
-                <button
-                  onClick={handleSaveBudgets}
-                  className="px-3 py-1 text-xs font-bold bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 flex items-center gap-1"
-                >
-                  <Save className="w-3 h-3" /> Save All Targets
-                </button>
-              </div>
-            )}
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       {/* Categories List */}
       <div className="w-full space-y-3 flex-1 overflow-y-auto max-h-[800px]" data-testid="budget-grid-container">
@@ -541,7 +406,7 @@ export function BudgetUtilization({
                     </span>
                   </div>
                   <p className="text-label text-muted-foreground/80 italic">
-                    Tracked in cash flow waterfall — excluded from expense budget limits.
+                    Tracked in monthly cash flow — excluded from expense budget limits.
                   </p>
                 </div>
               );
@@ -641,7 +506,7 @@ export function BudgetUtilization({
                           type="number"
                           min="0"
                           data-testid={`budget-input-${catKey}`}
-                          value={item.budget === 0 ? '0' : (item.budget || '')}
+                          value={budgetDrafts[item.id] !== undefined ? budgetDrafts[item.id] : (item.budget === 0 ? '0' : (item.budget || ''))}
                           placeholder="0"
                           onChange={e => handleBudgetInputChange(item.id, e.target.value)}
                           className="w-16 bg-transparent text-row font-semibold text-foreground tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded text-right disabled:opacity-50 disabled:cursor-not-allowed"
@@ -828,7 +693,7 @@ export function BudgetUtilization({
                                           type="number"
                                           min="0"
                                           data-testid={`budget-input-${sub.id}`}
-                                          value={sub.budget === 0 ? '0' : (sub.budget || '')}
+                                          value={budgetDrafts[sub.id] !== undefined ? budgetDrafts[sub.id] : (sub.budget === 0 ? '0' : (sub.budget || ''))}
                                           placeholder="0"
                                           onChange={e => handleBudgetInputChange(sub.id, e.target.value)}
                                           className="w-14 bg-transparent text-xs text-right font-bold tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded text-foreground disabled:opacity-50 disabled:cursor-not-allowed"
@@ -839,6 +704,12 @@ export function BudgetUtilization({
                                     )}
                                   </div>
                                 </div>
+
+                                {budgetErrors[sub.id] && (
+                                  <p className={`text-[11px] text-destructive font-semibold budget-error-${sub.id}`} data-testid="budget-error">
+                                    {budgetErrors[sub.id]}
+                                  </p>
+                                )}
 
                                 {sub.budget > 0 && (
                                   <div className="space-y-0.5">

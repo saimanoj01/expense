@@ -8,8 +8,7 @@ export type PrimaryView =
   | 'budgets'        // Secondary Budgets View
   | 'trends'         // Secondary Trends View
   | 'reports'        // Secondary Reports View
-  | 'settings'       // Secondary Settings View
-  | 'projects';      // Project selector / Auth
+  | 'settings';      // Secondary Settings View
 
 export interface AppRoute {
   view: PrimaryView;

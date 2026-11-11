@@ -217,47 +217,6 @@ test.describe('Tier 11: The Monthly Financial Story & Cash Flow Analytics', () =
     await expect(fixedMoM).toContainText('↑ 20% vs Jun');
   });
 
-  test('5. Accessible data table for Cash Flow Waterfall contains all allocation steps', async ({ page }) => {
-    const monthSelect = page.getByTestId('month-selector');
-    await monthSelect.selectOption('2026-07');
-    await page.evaluate(() => {
-      window.location.hash = '#/trends?month=2026-07';
-    });
-
-    const waterfallTable = page.locator('table[aria-label="Cash Flow Waterfall Table"]');
-    await expect(waterfallTable).toBeVisible();
-
-    // Check row values
-    await expect(waterfallTable.locator('tr:has-text("Inflow")')).toContainText('$12,000.00');
-    await expect(waterfallTable.locator('tr:has-text("Fixed")')).toContainText('$2,400.00');
-    await expect(waterfallTable.locator('tr:has-text("Variable")')).toContainText('$1,200.00');
-    await expect(waterfallTable.locator('tr:has-text("Non-Monthly")')).toContainText('$600.00');
-    await expect(waterfallTable.locator('tr:has-text("Net Saved")')).toContainText('$7,800.00');
-  });
-
-  test('6. 50/30/20 guideline meter displays compliance status', async ({ page }) => {
-    const monthSelect = page.getByTestId('month-selector');
-    await monthSelect.selectOption('2026-07');
-    await page.evaluate(() => {
-      window.location.hash = '#/trends?month=2026-07';
-    });
-
-    const meter = page.getByTestId('guideline-meter-50-30-20');
-    await expect(meter).toBeVisible();
-
-    // Needs: ($2400 + $600)/$12000 = 25.0% (<= 50% target met)
-    await expect(meter).toContainText('25.0%');
-    await expect(meter).toContainText('Needs');
-
-    // Wants: $1200/$12000 = 10.0% (<= 30% target met)
-    await expect(meter).toContainText('10.0%');
-    await expect(meter).toContainText('Wants');
-
-    // Savings: $7800/$12000 = 65.0% (>= 20% target met)
-    await expect(meter).toContainText('65.0%');
-    await expect(meter).toContainText('Savings');
-  });
-
   test('7. Inline bucket switcher pills allow toggling spending bucket', async ({ page }) => {
     const monthSelect = page.getByTestId('month-selector');
     await monthSelect.selectOption('2026-07');
@@ -317,6 +276,9 @@ test.describe('Tier 11: The Monthly Financial Story & Cash Flow Analytics', () =
   });
 
   test('10. Category Manager modal allows selecting default spending bucket', async ({ page }) => {
+    await page.evaluate(() => {
+      window.location.hash = '#/budgets';
+    });
     // Open Category Manager Modal
     await page.getByTestId('open-add-category-btn').click();
     const modal = page.getByTestId('category-manager-modal');
@@ -332,20 +294,16 @@ test.describe('Tier 11: The Monthly Financial Story & Cash Flow Analytics', () =
     await expect(bucketSelect).toHaveValue('fixed');
   });
 
-  test('11. Printable Monthly Financial Report modal opens and provides print and CSV download options', async ({ page }) => {
-    const reportBtn = page.getByTestId('story-print-report-btn');
-    await expect(reportBtn).toBeVisible();
-    await reportBtn.click();
+  test('11. Dedicated Monthly Financial Reports view renders statement and provides print and CSV export options', async ({ page }) => {
+    await page.evaluate(() => {
+      window.location.hash = '#/reports?month=2026-07';
+    });
 
-    const reportModal = page.getByTestId('monthly-report-modal');
-    await expect(reportModal).toBeVisible();
-    await expect(reportModal.getByTestId('print-report-btn')).toBeVisible();
-    await expect(reportModal.getByTestId('download-report-csv-btn')).toBeVisible();
-    await expect(reportModal).toContainText('Executive Monthly Financial Report');
-
-    // Close dialog
-    await reportModal.getByTestId('close-report-btn').click();
-    await expect(reportModal).not.toBeVisible();
+    const reportsWorkspace = page.getByTestId('reports-workspace');
+    await expect(reportsWorkspace).toBeVisible();
+    await expect(page.getByTestId('print-report-btn')).toBeVisible();
+    await expect(page.getByTestId('download-csv-btn')).toBeVisible();
+    await expect(page.getByTestId('monthly-report-sheet')).toContainText('Nebula Financial Statement');
   });
 
   test('12. Transfer transactions are strictly excluded from income, expenses, and net savings', async ({ page }) => {
@@ -367,11 +325,10 @@ test.describe('Tier 11: The Monthly Financial Story & Cash Flow Analytics', () =
     await expect(page.getByTestId('kpi-non-monthly')).toContainText('$600.00');
     await expect(page.getByTestId('kpi-savings-amount')).toContainText('$7,800.00');
 
-    // Cash flow waterfall is visible on Trends and excludes transfers
+    // Trend chart is visible on Trends
     await page.evaluate(() => {
       window.location.hash = '#/trends?month=2026-07';
     });
-    const waterfall = page.getByTestId('cash-flow-waterfall');
-    await expect(waterfall).toBeVisible();
+    await expect(page.getByTestId('chart-svg-trend')).toBeVisible();
   });
 });

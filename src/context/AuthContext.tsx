@@ -295,17 +295,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const login = async () => {
-    let clientId = getClientId();
+    const clientId = getClientId();
     if (!clientId) {
-      const input = window.prompt("To sign in with your real Google account, please enter your Google OAuth Client ID (or click Cancel to use Demo mode):");
-      if (input && input.trim()) {
-        clientId = input.trim();
-        localStorage.setItem('custom_google_client_id', clientId);
-      } else {
-        console.warn("No Google Client ID provided. Falling back to Mock Login.");
-        await loginAsMock();
-        return;
-      }
+      console.warn("No Google Client ID provided. Falling back to Mock Login.");
+      await loginAsMock();
+      return;
     }
     if (await checkIsTrulyOffline()) {
       setAuthErrorToast('You are currently offline');

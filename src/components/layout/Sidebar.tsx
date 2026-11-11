@@ -9,14 +9,11 @@ import {
   Settings,
   ChevronLeft,
   ChevronRight,
-  ChevronDown,
   Plus,
   Search,
   Sun,
   Moon,
-  Sparkles,
   LogOut,
-  FolderKanban,
 } from 'lucide-react';
 import { useNavigation } from '../../hooks/useNavigation';
 import { getCurrentLocalMonth } from '../../utils/navigation';
@@ -31,16 +28,9 @@ interface UserProfile {
 export interface SidebarProps {
   user?: UserProfile | null;
   isMockMode?: boolean;
-  projects?: Project[];
   activeProject: Project | null;
   theme?: 'light' | 'dark';
-  isLoading?: boolean;
   toggleTheme?: () => void;
-  selectProject?: (id: string) => void;
-  setShowCreateModal?: (show: boolean) => void;
-  onManageProjects?: () => void;
-  onOpenGeminiKeyModal?: () => void;
-  onLoadSampleData?: () => void;
   onOpenCommandPalette?: () => void;
   logout?: () => void;
   onOpenAddTxn: () => void;
@@ -50,15 +40,9 @@ export interface SidebarProps {
 export const Sidebar: React.FC<SidebarProps> = ({
   user,
   isMockMode = false,
-  projects = [],
   activeProject,
   theme = 'dark',
-  isLoading = false,
   toggleTheme,
-  selectProject,
-  setShowCreateModal,
-  onManageProjects,
-  onOpenGeminiKeyModal,
   onOpenCommandPalette,
   logout,
   onOpenAddTxn,
@@ -133,92 +117,34 @@ export const Sidebar: React.FC<SidebarProps> = ({
       transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
       className={`hidden md:flex flex-col shrink-0 border-r border-border bg-background z-30 select-none ${className}`}
     >
-      {/* Top Workspace Switcher + Quick Add '+' + Collapse Toggle */}
+      {/* Top Workspace Header + Quick Add '+' + Collapse Toggle */}
       <div className="h-14 flex items-center justify-between gap-1.5 px-3 border-b border-border">
         <div
           className={`flex items-center gap-1.5 min-w-0 flex-1 ${
             collapsed ? 'hidden' : ''
           }`}
         >
-          {projects.length > 0 ? (
-            <div className="relative flex items-center min-w-0 flex-1">
-              <select
-                disabled={isLoading}
-                data-testid="project-selector"
-                value={activeProject?.id || ''}
-                onChange={e => {
-                  const val = e.target.value;
-                  if (val === 'new') {
-                    setShowCreateModal?.(true);
-                    e.target.value = activeProject?.id || '';
-                  } else if (val === 'manage') {
-                    onManageProjects?.();
-                    e.target.value = activeProject?.id || '';
-                  } else {
-                    selectProject?.(val);
-                  }
-                }}
-                aria-label="Select Workspace"
-                className="w-full appearance-none bg-transparent hover:bg-surface2 rounded-[10px] pl-2 pr-6 py-1.5 text-body font-semibold text-foreground truncate cursor-pointer focus-visible:ring-2 ring-ring/40 transition-colors"
-              >
-                {projects.map(p => (
-                  <option
-                    key={p.id}
-                    value={p.id}
-                    data-testid={`project-item-${p.id}`}
-                    className="bg-popover text-popover-foreground"
-                  >
-                    {p.name}
-                  </option>
-                ))}
-                <option
-                  value="new"
-                  data-testid="create-project-option"
-                  className="bg-popover text-popover-foreground"
-                >
-                  + New Project
-                </option>
-                <option
-                  value="manage"
-                  data-testid="manage-projects-btn"
-                  className="bg-popover text-popover-foreground"
-                >
-                  Manage Projects...
-                </option>
-              </select>
-              <ChevronDown className="w-3.5 h-3.5 text-muted-foreground pointer-events-none absolute right-1.5" />
-            </div>
-          ) : (
-            <span className="text-body font-semibold text-foreground truncate px-2">
-              {activeProject?.name || 'Workspace'}
-            </span>
-          )}
+          <span
+            data-testid="project-selector"
+            className="text-body font-semibold text-foreground truncate px-2"
+          >
+            {activeProject?.name || 'Workspace'}
+          </span>
         </div>
 
         <div className="flex items-center gap-1 shrink-0">
-          {onManageProjects && !collapsed && (
+          {activeProject && (
             <button
               type="button"
-              onClick={onManageProjects}
-              data-testid="manage-projects-icon-btn"
-              className="w-7 h-7 rounded-[8px] inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-surface2 transition-colors focus-visible:ring-2 ring-ring/40"
-              title="Manage Projects"
-              aria-label="Manage & Delete Projects"
+              data-testid="sidebar-add-txn-btn"
+              onClick={onOpenAddTxn}
+              className="w-8 h-8 rounded-[10px] flex items-center justify-center bg-surface2 hover:bg-secondary text-foreground border border-border transition-colors focus-visible:ring-2 ring-ring/40"
+              title="Add Transaction (N)"
+              aria-label="Add Transaction"
             >
-              <FolderKanban className="w-3.5 h-3.5" />
+              <Plus className="w-4 h-4" />
             </button>
           )}
-
-          <button
-            type="button"
-            data-testid="sidebar-add-txn-btn"
-            onClick={onOpenAddTxn}
-            className="w-8 h-8 rounded-[10px] flex items-center justify-center bg-surface2 hover:bg-secondary text-foreground border border-border transition-colors focus-visible:ring-2 ring-ring/40"
-            title="Add Transaction (N)"
-            aria-label="Add Transaction"
-          >
-            <Plus className="w-4 h-4" />
-          </button>
 
           <button
             type="button"
@@ -237,31 +163,32 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Primary Navigation Items (36px rows) */}
       <nav className="flex-1 px-2.5 py-3 space-y-1 overflow-y-auto custom-scrollbar">
-        {navItems.map(item => {
-          const Icon = item.icon;
-          return (
-            <button
-              key={item.id}
-              type="button"
-              data-testid={`nav-item-${item.id}`}
-              onClick={() => navigate(item.route)}
-              className={`w-full h-9 flex items-center gap-3 px-2.5 rounded-[10px] text-body font-medium transition-colors focus-visible:ring-2 ring-ring/40 ${
-                item.isActive
-                  ? 'bg-surface2 text-foreground'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-surface2/60'
-              } ${collapsed ? 'justify-center px-0' : ''}`}
-              title={collapsed ? item.label : undefined}
-            >
-              <Icon className="w-4 h-4 shrink-0" />
-              {!collapsed && <span className="truncate">{item.label}</span>}
-            </button>
-          );
-        })}
+        {activeProject &&
+          navItems.map(item => {
+            const Icon = item.icon;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                data-testid={`nav-item-${item.id}`}
+                onClick={() => navigate(item.route)}
+                className={`w-full h-9 flex items-center gap-3 px-2.5 rounded-[10px] text-body font-medium transition-colors focus-visible:ring-2 ring-ring/40 ${
+                  item.isActive
+                    ? 'bg-surface2 text-foreground'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-surface2/60'
+                } ${collapsed ? 'justify-center px-0' : ''}`}
+                title={collapsed ? item.label : undefined}
+              >
+                <Icon className="w-4 h-4 shrink-0" />
+                {!collapsed && <span className="truncate">{item.label}</span>}
+              </button>
+            );
+          })}
       </nav>
 
-      {/* Bottom Cluster: Search ⌘K, Settings, Theme, AI Key, User & Logout */}
+      {/* Bottom Cluster: Search ⌘K, Settings, Theme, User & Logout */}
       <div className="px-2.5 py-2.5 border-t border-border space-y-1">
-        {onOpenCommandPalette && (
+        {activeProject && onOpenCommandPalette && (
           <button
             type="button"
             data-testid="command-palette-trigger"
@@ -283,20 +210,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </button>
         )}
 
-        <button
-          type="button"
-          data-testid="nav-item-settings"
-          onClick={() => navigate(`#/settings?month=${activeMonth}`)}
-          className={`w-full h-9 flex items-center gap-3 px-2.5 rounded-[10px] text-body font-medium transition-colors focus-visible:ring-2 ring-ring/40 ${
-            currentRoute.view === 'settings'
-              ? 'bg-surface2 text-foreground'
-              : 'text-muted-foreground hover:text-foreground hover:bg-surface2/60'
-          } ${collapsed ? 'justify-center px-0' : ''}`}
-          title={collapsed ? 'Settings' : undefined}
-        >
-          <Settings className="w-4 h-4 shrink-0" />
-          {!collapsed && <span className="truncate">Settings</span>}
-        </button>
+        {activeProject && (
+          <button
+            type="button"
+            data-testid="nav-item-settings"
+            onClick={() => navigate(`#/settings?month=${activeMonth}`)}
+            className={`w-full h-9 flex items-center gap-3 px-2.5 rounded-[10px] text-body font-medium transition-colors focus-visible:ring-2 ring-ring/40 ${
+              currentRoute.view === 'settings'
+                ? 'bg-surface2 text-foreground'
+                : 'text-muted-foreground hover:text-foreground hover:bg-surface2/60'
+            } ${collapsed ? 'justify-center px-0' : ''}`}
+            title={collapsed ? 'Settings' : undefined}
+          >
+            <Settings className="w-4 h-4 shrink-0" />
+            {!collapsed && <span className="truncate">Settings</span>}
+          </button>
+        )}
 
         <div
           className={`pt-2 mt-1 border-t border-border/60 flex items-center ${
@@ -346,19 +275,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 ) : (
                   <Moon className="w-4 h-4" />
                 )}
-              </button>
-            )}
-
-            {onOpenGeminiKeyModal && (
-              <button
-                type="button"
-                onClick={onOpenGeminiKeyModal}
-                data-testid="ai-settings-btn"
-                className="w-8 h-8 rounded-[10px] flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-surface2 transition-colors focus-visible:ring-2 ring-ring/40"
-                title="Gemini AI Settings"
-                aria-label="Gemini AI Settings"
-              >
-                <Sparkles className="w-4 h-4" />
               </button>
             )}
 

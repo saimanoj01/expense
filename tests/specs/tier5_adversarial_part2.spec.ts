@@ -69,7 +69,7 @@ test.describe('Tier 5 Part 2: Adversarial Coverage Hardening Audit', () => {
         locks: { 'proj-csv': [] }
       });
 
-      await page.goto('/dashboard');
+      await page.goto('/#/transactions');
       await expect(page.getByTestId('import-csv-trigger-btn')).toBeVisible();
       await page.getByTestId('import-csv-trigger-btn').click();
 
@@ -99,7 +99,7 @@ test.describe('Tier 5 Part 2: Adversarial Coverage Hardening Audit', () => {
         locks: { 'proj-dup': [] }
       });
 
-      await page.goto('/dashboard');
+      await page.goto('/#/transactions');
       await page.getByTestId('import-csv-trigger-btn').click();
 
       // Two identical rows in the same CSV upload
@@ -130,7 +130,7 @@ test.describe('Tier 5 Part 2: Adversarial Coverage Hardening Audit', () => {
         locks: { 'proj-bom': [] }
       });
 
-      await page.goto('/dashboard');
+      await page.goto('/#/transactions');
       await page.getByTestId('import-csv-trigger-btn').click();
 
       // CSV headers wrapped in quotes ("Date") fail regex /^date$/i
@@ -174,7 +174,7 @@ test.describe('Tier 5 Part 2: Adversarial Coverage Hardening Audit', () => {
         locks: { 'proj-hash': [] }
       });
 
-      await page.goto('/dashboard');
+      await page.goto('/#/transactions');
       await page.getByTestId('import-csv-trigger-btn').click();
 
       // Lowercase description: "whole foods" vs existing "Whole Foods"
@@ -276,25 +276,6 @@ test.describe('Tier 5 Part 2: Adversarial Coverage Hardening Audit', () => {
   // Focus Area 4: SVG Chart Zero and Extreme Numerical Values
   // =========================================================================
   test.describe('4. SVG Chart Zero & Extreme Numerical Behaviors', () => {
-    test('4.1 Zero Budget and Zero Spent render placeholder bars of height 10 and 5', async ({ page }) => {
-      await preseedMockData(page, {
-        mockSession: 'true',
-        projects: [{ id: 'proj-zero', name: 'Zero Chart Project' }],
-        activeProjectId: 'proj-zero',
-        transactions: { 'proj-zero': [] },
-        budgets: { 'proj-zero': [{ category: 'food', amount: 0 }] },
-        locks: { 'proj-zero': [] }
-      });
-
-      await page.goto('/#/budgets');
-
-      const budgetBar = page.locator('.budget-bar-Food');
-      const actualBar = page.locator('.actual-bar-Food');
-
-      await expect(budgetBar).toHaveAttribute('height', '10');
-      await expect(actualBar).toHaveAttribute('height', '5');
-    });
-
     test('4.2 Zero total expenses displays "No data available" in SVG pie chart', async ({ page }) => {
       await preseedMockData(page, {
         mockSession: 'true',

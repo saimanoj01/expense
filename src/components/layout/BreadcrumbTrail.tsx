@@ -9,16 +9,13 @@ interface BreadcrumbTrailProps {
   className?: string;
 }
 
-function formatEyebrow(monthStr?: string, smoothed = false): string {
-  if (!monthStr || monthStr === 'all') return smoothed ? 'All Time · Smoothed' : 'All Time';
+function formatEyebrow(monthStr?: string): string {
+  if (!monthStr || monthStr === 'all') return 'All Time';
   if (/^\d{4}-\d{2}$/.test(monthStr)) {
     const [yStr, mStr] = monthStr.split('-');
     const y = parseInt(yStr, 10);
     const m = parseInt(mStr, 10);
     const label = formatMonthLabel(monthStr);
-    if (smoothed) {
-      return `${label} · Smoothed`;
-    }
     const now = new Date();
     const currKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     if (monthStr === currKey) {
@@ -28,11 +25,11 @@ function formatEyebrow(monthStr?: string, smoothed = false): string {
     }
     return label;
   }
-  return smoothed ? `${monthStr} · Smoothed` : monthStr;
+  return monthStr;
 }
 
 export const BreadcrumbTrail: React.FC<BreadcrumbTrailProps> = ({ className = '' }) => {
-  const { currentRoute, breadcrumbs, navigate, goBack, canGoBack, smoothNonMonthly } = useNavigation();
+  const { currentRoute, breadcrumbs, navigate, goBack, canGoBack } = useNavigation();
 
   return (
     <nav
@@ -90,7 +87,7 @@ export const BreadcrumbTrail: React.FC<BreadcrumbTrailProps> = ({ className = ''
                     aria-current="page"
                     className="text-eyebrow uppercase text-muted-foreground truncate"
                   >
-                    {formatEyebrow(currentRoute.month, smoothNonMonthly)}
+                    {formatEyebrow(currentRoute.month)}
                   </motion.span>
                 ) : isLast ? (
                   <motion.span

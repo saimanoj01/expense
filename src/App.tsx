@@ -45,7 +45,6 @@ interface MainRouterProps {
   txnHooks: ReturnType<typeof useTransactions>;
   budgetHooks: ReturnType<typeof useBudgets>;
   csvHooks: ReturnType<typeof useCsvImport>;
-  locks: MonthlyLock[];
   isCurrentMonthLocked: boolean;
   selectedTxnIds: Set<string>;
   setSelectedTxnIds: React.Dispatch<React.SetStateAction<Set<string>>>;
@@ -57,14 +56,8 @@ interface MainRouterProps {
   handleLockCurrentMonth: () => Promise<void>;
   handleUnlockCurrentMonth: () => Promise<void>;
   setShowCategoryManagerModal: (v: boolean) => void;
-  setShowGeminiKeyModal: (v: boolean) => void;
-  setShowMonthlyReportModal: (v: boolean) => void;
   setShowBulkDeleteConfirmModal: (v: boolean) => void;
   setShowShareModal: (v: boolean) => void;
-  projects?: Project[];
-  selectProject?: (projectId: string | null) => void;
-  setShowCreateModal?: (v: boolean) => void;
-  setShowManageProjectsModal?: (v: boolean) => void;
   theme?: 'light' | 'dark';
   setTheme?: React.Dispatch<React.SetStateAction<'light' | 'dark'>>;
   onLoadSampleData?: () => void;
@@ -86,14 +79,8 @@ function MainRouter({
   handleLockCurrentMonth,
   handleUnlockCurrentMonth,
   setShowCategoryManagerModal,
-  setShowGeminiKeyModal,
-  setShowMonthlyReportModal,
   setShowBulkDeleteConfirmModal,
   setShowShareModal,
-  projects,
-  selectProject,
-  setShowCreateModal,
-  setShowManageProjectsModal,
   theme,
   setTheme,
   onLoadSampleData
@@ -106,12 +93,6 @@ function MainRouter({
       selectedMonth={currentRoute.month || txnHooks.selectedMonth}
       availableMonths={txnHooks.availableMonths}
       onSelectMonth={txnHooks.setSelectedMonth}
-      onOpenReport={() => setShowMonthlyReportModal(true)}
-      onOpenShare={() => setShowShareModal(true)}
-      onOpenCsvWizard={() => csvHooks.setShowCsvWizard(true)}
-      onCsvFileUpload={csvHooks.handleCsvFileUpload}
-      onOpenCategoryManager={() => setShowCategoryManagerModal(true)}
-      onOpenAddTxn={handleOpenAddTxn}
       isLockedMonth={isCurrentMonthLocked}
       onLockMonth={handleLockCurrentMonth}
       onUnlockMonth={handleUnlockCurrentMonth}
@@ -165,9 +146,7 @@ function MainRouter({
           isLockedMonth={isCurrentMonthLocked}
           selectedTxnIds={selectedTxnIds}
           duplicateTxnIds={txnHooks.duplicateTxnIds}
-          availableMonths={txnHooks.availableMonths}
           availableTags={txnHooks.availableTags}
-          onSelectMonth={txnHooks.setSelectedMonth}
           onSelectBucket={txnHooks.setSelectedBucket}
           onSelectTagFilter={txnHooks.setSelectedTagFilter}
           onSetSortBy={txnHooks.setSortBy}
@@ -175,10 +154,6 @@ function MainRouter({
           onEditTxn={handleEditTxn}
           onDeleteTxn={(id) => txnHooks.handleDeleteTxn(id, () => setSelectedTxnIds(prev => { const n = new Set(prev); n.delete(id); return n; }))}
           onCsvFileUpload={csvHooks.handleCsvFileUpload}
-          onLockMonth={handleLockCurrentMonth}
-          onUnlockMonth={handleUnlockCurrentMonth}
-          onOpenShareModal={() => setShowShareModal(true)}
-          onOpenReportModal={() => setShowMonthlyReportModal(true)}
           onToggleSelectTxn={toggleSelectTxn}
           onToggleSelectAllTxns={toggleSelectAllTxns}
           onClearSelectedTxns={clearSelectedTxns}
@@ -219,9 +194,10 @@ function MainRouter({
           categorySummary={budgetHooks.categorySummary}
           piePaths={budgetHooks.piePaths}
           budgetErrors={budgetHooks.budgetErrors}
+          budgetDrafts={budgetHooks.budgetDrafts}
           onBudgetInputChange={budgetHooks.handleBudgetInputChange}
           onSaveBudgets={budgetHooks.handleSaveBudgets}
-          onOpenAddCategoryModal={() => setShowCategoryManagerModal(true)}
+          onOpenCategoryManager={() => setShowCategoryManagerModal(true)}
           budgetNotes={budgetHooks.budgetNotes}
           spendingHistory={budgetHooks.spendingHistory}
           onSaveBudgetNote={budgetHooks.handleSaveBudgetNote}
@@ -241,13 +217,10 @@ function MainRouter({
         <TrendsView
           month={currentRoute.month || txnHooks.selectedMonth}
           trendDetails={txnHooks.trendDetails}
-          totalBudget={budgetHooks.totalBudget}
-          budgets={budgetHooks.budgets}
           categories={budgetHooks.categories}
           transactions={txnHooks.transactions}
           availableMonths={txnHooks.availableMonths}
           onSelectMonth={txnHooks.setSelectedMonth}
-          onRequestGeminiKey={() => setShowGeminiKeyModal(true)}
         />
       </Suspense>
     );
@@ -279,16 +252,14 @@ function MainRouter({
     screen = (
       <Suspense fallback={<div className="h-64 flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>}>
         <SettingsView
-          projects={projects || []}
           activeProject={activeProject}
           categories={budgetHooks.categories}
-          onSelectProject={(p) => selectProject && selectProject(p.id)}
-          onCreateProjectClick={() => setShowCreateModal && setShowCreateModal(true)}
-          onManageProjectsClick={() => setShowManageProjectsModal && setShowManageProjectsModal(true)}
           onShareProjectClick={() => setShowShareModal(true)}
           onOpenCategoryManager={() => setShowCategoryManagerModal(true)}
-          onOpenCsvWizard={() => csvHooks.setShowCsvWizard(true)}
-          onOpenGeminiKeyModal={() => setShowGeminiKeyModal(true)}
+          onOpenCsvWizard={() => {
+            csvHooks.setCsvStep(1);
+            csvHooks.setShowCsvWizard(true);
+          }}
           onLoadSampleData={onLoadSampleData}
           theme={theme || 'dark'}
           onToggleTheme={() => setTheme && setTheme(prev => prev === 'dark' ? 'light' : 'dark')}
@@ -348,7 +319,6 @@ function MainRouter({
           budgets={budgetHooks.budgets}
           selectedBucket={txnHooks.selectedBucket}
           onSelectBucket={txnHooks.setSelectedBucket}
-          onOpenReport={() => setShowMonthlyReportModal(true)}
           onOpenAddTxn={handleOpenAddTxn}
           isCanonicalOverview={true}
         />
@@ -393,7 +363,7 @@ function AppInner() {
     setShowSessionExpiredModal,
     authErrorToast
   } = useAuth();
-  const { projects, activeProject, isLoading, isProjectsLoaded, storageAdapter, selectProject, createNewProject, deleteProject, loadProjects } = useApp();
+  const { projects, activeProject, isLoading, isProjectsLoaded, storageAdapter, selectProject, createNewProject, loadProjects } = useApp();
 
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
     const saved = localStorage.getItem('expense_theme');
@@ -421,9 +391,7 @@ function AppInner() {
 
   // State
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [showManageProjectsModal, setShowManageProjectsModal] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
-  const [showGeminiKeyModal, setShowGeminiKeyModal] = useState(false);
   const [locks, setLocks] = useState<MonthlyLock[]>([]);
 
   // Modals
@@ -431,14 +399,16 @@ function AppInner() {
   const [editingTxnId, setEditingTxnId] = useState<string | null>(null);
   const [editingTxnData, setEditingTxnData] = useState<Partial<Transaction>>({});
   
-  const [showAddCatModal, setShowAddCatModal] = useState(false);
   const [showCategoryManagerModal, setShowCategoryManagerModal] = useState(false);
   const [showDuplicateWarningModal, setShowDuplicateWarningModal] = useState(false);
-  const [showMonthlyReportModal, setShowMonthlyReportModal] = useState(false);
   const [showCommandPalette, setShowCommandPalette] = useState(false);
 
-  // Global ⌘K / Ctrl+K keyboard shortcut
+  // Global ⌘K / Ctrl+K keyboard shortcut (only when an active workspace exists)
   useEffect(() => {
+    if (!isAuthenticated || !activeProject) {
+      setShowCommandPalette(false);
+      return;
+    }
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
@@ -447,11 +417,15 @@ function AppInner() {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
+  }, [isAuthenticated, activeProject]);
 
   const hasTriggeredOnboarding = useRef(false);
   useEffect(() => {
-    if (isAuthenticated && isProjectsLoaded && !isLoading) {
+    if (!isAuthenticated) {
+      hasTriggeredOnboarding.current = false;
+      return;
+    }
+    if (isProjectsLoaded && !isLoading) {
       if (projects.length === 0 && !hasTriggeredOnboarding.current) {
         hasTriggeredOnboarding.current = true;
         setShowCreateModal(true);
@@ -585,33 +559,16 @@ function AppInner() {
     setSelectedTxnIds(new Set());
   };
 
+  const lockActionCooldownRef = useRef<number>(0);
+
   const handleLockCurrentMonth = async () => {
     if (!activeProject || !storageAdapter) return;
+    const now = Date.now();
+    if (now - lockActionCooldownRef.current < 300) return;
+    lockActionCooldownRef.current = now;
     try {
-      const collabs = (activeProject.collaborators || []).join(', ');
-      const formattedTotal = txnHooks.totalExpenses.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-      console.log(`Gmail API Mock: Sending Monthly Lock Report for ${txnHooks.selectedMonth} to ${collabs || 'owner'} <html><body><h1>Monthly Report: ${txnHooks.selectedMonth}</h1><p>Total Expenses: $${formattedTotal}</p></body></html>`);
-
-      // Attempt Gmail API dispatch (interceptable in tests for timeout/error rollback)
-      try {
-        const gmailRes = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ raw: btoa(`To: ${collabs}\nSubject: Monthly Lock Report\n\nTotal Expenses: $${formattedTotal}`) })
-        }).catch(() => null);
-
-        if (gmailRes && (gmailRes.status === 408 || gmailRes.status === 504)) {
-          throw new Error('Lock failed: email report could not send');
-        }
-      } catch (e: unknown) {
-        if (e instanceof Error && e.message.includes('Lock failed')) {
-          showToast('Lock failed: email report could not send', 'error');
-          return;
-        }
-      }
-
       await storageAdapter.saveLock(activeProject.id, { month: txnHooks.selectedMonth, locked: true, lockedAt: new Date().toISOString() });
-      showToast(`Month ${txnHooks.selectedMonth} locked. Report generated.`);
+      showToast(`Month ${txnHooks.selectedMonth} locked.`);
       refreshProjectData();
     } catch (err: unknown) {
       showToast(err instanceof Error ? err.message : 'Failed to lock month', 'error');
@@ -620,6 +577,9 @@ function AppInner() {
 
   const handleUnlockCurrentMonth = async () => {
     if (!activeProject || !storageAdapter) return;
+    const now = Date.now();
+    if (now - lockActionCooldownRef.current < 300) return;
+    lockActionCooldownRef.current = now;
     try {
       await storageAdapter.saveLock(activeProject.id, { month: txnHooks.selectedMonth, locked: false });
       showToast(`Month ${txnHooks.selectedMonth} unlocked.`);
@@ -659,36 +619,21 @@ function AppInner() {
       <Navbar
         user={user}
         isMockMode={isMockMode}
-        projects={projects}
         activeProject={activeProject}
         theme={theme}
-        isLoading={isLoading}
         toggleTheme={() => setTheme(prev => prev === 'dark' ? 'light' : 'dark')}
-        selectProject={selectProject}
-        setShowCreateModal={setShowCreateModal}
-        onManageProjects={() => setShowManageProjectsModal(true)}
-        onOpenGeminiKeyModal={() => setShowGeminiKeyModal(true)}
-        onLoadSampleData={isMockMode ? handleLoadSampleData : undefined}
-        onOpenCommandPalette={() => setShowCommandPalette(true)}
-        logout={logout}
+        onOpenCommandPalette={isAuthenticated && activeProject ? () => setShowCommandPalette(true) : undefined}
       />
 
       <div className="flex-1 flex overflow-hidden">
         {isAuthenticated && (
           <Sidebar
             activeProject={activeProject}
-            projects={projects}
             user={user}
             isMockMode={isMockMode}
-            isLoading={isLoading}
             theme={theme}
             toggleTheme={() => setTheme(prev => prev === 'dark' ? 'light' : 'dark')}
-            selectProject={selectProject}
-            setShowCreateModal={setShowCreateModal}
-            onManageProjects={() => setShowManageProjectsModal(true)}
-            onOpenGeminiKeyModal={() => setShowGeminiKeyModal(true)}
-            onLoadSampleData={isMockMode ? handleLoadSampleData : undefined}
-            onOpenCommandPalette={() => setShowCommandPalette(true)}
+            onOpenCommandPalette={activeProject ? () => setShowCommandPalette(true) : undefined}
             logout={logout}
             onOpenAddTxn={handleOpenAddTxn}
           />
@@ -723,7 +668,6 @@ function AppInner() {
             txnHooks={txnHooks}
             budgetHooks={budgetHooks}
             csvHooks={csvHooks}
-            locks={locks}
             isCurrentMonthLocked={isCurrentMonthLocked}
             selectedTxnIds={selectedTxnIds}
             setSelectedTxnIds={setSelectedTxnIds}
@@ -735,21 +679,30 @@ function AppInner() {
             handleLockCurrentMonth={handleLockCurrentMonth}
             handleUnlockCurrentMonth={handleUnlockCurrentMonth}
             setShowCategoryManagerModal={setShowCategoryManagerModal}
-            setShowGeminiKeyModal={setShowGeminiKeyModal}
-            setShowMonthlyReportModal={setShowMonthlyReportModal}
             setShowBulkDeleteConfirmModal={setShowBulkDeleteConfirmModal}
             setShowShareModal={setShowShareModal}
-            projects={projects}
-            selectProject={selectProject}
-            setShowCreateModal={setShowCreateModal}
-            setShowManageProjectsModal={setShowManageProjectsModal}
             theme={theme}
             setTheme={setTheme}
             onLoadSampleData={isMockMode ? handleLoadSampleData : undefined}
           />
+        ) : !isProjectsLoaded || isLoading ? (
+          <div className="flex items-center justify-center h-[60vh]">
+            <Loader2 className="w-8 h-8 animate-spin text-primary" />
+          </div>
         ) : (
-          <div data-testid="no-projects-prompt" className="flex items-center justify-center h-[60vh]">
-            <p className="text-muted-foreground">Please select or create a project to get started.</p>
+          <div data-testid="no-projects-prompt" className="flex flex-col items-center justify-center h-[60vh] text-center gap-4">
+            <h2 className="text-2xl font-bold tracking-tight text-foreground">Create Your Workspace</h2>
+            <p className="text-muted-foreground max-w-md">Create a workspace to start tracking expenses, monthly budgets, and financial statements.</p>
+            {!showCreateModal && (
+              <button
+                type="button"
+                data-testid="create-project-btn"
+                onClick={() => setShowCreateModal(true)}
+                className="px-6 py-3 bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl font-semibold transition-colors"
+              >
+                Create Workspace
+              </button>
+            )}
           </div>
         )}
           </div>
@@ -760,19 +713,21 @@ function AppInner() {
         <BottomNav onOpenAddTxn={handleOpenAddTxn} />
       )}
 
-      <CommandPalette
-        isOpen={showCommandPalette}
-        onClose={() => setShowCommandPalette(false)}
-        categories={budgetHooks.categories}
-        onOpenAddTxn={handleOpenAddTxn}
-        onOpenCsvImport={() => csvHooks.setShowCsvWizard(true)}
-        onOpenManageProjects={() => setShowManageProjectsModal(true)}
-        onOpenGeminiKey={() => setShowGeminiKeyModal(true)}
-        onToggleTheme={() => setTheme(prev => prev === 'dark' ? 'light' : 'dark')}
-        onOpenReport={() => setShowMonthlyReportModal(true)}
-        onToggleLockMonth={isCurrentMonthLocked ? handleUnlockCurrentMonth : handleLockCurrentMonth}
-        isMonthLocked={isCurrentMonthLocked}
-      />
+      {isAuthenticated && activeProject && (
+        <CommandPalette
+          isOpen={showCommandPalette}
+          onClose={() => setShowCommandPalette(false)}
+          categories={budgetHooks.categories}
+          onOpenAddTxn={handleOpenAddTxn}
+          onOpenCsvImport={() => {
+            csvHooks.setCsvStep(1);
+            csvHooks.setShowCsvWizard(true);
+          }}
+          onToggleTheme={() => setTheme(prev => prev === 'dark' ? 'light' : 'dark')}
+          onToggleLockMonth={isCurrentMonthLocked ? handleUnlockCurrentMonth : handleLockCurrentMonth}
+          isMonthLocked={isCurrentMonthLocked}
+        />
+      )}
 
       <ModalHost
         showTxnModal={showTxnModal}
@@ -785,35 +740,23 @@ function AppInner() {
         setShowDuplicateWarningModal={setShowDuplicateWarningModal}
         showCategoryManagerModal={showCategoryManagerModal}
         setShowCategoryManagerModal={setShowCategoryManagerModal}
-        showAddCatModal={showAddCatModal}
-        setShowAddCatModal={setShowAddCatModal}
         showCreateModal={showCreateModal}
         setShowCreateModal={setShowCreateModal}
-        showManageProjectsModal={showManageProjectsModal}
-        setShowManageProjectsModal={setShowManageProjectsModal}
         showShareModal={showShareModal}
         setShowShareModal={setShowShareModal}
-        showGeminiKeyModal={showGeminiKeyModal}
-        setShowGeminiKeyModal={setShowGeminiKeyModal}
         showBulkDeleteConfirmModal={showBulkDeleteConfirmModal}
         setShowBulkDeleteConfirmModal={setShowBulkDeleteConfirmModal}
         showSessionExpiredModal={showSessionExpiredModal}
         setShowSessionExpiredModal={setShowSessionExpiredModal}
-        showMonthlyReportModal={showMonthlyReportModal}
-        setShowMonthlyReportModal={setShowMonthlyReportModal}
         selectedTxnIds={selectedTxnIds}
         setSelectedTxnIds={setSelectedTxnIds}
-        projects={projects}
         activeProject={activeProject}
-        selectProject={selectProject}
         createNewProject={createNewProject}
-        deleteProject={deleteProject}
         loadProjects={loadProjects}
         refreshProjectData={refreshProjectData}
         storageAdapter={storageAdapter}
         logout={logout}
         locks={locks}
-        isCurrentMonthLocked={isCurrentMonthLocked}
         txnHooks={txnHooks}
         budgetHooks={budgetHooks}
         csvHooks={csvHooks}

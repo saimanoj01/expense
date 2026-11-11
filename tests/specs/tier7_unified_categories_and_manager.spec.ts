@@ -64,6 +64,7 @@ test.describe('Tier 7: Unified Categories & Category Manager Modal', () => {
       activeProjectId: 'p1'
     });
     await appPage.goto();
+    await dashboardPage.ensureBudgetsView();
 
     // Open Category Manager Modal
     await page.getByTestId('open-add-category-btn').click();
@@ -92,6 +93,7 @@ test.describe('Tier 7: Unified Categories & Category Manager Modal', () => {
       activeProjectId: 'p1'
     });
     await appPage.goto();
+    await dashboardPage.ensureTransactionsView();
 
     await dashboardPage.openAddTxnModalBtn.click();
     await page.getByRole('button', { name: '+ Manage Categories' }).click();

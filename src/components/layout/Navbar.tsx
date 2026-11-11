@@ -11,18 +11,10 @@ interface UserProfile {
 interface NavbarProps {
   user: UserProfile | null;
   isMockMode: boolean;
-  projects: Project[];
   activeProject: Project | null;
   theme: 'light' | 'dark';
-  isLoading: boolean;
   toggleTheme: () => void;
-  selectProject: (id: string) => void;
-  setShowCreateModal: (show: boolean) => void;
-  onManageProjects?: () => void;
-  onOpenGeminiKeyModal?: () => void;
-  onLoadSampleData?: () => void;
   onOpenCommandPalette?: () => void;
-  logout: () => void;
 }
 
 export function Navbar({
@@ -47,7 +39,7 @@ export function Navbar({
       {/* Left: Workspace initial + name */}
       <button
         type="button"
-        onClick={() => isAuthenticated && navigate('#/settings')}
+        onClick={() => isAuthenticated && activeProject && navigate('#/settings')}
         className="flex items-center gap-2 min-w-0 text-left focus-visible:ring-2 ring-ring/40 rounded-[10px]"
       >
         <div className="w-7 h-7 rounded-[8px] bg-surface2 border border-border text-foreground flex items-center justify-center font-semibold text-label shrink-0">

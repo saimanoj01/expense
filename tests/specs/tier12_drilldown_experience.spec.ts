@@ -236,7 +236,7 @@ test.describe('Tier 12: v3 Progressive Disclosure Drill-Down Experience', () => 
     const trendsLink = page.getByTestId('view-trends-breakdown-link');
     await expect(trendsLink).toBeVisible();
     await trendsLink.click();
-    await expect(page.getByTestId('guideline-meter-50-30-20')).toBeVisible();
+    await expect(page.getByTestId('trends-workspace')).toBeVisible();
   });
 
   test('9. Month Switcher arrow buttons, keyboard shortcuts, and drilldown CTA transitions', async ({ page }) => {
@@ -407,17 +407,21 @@ test.describe('Tier 12: v3 Progressive Disclosure Drill-Down Experience', () => 
     await expect(reportsWorkspace).toBeVisible();
     await expect(page.getByTestId('print-report-btn')).toBeVisible();
     await expect(page.getByTestId('download-csv-btn')).toBeVisible();
-    await expect(page.getByTestId('email-report-btn')).toBeVisible();
 
     // Navigate to dedicated settings route
     await page.goto('/#/settings');
 
     const settingsWorkspace = page.getByTestId('settings-workspace');
     await expect(settingsWorkspace).toBeVisible();
-    await expect(page.getByTestId('manage-projects-trigger-btn')).toBeVisible();
+    await expect(page.getByTestId('share-project-btn')).toBeVisible();
     await expect(page.getByTestId('open-add-category-btn')).toBeVisible();
     await expect(page.getByTestId('import-csv-trigger-btn')).toBeVisible();
-    await expect(page.getByTestId('gemini-api-key-input')).toBeVisible();
+
+    // Opening CSV Import Wizard from Settings exposes file picker directly
+    await page.getByTestId('import-csv-trigger-btn').click();
+    await expect(page.getByTestId('csv-wizard-upload-btn')).toBeVisible();
+    await expect(page.getByTestId('csv-wizard-file-input')).toBeAttached();
+    await page.keyboard.press('Escape');
   });
 
   test('17. v4 Canonical Route, #/dashboard Redirect, Deficit Hero Copy, and MoM Delta Semantic Tone', async ({ page }) => {
@@ -432,6 +436,12 @@ test.describe('Tier 12: v3 Progressive Disclosure Drill-Down Experience', () => 
     await expect(page.getByTestId('hero-savings-card')).toBeVisible();
     const redirectedHash = await page.evaluate(() => window.location.hash);
     expect(redirectedHash).toBe('#/month/2026-10');
+
+    // 2b. Stale '?project=stale-id' and legacy '#/projects' keep active workspace instead of deselecting
+    await page.goto('/#/dashboard?project=stale-id&month=2026-10');
+    await expect(page.getByTestId('hero-savings-card')).toBeVisible();
+    await page.goto('/#/projects');
+    await expect(page.getByTestId('hero-savings-card')).toBeVisible();
 
     // 3. Seed prior month (Oct 2026) and deficit expense in Nov 2026 via addInitScript, then reload on Nov 2026
     await page.addInitScript(() => {

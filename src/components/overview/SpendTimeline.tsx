@@ -13,7 +13,6 @@ export interface SpendTimelineProps {
   totalExpenses: number;
   totalBudget?: number;
   isOverview?: boolean;
-  isSmoothed?: boolean;
   className?: string;
 }
 
@@ -37,7 +36,6 @@ export const SpendTimeline: React.FC<SpendTimelineProps> = ({
   totalExpenses,
   totalBudget = 0,
   isOverview = true,
-  isSmoothed = false,
   className = '',
 }) => {
   const { navigate } = useNavigation();
@@ -266,7 +264,6 @@ export const SpendTimeline: React.FC<SpendTimelineProps> = ({
               {expenseParts.cents && <span className="text-[0.75em] opacity-75">{expenseParts.cents}</span>}
             </span>{' '}
             so far
-            {isSmoothed ? ' (smoothed)' : ''}
           </span>
           {isOverview && (
             <button

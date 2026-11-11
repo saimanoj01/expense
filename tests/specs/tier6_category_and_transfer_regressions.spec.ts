@@ -116,6 +116,7 @@ test.describe('Tier 6: Category Dropdown & Transfer Regressions', () => {
       activeProjectId: 'p1'
     });
     await appPage.goto();
+    await dashboardPage.ensureTransactionsView();
 
     await dashboardPage.openAddTxnModalBtn.click();
     await page.getByTestId('transaction-desc-input').fill('Chase Credit Card Payment');
@@ -156,6 +157,7 @@ test.describe('Tier 6: Category Dropdown & Transfer Regressions', () => {
       activeProjectId: 'p1'
     });
     await appPage.goto();
+    await dashboardPage.ensureBudgetsView();
 
     await page.getByTestId('open-add-category-btn').click();
     await page.getByTestId('new-category-name-input').fill('Organic Produce');

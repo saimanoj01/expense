@@ -40,26 +40,6 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({
   const prevRouteRef = useRef<AppRoute>(currentRoute);
   const [direction, setDirection] = useState<number>(0);
 
-  const [smoothNonMonthly, setSmoothNonMonthlyState] = useState<boolean>(() => {
-    try {
-      return typeof window !== 'undefined' && window.localStorage.getItem('expense_smooth_non_monthly') === 'true';
-    } catch {
-      return false;
-    }
-  });
-
-  const setSmoothNonMonthly = useCallback((v: boolean | ((prev: boolean) => boolean)) => {
-    setSmoothNonMonthlyState(prev => {
-      const next = typeof v === 'function' ? v(prev) : v;
-      try {
-        window.localStorage.setItem('expense_smooth_non_monthly', String(next));
-      } catch {
-        // ignore storage errors
-      }
-      return next;
-    });
-  }, []);
-
   const onMonthChangeRef = useRef(onMonthChange);
   onMonthChangeRef.current = onMonthChange;
 
@@ -82,11 +62,9 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({
     prevRouteRef.current = parsed;
     setCurrentRoute(parsed);
 
-    // Sync project if present in query or if navigating to projects
+    // Sync project if present in query
     if (parsed.projectId && onSelectProjectRef.current) {
       onSelectProjectRef.current(parsed.projectId);
-    } else if (parsed.view === 'projects' && onSelectProjectRef.current) {
-      onSelectProjectRef.current(null);
     }
 
     // Sync month if changed
@@ -94,7 +72,7 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({
       onMonthChangeRef.current(parsed.month);
     }
 
-    // Canonical redirect for empty, #/dashboard, or fallback overview hashes
+    // Canonical redirect for empty, #/dashboard, #/projects, or fallback overview hashes
     const targetMonth = parsed.month || activeMonthRef.current;
     const canonicalOverviewHash = `#/month/${targetMonth}`;
     if (parsed.view === 'overview' && hash !== canonicalOverviewHash) {
@@ -115,7 +93,7 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({
 
   // Synchronize when activeMonth changes from an external control (e.g. MonthSwitcher or selector)
   useEffect(() => {
-    if (activeMonth && currentRoute.month !== activeMonth && currentRoute.view !== 'projects') {
+    if (activeMonth && currentRoute.month !== activeMonth) {
       setCurrentRoute(() => {
         const parsedCurrent = parseHash(window.location.hash, activeMonth);
         const next: AppRoute = { ...parsedCurrent, month: activeMonth };
@@ -222,9 +200,7 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({
     canGoBack,
     direction,
     mainRef,
-    smoothNonMonthly,
-    setSmoothNonMonthly,
-  }), [currentRoute, breadcrumbs, navigate, goBack, canGoBack, direction, mainRef, smoothNonMonthly, setSmoothNonMonthly]);
+  }), [currentRoute, breadcrumbs, navigate, goBack, canGoBack, direction, mainRef]);
 
   return (
     <NavigationContext.Provider value={value}>

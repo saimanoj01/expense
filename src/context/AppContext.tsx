@@ -16,7 +16,6 @@ export interface AppContextType {
   loadProjects: () => Promise<void>;
   selectProject: (projectId: string | null) => void;
   createNewProject: (name: string) => Promise<Project>;
-  deleteProject: (projectId: string) => Promise<void>;
   setCurrentView: (view: ViewType) => void;
 }
 
@@ -79,7 +78,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setActiveProject(found);
         setCurrentView('dashboard');
         localStorage.setItem('expense_active_project_id', found.id);
-        if (!window.location.hash || window.location.hash === '#/' || window.location.hash === '#' || window.location.hash.startsWith('#/dashboard')) {
+        if (
+          !window.location.hash ||
+          window.location.hash === '#/' ||
+          window.location.hash === '#' ||
+          window.location.hash.startsWith('#/dashboard') ||
+          window.location.hash.startsWith('#/projects')
+        ) {
           const targetMonth = parsedInitial.month || getCurrentLocalMonth();
           window.history.replaceState(null, '', `#/month/${targetMonth}`);
         }
@@ -87,7 +92,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setActiveProject(null);
         setCurrentView('project-selector');
         localStorage.removeItem('expense_active_project_id');
-        window.location.hash = '#/projects';
+        window.history.replaceState(null, '', `#/month/${getCurrentLocalMonth()}`);
       }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to load projects');
@@ -113,10 +118,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const selectProject = (projectId: string | null) => {
     if (!projectId) {
-      setActiveProject(null);
-      setCurrentView('project-selector');
-      localStorage.removeItem('expense_active_project_id');
-      window.location.hash = '#/projects';
+      if (projects.length > 0) {
+        const fallback = projects[0];
+        setActiveProject(fallback);
+        setCurrentView('dashboard');
+        localStorage.setItem('expense_active_project_id', fallback.id);
+      } else {
+        setActiveProject(null);
+        setCurrentView('project-selector');
+        localStorage.removeItem('expense_active_project_id');
+      }
       return;
     }
     const found = projects.find(p => p.id === projectId);
@@ -134,11 +145,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } else if (projects.length === 0) {
       // Cold-load before loadProjects() resolves: persist requested projectId so loadProjects() picks it up
       localStorage.setItem('expense_active_project_id', projectId);
-    } else if (projects.length > 0) {
-      setActiveProject(null);
-      setCurrentView('project-selector');
-      localStorage.removeItem('expense_active_project_id');
-      window.location.hash = '#/projects';
+    } else {
+      // Stale ?project= query param: keep existing workspace rather than trapping user on empty prompt
+      const fallback = activeProject || projects[0];
+      setActiveProject(fallback);
+      setCurrentView('dashboard');
+      localStorage.setItem('expense_active_project_id', fallback.id);
     }
   };
 
@@ -162,33 +174,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const deleteProject = async (projectId: string): Promise<void> => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      await storageAdapter.deleteProject(projectId);
-      const updatedList = await storageAdapter.getProjects();
-      setProjects(updatedList);
-      if (activeProject?.id === projectId) {
-        if (updatedList.length > 0) {
-          setActiveProject(updatedList[0]);
-          localStorage.setItem('expense_active_project_id', updatedList[0].id);
-          window.location.hash = `#/month/${getCurrentLocalMonth()}`;
-        } else {
-          setActiveProject(null);
-          setCurrentView('project-selector');
-          localStorage.removeItem('expense_active_project_id');
-          window.location.hash = '#/projects';
-        }
-      }
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Failed to delete project');
-      throw err;
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   return (
     <AppContext.Provider value={{
       projects,
@@ -201,7 +186,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       loadProjects,
       selectProject,
       createNewProject,
-      deleteProject,
       setCurrentView
     }}>
       {children}

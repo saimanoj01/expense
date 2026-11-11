@@ -1096,22 +1096,11 @@ export class GoogleSheetsAdapter implements StorageAdapter {
 
   async deleteProject(projectId: string): Promise<void> {
     const projects = await this.getProjects();
-    const targetProject = projects.find(p => p.id === projectId);
     const updatedProjects = projects.filter(p => p.id !== projectId);
 
     this.projectsCache = updatedProjects;
     localStorage.setItem('expense_google_projects', JSON.stringify(updatedProjects));
     delete this.cache[projectId];
-
-    if (targetProject?.spreadsheetId) {
-      try {
-        await this.fetchApi(`https://www.googleapis.com/drive/v3/files/${targetProject.spreadsheetId}`, {
-          method: 'DELETE'
-        });
-      } catch (e: unknown) {
-        console.warn("Failed to delete Google Drive file:", e);
-      }
-    }
   }
 
   invalidateCache(projectId?: string): void {

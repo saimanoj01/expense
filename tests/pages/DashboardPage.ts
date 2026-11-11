@@ -21,7 +21,6 @@ export class DashboardPage {
   // SVG Charts
   readonly pieChart: Locator;
   readonly trendChart: Locator;
-  readonly budgetChart: Locator;
 
   constructor(page: Page) {
     this.page = page;
@@ -40,7 +39,6 @@ export class DashboardPage {
     this.lockStatus = page.getByTestId('lock-status-indicator');
     this.pieChart = page.getByTestId('chart-svg-pie');
     this.trendChart = page.getByTestId('chart-svg-trend');
-    this.budgetChart = page.getByTestId('chart-svg-budget');
   }
 
   async ensureTransactionsView() {
