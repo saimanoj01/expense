@@ -16,7 +16,7 @@ export function TagInputPopover({
   existingTags = [],
   onAddTag,
   onClose,
-  placeholder = 'Add tag (e.g. bilt, tax)...',
+  placeholder = 'Add tag (e.g. trip, tax)...',
   align = 'left'
 }: TagInputPopoverProps) {
   const [inputValue, setInputValue] = useState('');
@@ -35,15 +35,26 @@ export function TagInputPopover({
     inputRef.current?.focus();
   }, []);
 
-  // Handle click outside to close popover
+  // Handle click outside and Escape anywhere while popover is mounted
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
         onClose();
       }
     }
+    function handleWindowKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        onClose();
+      }
+    }
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    window.addEventListener('keydown', handleWindowKeyDown, true);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      window.removeEventListener('keydown', handleWindowKeyDown, true);
+    };
   }, [onClose]);
 
   // Reset selected index when query changes

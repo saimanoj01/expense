@@ -3,6 +3,7 @@ import { Search, Trash2, X, Tag } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Transaction, Category, DEFAULT_CATEGORIES, SpendingBucket } from '../../services/storage';
 import { formatMoney } from '../../utils/formatters';
+import { getVisibleUserTags } from '../../utils/transactionTaxonomy';
 import { TransactionItem } from './TransactionItem';
 import { TagInputPopover } from '../common/TagInputPopover';
 
@@ -16,8 +17,10 @@ interface TransactionListProps {
   selectedTxnIds: Set<string>;
   sortBy?: string;
   setSelectedTagFilter: (tag: string | null) => void;
+  onSelectAccountFilter?: (accountKey: string) => void;
   toggleSelectTxn: (id: string) => void;
-  toggleSelectAllTxns: () => void;
+  toggleSelectAllTxns: (visibleIds: string[]) => void;
+  clearSelectedTxns: () => void;
   handleEditTxn: (txn: Transaction) => void;
   handleDeleteTxn: (id: string) => void;
   handleCategoryChange?: (txn: Transaction, newCatId: string, newSubCatId?: string | null) => void;
@@ -55,8 +58,10 @@ export function TransactionList({
   selectedTxnIds,
   sortBy = 'date-desc',
   setSelectedTagFilter,
+  onSelectAccountFilter,
   toggleSelectTxn,
   toggleSelectAllTxns,
+  clearSelectedTxns,
   handleEditTxn,
   handleDeleteTxn,
   handleCategoryChange,
@@ -71,6 +76,9 @@ export function TransactionList({
   handleDismissReview,
 }: TransactionListProps) {
   const [showBulkAddPopover, setShowBulkAddPopover] = useState(false);
+  const [mobileSelectMode, setMobileSelectMode] = useState(false);
+
+  const visibleIds = useMemo(() => transactions.map(t => t.id), [transactions]);
 
   const isAllSelected =
     transactions.length > 0 && transactions.every(t => selectedTxnIds.has(t.id));
@@ -87,10 +95,8 @@ export function TransactionList({
   const selectedTxnTags = useMemo(() => {
     const tagsSet = new Set<string>();
     transactions.forEach(t => {
-      if (selectedTxnIds.has(t.id) && Array.isArray(t.labels)) {
-        t.labels.forEach(lbl => {
-          if (lbl && lbl.trim()) tagsSet.add(lbl.trim().toLowerCase());
-        });
+      if (selectedTxnIds.has(t.id)) {
+        getVisibleUserTags(t).forEach(lbl => tagsSet.add(lbl));
       }
     });
     return Array.from(tagsSet).sort();
@@ -117,19 +123,46 @@ export function TransactionList({
     return groups;
   }, [transactions, isDateSorted]);
 
+  const showMobileCheckbox = mobileSelectMode || selectedTxnIds.size > 0;
+
   return (
     <div className="relative flex flex-col">
       {!isLockedMonth && transactions.length > 0 && (
-        <div className="flex items-center justify-end pb-1">
-          <label className="inline-flex items-center gap-2 text-label text-muted-foreground hover:text-foreground cursor-pointer transition-colors">
+        <div className="flex items-center justify-between pb-1.5">
+          <label
+            className={`items-center gap-2.5 text-label text-muted-foreground hover:text-foreground cursor-pointer transition-colors ${
+              showMobileCheckbox ? 'inline-flex' : 'hidden sm:inline-flex'
+            }`}
+          >
             <input
               type="checkbox"
+              data-testid="select-all-txns-checkbox"
               checked={isAllSelected}
-              onChange={toggleSelectAllTxns}
-              className="w-4 h-4 rounded bg-background border-border text-primary focus:ring-primary"
+              onChange={() => toggleSelectAllTxns(visibleIds)}
+              className="w-4 h-4 rounded bg-background border-border accent-primary opacity-60 hover:opacity-100 checked:opacity-100 transition-opacity cursor-pointer"
             />
-            <span>Select All</span>
+            <span>
+              {selectedTxnIds.size > 0
+                ? `${selectedTxnIds.size} selected`
+                : `Select all (${transactions.length})`}
+            </span>
           </label>
+
+          <button
+            type="button"
+            data-testid="mobile-select-toggle-btn"
+            onClick={() => {
+              if (showMobileCheckbox) {
+                setMobileSelectMode(false);
+                clearSelectedTxns();
+              } else {
+                setMobileSelectMode(true);
+              }
+            }}
+            className="sm:hidden text-label font-medium text-muted-foreground hover:text-foreground ml-auto transition-colors"
+          >
+            {showMobileCheckbox ? 'Done' : 'Select'}
+          </button>
         </div>
       )}
 
@@ -138,15 +171,24 @@ export function TransactionList({
           <div className="w-12 h-12 rounded-full bg-surface2 flex items-center justify-center">
             <Search className="w-5 h-5 text-muted-foreground" />
           </div>
-          <p className="text-body">No transactions found.</p>
+          <p className="text-body">No transactions match the current filters.</p>
         </div>
       ) : dayGroups ? (
         <div className="divide-y divide-border border-t border-border">
           {dayGroups.map(group => (
             <div key={group.date} className="py-2">
-              <div className="sticky top-14 z-10 bg-background/90 backdrop-blur-sm flex items-center justify-between py-1.5 text-label font-semibold text-muted-foreground tabular-nums num">
+              <div
+                data-testid="transaction-day-header"
+                data-date={group.date}
+                className="sticky top-14 z-10 bg-background/90 backdrop-blur-sm flex items-center justify-between py-1.5 text-label font-semibold text-muted-foreground tabular-nums num"
+              >
                 <span>{formatDayHeader(group.date)}</span>
-                <span>{formatMoney(group.netTotal, { cents: true, sign: 'auto' })}</span>
+                <span>
+                  {formatMoney(group.netTotal, {
+                    cents: true,
+                    sign: group.netTotal > 0 ? 'always' : 'auto',
+                  })}
+                </span>
               </div>
               <div className="space-y-0.5">
                 {group.txns.map(txn => (
@@ -158,12 +200,15 @@ export function TransactionList({
                     isLockedMonth={isLockedMonth}
                     isSelected={selectedTxnIds.has(txn.id)}
                     isDuplicate={duplicateTxnIds.has(txn.id)}
+                    showInlineDate={false}
+                    showMobileCheckbox={showMobileCheckbox}
                     toggleSelectTxn={toggleSelectTxn}
                     handleEditTxn={handleEditTxn}
                     handleDeleteTxn={handleDeleteTxn}
                     handleCategoryChange={handleCategoryChange}
                     handleBucketChange={handleBucketChange}
                     setSelectedTagFilter={setSelectedTagFilter}
+                    onSelectAccountFilter={onSelectAccountFilter}
                     handleAddTag={handleAddTag}
                     handleRemoveTag={handleRemoveTag}
                     handleDismissReview={handleDismissReview}
@@ -184,12 +229,15 @@ export function TransactionList({
               isLockedMonth={isLockedMonth}
               isSelected={selectedTxnIds.has(txn.id)}
               isDuplicate={duplicateTxnIds.has(txn.id)}
+              showInlineDate={true}
+              showMobileCheckbox={showMobileCheckbox}
               toggleSelectTxn={toggleSelectTxn}
               handleEditTxn={handleEditTxn}
               handleDeleteTxn={handleDeleteTxn}
               handleCategoryChange={handleCategoryChange}
               handleBucketChange={handleBucketChange}
               setSelectedTagFilter={setSelectedTagFilter}
+              onSelectAccountFilter={onSelectAccountFilter}
               handleAddTag={handleAddTag}
               handleRemoveTag={handleRemoveTag}
               handleDismissReview={handleDismissReview}
@@ -202,11 +250,12 @@ export function TransactionList({
       <AnimatePresence>
         {selectedTxnIds.size > 0 && (
           <motion.div
+            data-testid="floating-bulk-action-bar"
             initial={{ opacity: 0, y: 24 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 24 }}
             transition={{ type: 'spring', stiffness: 360, damping: 32 }}
-            className="fixed bottom-16 md:bottom-6 left-1/2 -translate-x-1/2 z-40 rounded-[14px] bg-popover border border-border shadow-xl px-4 py-2.5 flex flex-wrap items-center gap-2.5"
+            className="fixed bottom-20 md:bottom-6 left-1/2 -translate-x-1/2 z-40 max-w-[calc(100vw-1.5rem)] rounded-[14px] bg-popover border border-border shadow-xl px-4 py-2.5 flex flex-wrap items-center gap-2.5"
           >
             <span className="text-body font-medium text-foreground tabular-nums num">
               {selectedTxnIds.size} selected
@@ -227,7 +276,7 @@ export function TransactionList({
                 className="px-2.5 py-1 bg-surface2 border border-border text-foreground hover:bg-secondary rounded-[8px] text-label font-medium transition-colors cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
               >
                 <option value="" disabled>
-                  Set Category ({selectedTxnIds.size})...
+                  Set Category ({selectedTxnIds.size})…
                 </option>
                 {parentCats.map(p => {
                   const subs = allCategories.filter(c => c.parentId === p.id);
@@ -263,7 +312,7 @@ export function TransactionList({
                 className="px-2.5 py-1 bg-surface2 border border-border text-foreground hover:bg-secondary rounded-[8px] text-label font-medium transition-colors cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
               >
                 <option value="" disabled>
-                  Set Bucket ({selectedTxnIds.size})...
+                  Set Bucket ({selectedTxnIds.size})…
                 </option>
                 <option value="fixed">Fixed Commitment</option>
                 <option value="flexible">Variable (Flexible)</option>
@@ -308,7 +357,7 @@ export function TransactionList({
                 className="px-2.5 py-1 bg-surface2 border border-border text-foreground hover:bg-secondary rounded-[8px] text-label font-medium transition-colors cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-primary/40"
               >
                 <option value="" disabled>
-                  Remove Tag ({selectedTxnIds.size})...
+                  Remove Tag ({selectedTxnIds.size})…
                 </option>
                 {selectedTxnTags.map(tag => (
                   <option key={tag} value={tag}>
@@ -328,7 +377,10 @@ export function TransactionList({
 
             <button
               type="button"
-              onClick={toggleSelectAllTxns}
+              onClick={() => {
+                setMobileSelectMode(false);
+                clearSelectedTxns();
+              }}
               title="Clear selection"
               aria-label="Clear selection"
               className="p-1 text-muted-foreground hover:text-foreground rounded-[8px] transition-colors"

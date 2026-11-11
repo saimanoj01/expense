@@ -18,6 +18,7 @@ interface CsvImportWizardProps {
   mapTypeCol: string;
   mapCategoryCol: string;
   mapSubCategoryCol?: string;
+  batchAccountInput?: string;
   batchTagsInput?: string;
   categories: Category[];
   parsedCsvItems: CsvItem[];
@@ -28,6 +29,7 @@ interface CsvImportWizardProps {
   setMapTypeCol: (col: string) => void;
   setMapCategoryCol: (col: string) => void;
   setMapSubCategoryCol?: (col: string) => void;
+  setBatchAccountInput?: (v: string) => void;
   setBatchTagsInput?: (v: string) => void;
   setParsedCsvItems: React.Dispatch<React.SetStateAction<CsvItem[]>>;
   updateItemTags?: (index: number, newTags: string[]) => void;
@@ -48,7 +50,8 @@ export function CsvImportWizard({
   mapTypeCol,
   mapCategoryCol,
   mapSubCategoryCol = '',
-  batchTagsInput = 'imported',
+  batchAccountInput = '',
+  batchTagsInput = '',
   categories,
   parsedCsvItems,
   setShowCsvWizard,
@@ -58,6 +61,7 @@ export function CsvImportWizard({
   setMapTypeCol,
   setMapCategoryCol,
   setMapSubCategoryCol,
+  setBatchAccountInput,
   setBatchTagsInput,
   setParsedCsvItems,
   updateItemTags,
@@ -196,16 +200,28 @@ export function CsvImportWizard({
 
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-bold text-muted-foreground mb-1">Batch Tag / Label (Applied to all imported rows)</label>
+                  <label className="block text-sm font-bold text-muted-foreground mb-1">Account / Card (Optional)</label>
+                  <input
+                    type="text"
+                    data-testid="csv-batch-account-input"
+                    value={batchAccountInput}
+                    onChange={e => setBatchAccountInput && setBatchAccountInput(e.target.value)}
+                    placeholder="e.g. Bilt, Priyanka Chase, BofA"
+                    className="w-full bg-card/50 border border-border rounded-xl px-4 py-2 font-medium focus:ring-2 focus:ring-primary outline-none"
+                  />
+                  <p className="text-[11px] text-muted-foreground mt-1">Stored cleanly as statement account metadata on imported rows.</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-bold text-muted-foreground mb-1">Batch Tags (Optional)</label>
                   <input
                     type="text"
                     data-testid="csv-batch-tag-input"
                     value={batchTagsInput}
                     onChange={e => setBatchTagsInput && setBatchTagsInput(e.target.value)}
-                    placeholder="e.g. bilt, chase, statement"
+                    placeholder="e.g. japan-trip, tax-2026"
                     className="w-full bg-card/50 border border-border rounded-xl px-4 py-2 font-medium focus:ring-2 focus:ring-primary outline-none"
                   />
-                  <p className="text-[11px] text-muted-foreground mt-1">Separate multiple tags with commas (e.g. "bilt, tax-2026").</p>
+                  <p className="text-[11px] text-muted-foreground mt-1">Optional custom tags separated by commas.</p>
                 </div>
                 <div>
                   <label className="block text-sm font-bold text-muted-foreground mb-1">Type Column (Optional)</label>
@@ -401,16 +417,16 @@ export function CsvImportWizard({
                                   const bucket = e.target.value as 'fixed' | 'flexible' | 'non-monthly';
                                   setParsedCsvItems(prev => {
                                     const next = [...prev];
-                                    const curLabels = next[idx].labels || [];
-                                    const updatedLabels = curLabels.filter(l => l !== 'fixed' && l !== 'flexible' && l !== 'non-monthly');
-                                    updatedLabels.push(bucket);
-                                    next[idx] = { ...next[idx], spendingBucket: bucket, labels: updatedLabels };
+                                    const curLabels = (next[idx].labels || []).filter(
+                                      l => l !== 'fixed' && l !== 'flexible' && l !== 'non-monthly'
+                                    );
+                                    next[idx] = { ...next[idx], spendingBucket: bucket, labels: curLabels };
                                     return next;
                                   });
                                 }}
                                 className="bg-card/70 border border-border/70 rounded-lg px-2 py-1 text-xs font-semibold focus:ring-1 focus:ring-primary outline-none"
                               >
-                                <option value="flexible" className="bg-card text-card-foreground">🟢 Flexible</option>
+                                <option value="flexible" className="bg-card text-card-foreground">🟢 Variable</option>
                                 <option value="fixed" className="bg-card text-card-foreground">🔵 Fixed</option>
                                 <option value="non-monthly" className="bg-card text-card-foreground">🟠 Non-Monthly</option>
                               </select>

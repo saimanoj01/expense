@@ -353,12 +353,22 @@ def aggregate_by_month(transactions, categories, months, redact):
         needs_review_txns = []
 
         for t in txns:
-            labels = t.get("labels") or []
-            is_refund = t["type"] == "income" and "refund" in labels
+            labels = [str(l).strip().lower() for l in (t.get("labels") or [])]
+            cat_id_lower = str(t.get("category") or "").strip().lower()
+            is_refund = t["type"] == "income" and (
+                "refund" in labels
+                or "reimbursement" in labels
+                or cat_id_lower == "refund"
+            )
             cat = cat_map.get(t["category"])
             cat_name = f'{cat["emoji"]} {cat["name"]}' if cat else t["category"]
 
-            if "needs-review" in labels:
+            meta_review = (t.get("meta") or {}).get("review") or {}
+            has_active_review = (
+                bool(meta_review and not meta_review.get("resolvedAt"))
+                or "needs-review" in labels
+            )
+            if has_active_review:
                 needs_review_txns.append({
                     "id": t.get("id", ""),
                     "date": t.get("date", ""),

@@ -1,6 +1,6 @@
 import React from 'react';
 import { AnimatePresence } from 'framer-motion';
-import { Transaction, Project, StorageAdapter } from '../../services/storage';
+import { Transaction, Project, StorageAdapter, MonthlyLock } from '../../services/storage';
 import { useTransactions } from '../../hooks/useTransactions';
 import { useBudgets } from '../../hooks/useBudgets';
 import { useCsvImport } from '../../hooks/useCsvImport';
@@ -55,6 +55,7 @@ export interface ModalHostProps {
   refreshProjectData: () => void;
   storageAdapter: StorageAdapter | null;
   logout: () => void;
+  locks?: MonthlyLock[];
   isCurrentMonthLocked: boolean;
   txnHooks: ReturnType<typeof useTransactions>;
   budgetHooks: ReturnType<typeof useBudgets>;
@@ -99,11 +100,18 @@ export const ModalHost: React.FC<ModalHostProps> = ({
   refreshProjectData,
   storageAdapter,
   logout,
+  locks,
   isCurrentMonthLocked,
   txnHooks,
   budgetHooks,
   csvHooks,
 }) => {
+  const isEditingTxnLocked = Boolean(
+    editingTxnId &&
+      editingTxnData?.date &&
+      locks?.some(lk => lk.locked && editingTxnData.date!.startsWith(lk.month))
+  );
+
   return (
     <>
       <AnimatePresence>
@@ -119,6 +127,17 @@ export const ModalHost: React.FC<ModalHostProps> = ({
             setPendingDuplicateTxn={setPendingDuplicateTxn}
             setShowDuplicateWarningModal={setShowDuplicateWarningModal}
             setShowCategoryManagerModal={setShowCategoryManagerModal}
+            isTxnLocked={isEditingTxnLocked}
+            onDeleteTransaction={id => {
+              txnHooks.handleDeleteTxn(id, () => {
+                setSelectedTxnIds(prev => {
+                  const next = new Set(prev);
+                  next.delete(id);
+                  return next;
+                });
+                setShowTxnModal(false);
+              });
+            }}
           />
         )}
       </AnimatePresence>

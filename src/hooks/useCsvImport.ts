@@ -3,6 +3,7 @@ import { parseCsv, standardizeDate, parseCurrencyAmount, getLocalTodayDate } fro
 import { computeTxHash } from '../utils/crypto';
 import { Transaction, MonthlyLock, Category, SpendingBucket, Project, StorageAdapter } from '../services/storage';
 import { suggestCategory, detectTransactionType, suggestSpendingBucket } from '../utils/categorizer';
+import { sanitizeUserTagsInput } from '../utils/transactionTaxonomy';
 
 export interface CsvItem {
   date: string;
@@ -31,7 +32,8 @@ export function useCsvImport(
 ) {
   const [showCsvWizard, setShowCsvWizard] = useState(false);
   const [csvStep, setCsvStep] = useState<1 | 2>(1);
-  const [batchTagsInput, setBatchTagsInput] = useState<string>('imported');
+  const [batchTagsInput, setBatchTagsInput] = useState<string>('');
+  const [batchAccountInput, setBatchAccountInput] = useState<string>('');
   const [csvRawHeaders, setCsvRawHeaders] = useState<string[]>([]);
   const [csvRawRows, setCsvRawRows] = useState<string[][]>([]);
   const [mapDateCol, setMapDateCol] = useState<string>('');
@@ -69,6 +71,7 @@ export function useCsvImport(
     const rows = allParsed.slice(1);
     setCsvRawHeaders(headers);
     setCsvRawRows(rows);
+    setParsedCsvItems([]);
 
     setMapDateCol(headers.find((h: string) => /^date$/i.test(h)) || '');
     setMapDescCol(headers.find((h: string) => /^description$|^desc$|^payee$/i.test(h)) || '');
@@ -97,14 +100,10 @@ export function useCsvImport(
     const seenHashesInBatch = new Set<string>();
     const items: CsvItem[] = [];
 
-    const defaultBatchTags = batchTagsInput
-      .split(',')
-      .map(s => s.trim().toLowerCase())
-      .filter(Boolean);
-
-    if (defaultBatchTags.length === 0) {
-      defaultBatchTags.push('imported');
-    }
+    const defaultBatchTags = sanitizeUserTagsInput(
+      batchTagsInput.split(','),
+      batchAccountInput
+    );
 
     for (let idx = 0; idx < csvRawRows.length; idx++) {
       const row = csvRawRows[idx];
@@ -161,13 +160,9 @@ export function useCsvImport(
 
       // Preserve previously edited labels if user stepped back from Step 2
       const existingItem = parsedCsvItems[idx];
-      const itemLabels = existingItem && existingItem.labels && existingItem.labels.length > 0
-        ? existingItem.labels
+      const itemLabels = existingItem
+        ? sanitizeUserTagsInput(existingItem.labels || [], batchAccountInput)
         : [...defaultBatchTags];
-
-      if (rawType === 'expense' && suggestedBucket && !itemLabels.includes(suggestedBucket)) {
-        itemLabels.push(suggestedBucket);
-      }
 
       items.push({
         date: rawDate,
@@ -193,7 +188,10 @@ export function useCsvImport(
     setParsedCsvItems(prev => {
       const copy = [...prev];
       if (copy[index]) {
-        copy[index] = { ...copy[index], labels: newTags };
+        copy[index] = {
+          ...copy[index],
+          labels: sanitizeUserTagsInput(newTags, batchAccountInput),
+        };
       }
       return copy;
     });
@@ -204,12 +202,12 @@ export function useCsvImport(
     const toImport = parsedCsvItems.filter(i => i.selected);
     if (toImport.length === 0) return;
 
+    const nowIso = new Date().toISOString();
+    const accountClean = batchAccountInput.trim() || undefined;
+
     const newTxns: Transaction[] = toImport.map(item => {
       const bucket = item.type === 'expense' ? (item.spendingBucket || suggestSpendingBucket(item.description, item.category)) : undefined;
-      const labels = item.labels && item.labels.length > 0 ? [...item.labels] : ['imported'];
-      if (bucket && !labels.includes(bucket)) {
-        labels.push(bucket);
-      }
+      const labels = sanitizeUserTagsInput(item.labels || [], accountClean);
       return {
         id: crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2),
         date: item.date,
@@ -219,9 +217,14 @@ export function useCsvImport(
         type: item.type,
         spendingBucket: bucket,
         description: item.description,
-        notes: 'Imported via CSV',
+        notes: '',
         labels,
-        hash: item.hash
+        hash: item.hash,
+        meta: {
+          sources: ['csv-import'],
+          ...(accountClean ? { account: accountClean } : {}),
+          ingestedAt: nowIso,
+        },
       };
     });
 
@@ -268,6 +271,8 @@ export function useCsvImport(
     setCsvStep,
     batchTagsInput,
     setBatchTagsInput,
+    batchAccountInput,
+    setBatchAccountInput,
     csvRawHeaders,
     mapDateCol,
     setMapDateCol,

@@ -7,6 +7,11 @@ import {
   markUserEditedFields,
   resolveTransactionReview,
 } from '../services/ingestion/transactionIngestService';
+import {
+  getVisibleUserTags,
+  sanitizeUserTagsInput,
+  isDuplicateVerified,
+} from '../utils/transactionTaxonomy';
 
 export interface TrendPoint {
   date: string;
@@ -266,24 +271,29 @@ export function useTransactions(
     return map;
   }, [categories]);
 
-  // Transactions matching month and tag (unfiltered by selectedBucket so KPIs stay consistent)
+  // Transactions matching month strictly (unfiltered by selectedTagFilter & selectedBucket so KPIs, Budgets, and Reports stay consistent)
   const monthTransactions = useMemo(() => {
     return transactions.filter(t => {
       const monthMatches = (t.date || '').startsWith(selectedMonth);
       if (!monthMatches && selectedMonth !== 'all') return false;
-      if (selectedTagFilter && !ensureLabelsArray(t.labels).includes(selectedTagFilter)) return false;
       return true;
     });
-  }, [transactions, selectedMonth, selectedTagFilter]);
+  }, [transactions, selectedMonth]);
 
   // Filter and sort transactions for display
   const filteredTransactions = useMemo(() => {
     const result = monthTransactions.filter(t => {
+      if (selectedTagFilter && !ensureLabelsArray(t.labels).includes(selectedTagFilter)) {
+        return false;
+      }
       if (selectedBucket) {
         if (selectedBucket === 'income') {
-          return t.type === 'income';
+          return t.type === 'income' && !isRefundTransaction(t);
         }
-        return bucketOf(t, categories) === selectedBucket;
+        return (
+          (t.type === 'expense' || isRefundTransaction(t)) &&
+          bucketOf(t, categories) === selectedBucket
+        );
       }
       return true;
     });
@@ -347,33 +357,42 @@ export function useTransactions(
         }
       }
     });
-  }, [monthTransactions, selectedBucket, sortBy, categoryNameMap, categories]);
+  }, [monthTransactions, selectedTagFilter, selectedBucket, sortBy, categoryNameMap, categories]);
 
-  // Duplicate transaction detector (Optimized to O(N))
+  // Duplicate transaction detector (Collision-group aware, honoring duplicate-verified & review.resolvedAt)
   const duplicateTxnIds = useMemo(() => {
     const dups = new Set<string>();
-    const seenHashes = new Map<string, string>(); // hash -> id
-    const seenFields = new Map<string, string>(); // fieldKey -> id
+    const hashGroups = new Map<string, Transaction[]>();
+    const fieldGroups = new Map<string, Transaction[]>();
 
     for (const t of transactions) {
       if (t.hash) {
-        if (seenHashes.has(t.hash)) {
-          dups.add(t.id);
-          dups.add(seenHashes.get(t.hash)!);
-        } else {
-          seenHashes.set(t.hash, t.id);
-        }
+        const list = hashGroups.get(t.hash);
+        if (list) list.push(t);
+        else hashGroups.set(t.hash, [t]);
       }
 
-      const amtNum = typeof t.amount === 'number' ? t.amount : parseFloat(t.amount || 0);
+      const amtNum = typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount || 0));
       const fieldKey = `${t.date}|${(t.description || '').trim().toLowerCase()}|${amtNum.toFixed(2)}|${t.type}`;
-      if (seenFields.has(fieldKey)) {
-        dups.add(t.id);
-        dups.add(seenFields.get(fieldKey)!);
-      } else {
-        seenFields.set(fieldKey, t.id);
-      }
+      const fList = fieldGroups.get(fieldKey);
+      if (fList) fList.push(t);
+      else fieldGroups.set(fieldKey, [t]);
     }
+
+    const collectUnverifiedCollisions = (groups: Map<string, Transaction[]>) => {
+      for (const group of groups.values()) {
+        if (group.length < 2) continue;
+        const unverified = group.filter(t => !isDuplicateVerified(t));
+        if (unverified.length >= 2) {
+          for (const t of unverified) {
+            dups.add(t.id);
+          }
+        }
+      }
+    };
+
+    collectUnverifiedCollisions(hashGroups);
+    collectUnverifiedCollisions(fieldGroups);
     return dups;
   }, [transactions]);
 
@@ -424,9 +443,7 @@ export function useTransactions(
   const availableTags = useMemo(() => {
     const tagSet = new Set<string>();
     transactions.forEach(t => {
-      ensureLabelsArray(t.labels).forEach(l => {
-        if (l && l.trim()) tagSet.add(l.trim().toLowerCase());
-      });
+      getVisibleUserTags(t).forEach(l => tagSet.add(l));
     });
     return Array.from(tagSet).sort();
   }, [transactions]);
@@ -493,7 +510,6 @@ export function useTransactions(
     const currentMonthDailyExpenses: number[] = new Array(daysInMonth).fill(0);
     transactions.forEach(t => {
       if (t.type === 'expense' && t.date && t.date.startsWith(currentMonthStr)) {
-        if (selectedTagFilter && !ensureLabelsArray(t.labels).includes(selectedTagFilter)) return;
         const day = parseInt(t.date.split('-')[2], 10);
         if (day >= 1 && day <= daysInMonth) {
           const amt = typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount || 0));
@@ -541,7 +557,6 @@ export function useTransactions(
     const prevMonthDailyExpenses: number[] = new Array(prevDaysInMonth).fill(0);
     transactions.forEach(t => {
       if (t.type === 'expense' && t.date && t.date.startsWith(prevMonthStr)) {
-        if (selectedTagFilter && !ensureLabelsArray(t.labels).includes(selectedTagFilter)) return;
         const day = parseInt(t.date.split('-')[2], 10);
         if (day >= 1 && day <= prevDaysInMonth) {
           const amt = typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount || 0));
@@ -800,7 +815,7 @@ export function useTransactions(
       worstCashFlowMonth,
       maxCashFlowValue
     };
-  }, [transactions, selectedMonth, selectedTagFilter, availableMonths, fixedExpenses, nonMonthlyExpenses, flexibleExpenses, totalExpenses, categories, monthTransactions]);
+  }, [transactions, selectedMonth, availableMonths, fixedExpenses, nonMonthlyExpenses, flexibleExpenses, totalExpenses, categories, monthTransactions]);
 
   const trendPathData = trendDetails.pathData;
 
@@ -838,13 +853,14 @@ export function useTransactions(
     if (!activeProject || !storageAdapter) return false;
     const existingTx = isEdit ? transactions.find(t => t.id === txnToSave.id) : undefined;
     const nextMeta =
-      isEdit || !txnToSave.meta
+      isEdit || !txnToSave.meta?.sources?.length
         ? markUserEditedFields(existingTx, txnToSave)
         : txnToSave.meta;
     const currentLabels = ensureLabelsArray(txnToSave.labels);
     const nextLabels =
-      nextMeta?.review?.resolvedAt && currentLabels.includes('needs-review')
-        ? currentLabels.filter(l => l !== 'needs-review')
+      nextMeta?.review?.resolvedAt &&
+      currentLabels.some(l => l.trim().toLowerCase() === 'needs-review')
+        ? currentLabels.filter(l => l.trim().toLowerCase() !== 'needs-review')
         : currentLabels;
     const finalTxn: Transaction = {
       ...txnToSave,
@@ -923,8 +939,9 @@ export function useTransactions(
         const nextMeta = markUserEditedFields(t, candidate);
         const currentLabels = ensureLabelsArray(t.labels);
         const nextLabels =
-          nextMeta.review?.resolvedAt && currentLabels.includes('needs-review')
-            ? currentLabels.filter(l => l !== 'needs-review')
+          nextMeta.review?.resolvedAt &&
+          currentLabels.some(l => l.trim().toLowerCase() === 'needs-review')
+            ? currentLabels.filter(l => l.trim().toLowerCase() !== 'needs-review')
             : currentLabels;
         updatedTxns.push({ ...candidate, labels: nextLabels, meta: nextMeta });
       }
@@ -949,8 +966,9 @@ export function useTransactions(
         const nextMeta = markUserEditedFields(t, candidate);
         const currentLabels = ensureLabelsArray(t.labels);
         const nextLabels =
-          nextMeta.review?.resolvedAt && currentLabels.includes('needs-review')
-            ? currentLabels.filter(l => l !== 'needs-review')
+          nextMeta.review?.resolvedAt &&
+          currentLabels.some(l => l.trim().toLowerCase() === 'needs-review')
+            ? currentLabels.filter(l => l.trim().toLowerCase() !== 'needs-review')
             : currentLabels;
         updatedTxns.push({ ...candidate, labels: nextLabels, meta: nextMeta });
       }
@@ -979,7 +997,9 @@ export function useTransactions(
         return;
       }
 
-      const updatedTxn = resolveTransactionReview(target);
+      const updatedTxn = resolveTransactionReview(target, new Date().toISOString(), {
+        clearDuplicate: duplicateTxnIds.has(target.id),
+      });
       try {
         await storageAdapter.saveTransaction(activeProject.id, updatedTxn);
         await refreshTransactions();
@@ -988,7 +1008,7 @@ export function useTransactions(
         showToast(err instanceof Error ? err.message : 'Failed to resolve review', 'error');
       }
     },
-    [activeProject, storageAdapter, transactions, locks, refreshTransactions, showToast]
+    [activeProject, storageAdapter, transactions, locks, duplicateTxnIds, refreshTransactions, showToast]
   );
 
   const handleAddTagToTxn = async (txnId: string, tagsToAdd: string[]) => {
@@ -1004,7 +1024,8 @@ export function useTransactions(
     }
 
     const currentLabels = ensureLabelsArray(target.labels);
-    const newTags = tagsToAdd.map(t => t.trim().toLowerCase()).filter(t => t && !currentLabels.includes(t));
+    const sanitized = sanitizeUserTagsInput(tagsToAdd, target.meta?.account);
+    const newTags = sanitized.filter(t => !currentLabels.includes(t));
     if (newTags.length === 0) return;
 
     const updatedTxn: Transaction = {
@@ -1051,7 +1072,7 @@ export function useTransactions(
 
   const handleExecuteBulkAddTag = async (selectedTxnIds: Set<string>, tagsToAdd: string[], onComplete?: () => void) => {
     if (!activeProject || !storageAdapter || selectedTxnIds.size === 0 || tagsToAdd.length === 0) return;
-    const normalizedTags = tagsToAdd.map(t => t.trim().toLowerCase()).filter(Boolean);
+    const normalizedTags = sanitizeUserTagsInput(tagsToAdd);
     if (normalizedTags.length === 0) return;
 
     let skippedCount = 0;
@@ -1150,9 +1171,7 @@ export function useTransactions(
     const updated = transactions.map(t => {
       if (classifiedMap[t.id]) {
         const bucket = classifiedMap[t.id];
-        const labels = ensureLabelsArray(t.labels);
-        const newLabels = labels.includes(bucket) ? labels : [...labels, bucket];
-        return { ...t, spendingBucket: bucket, labels: newLabels };
+        return { ...t, spendingBucket: bucket };
       }
       return t;
     });

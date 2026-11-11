@@ -4,6 +4,7 @@
 
 @layer base {
   :root, .dark {
+    color-scheme: dark;
     /* surfaces */
     --background: 228 12% 5%;      /* #0B0C0F */
     --card: 228 10% 8%;            /* #131418  surface-1 */
@@ -37,6 +38,7 @@
     --radius: 14px;
   }
   .light {
+    color-scheme: light;
     --background: 60 9% 98%;       /* #FAFAF9 */
     --card: 0 0% 100%;
     --card-foreground: 228 12% 6%;

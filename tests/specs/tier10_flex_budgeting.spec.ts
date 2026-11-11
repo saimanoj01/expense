@@ -98,7 +98,8 @@ test.describe('Tier 10: Flex Budgeting & Spending Bucket Separation', () => {
     await page.evaluate(() => {
       window.location.hash = '#/transactions';
     });
-    // Filter to Fixed only
+    // Open Filter popover and filter to Fixed only
+    await page.getByTestId('ledger-filter-btn').click();
     await page.getByTestId('filter-bucket-fixed').click();
     await expect(page.locator('h4:has-text("Mortgage Payment")')).toBeVisible();
     await expect(page.locator('h4:has-text("Starbucks Coffee")')).not.toBeVisible();

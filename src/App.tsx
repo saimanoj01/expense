@@ -50,7 +50,8 @@ interface MainRouterProps {
   selectedTxnIds: Set<string>;
   setSelectedTxnIds: React.Dispatch<React.SetStateAction<Set<string>>>;
   toggleSelectTxn: (id: string) => void;
-  toggleSelectAllTxns: () => void;
+  toggleSelectAllTxns: (visibleIds: string[]) => void;
+  clearSelectedTxns: () => void;
   handleOpenAddTxn: () => void;
   handleEditTxn: (txn: Transaction) => void;
   handleLockCurrentMonth: () => Promise<void>;
@@ -79,6 +80,7 @@ function MainRouter({
   setSelectedTxnIds,
   toggleSelectTxn,
   toggleSelectAllTxns,
+  clearSelectedTxns,
   handleOpenAddTxn,
   handleEditTxn,
   handleLockCurrentMonth,
@@ -179,6 +181,22 @@ function MainRouter({
           onOpenReportModal={() => setShowMonthlyReportModal(true)}
           onToggleSelectTxn={toggleSelectTxn}
           onToggleSelectAllTxns={toggleSelectAllTxns}
+          onClearSelectedTxns={clearSelectedTxns}
+          onRetainOnlyVisibleSelection={(visibleIds) => {
+            setSelectedTxnIds(prev => {
+              if (prev.size === 0) return prev;
+              let changed = false;
+              const next = new Set<string>();
+              for (const id of prev) {
+                if (visibleIds.has(id)) {
+                  next.add(id);
+                } else {
+                  changed = true;
+                }
+              }
+              return changed ? next : prev;
+            });
+          }}
           onCategoryChange={(txn, newCatId, newSubCatId) => txnHooks.executeSaveTransaction({ ...txn, category: newCatId, subCategory: newSubCatId || null }, true)}
           onBucketChange={(txn, newBucket) => txnHooks.executeSaveTransaction({ ...txn, spendingBucket: newBucket }, true)}
           onExecuteBulkCategoryUpdate={(selectedIds, catId, subCatId) => txnHooks.handleExecuteBulkCategoryUpdate(selectedIds, catId, subCatId, () => setSelectedTxnIds(new Set()))}
@@ -544,12 +562,27 @@ function AppInner() {
     setShowTxnModal(true);
   };
 
-  const toggleSelectAllTxns = () => {
-    if (txnHooks.filteredTransactions.length > 0 && txnHooks.filteredTransactions.every(t => selectedTxnIds.has(t.id))) {
+  // Clear selections on month switch or route hash change
+  useEffect(() => {
+    setSelectedTxnIds(new Set());
+  }, [txnHooks.selectedMonth]);
+
+  useEffect(() => {
+    const handleHashReset = () => setSelectedTxnIds(new Set());
+    window.addEventListener('hashchange', handleHashReset);
+    return () => window.removeEventListener('hashchange', handleHashReset);
+  }, []);
+
+  const toggleSelectAllTxns = (visibleIds: string[]) => {
+    if (visibleIds.length > 0 && visibleIds.every(id => selectedTxnIds.has(id))) {
       setSelectedTxnIds(new Set());
     } else {
-      setSelectedTxnIds(new Set(txnHooks.filteredTransactions.map(t => t.id)));
+      setSelectedTxnIds(new Set(visibleIds));
     }
+  };
+
+  const clearSelectedTxns = () => {
+    setSelectedTxnIds(new Set());
   };
 
   const handleLockCurrentMonth = async () => {
@@ -617,6 +650,7 @@ function AppInner() {
       onMonthChange={txnHooks.setSelectedMonth}
       onSelectProject={selectProject}
       categories={budgetHooks.categories}
+      monthTransactions={txnHooks.monthTransactions}
       categoryTxnCount={txnHooks.filteredTransactions.length}
       monthTxnCount={txnHooks.monthTransactions.length}
       mainRef={mainRef}
@@ -695,6 +729,7 @@ function AppInner() {
             setSelectedTxnIds={setSelectedTxnIds}
             toggleSelectTxn={toggleSelectTxn}
             toggleSelectAllTxns={toggleSelectAllTxns}
+            clearSelectedTxns={clearSelectedTxns}
             handleOpenAddTxn={handleOpenAddTxn}
             handleEditTxn={handleEditTxn}
             handleLockCurrentMonth={handleLockCurrentMonth}
@@ -777,6 +812,7 @@ function AppInner() {
         refreshProjectData={refreshProjectData}
         storageAdapter={storageAdapter}
         logout={logout}
+        locks={locks}
         isCurrentMonthLocked={isCurrentMonthLocked}
         txnHooks={txnHooks}
         budgetHooks={budgetHooks}

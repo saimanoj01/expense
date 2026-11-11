@@ -2307,7 +2307,8 @@ test('28. Pure-Python wallet_reconcile.py CLI: 7-day lookback, pending->settled 
     assert.equal(insertedBilt.type, 'transfer');
     assert.equal(insertedBilt.category, 'housing');
     assert.equal(insertedBilt.subCategory, 'housing-mortgage');
-    assert.ok(insertedBilt.labels.includes('manoj bofa'));
+    assert.equal(insertedBilt.meta.account, 'manoj bofa');
+    assert.deepEqual(insertedBilt.labels, []);
     assert.equal(plan.appendRows[0].length, 12); // A:L 12 columns
 
     // Check batch requests file was written
@@ -2970,7 +2971,306 @@ test('31. Word-boundary isolation ("spaghetti" vs "spa", "snail" vs "nail"), not
   }
 });
 
+test('32. Transaction taxonomy, account userEdited protection, duplicate-verified dismissal, and cleanup_sheet_labels.py', async () => {
+  const { execFileSync } = await import('node:child_process');
+  const os = await import('node:os');
+  const {
+    resolveTransactionAccount,
+    formatAccountDisplay,
+    getCanonicalAccountKey,
+    getVisibleUserTags,
+    sanitizeUserTagsInput,
+    isTransactionPending,
+    getUserFacingNote,
+    isDuplicateVerified,
+    isTransactionNeedsReview,
+  } = await import(
+    pathToFileURL(path.join(repoRoot, 'src/utils/transactionTaxonomy.ts')).href
+  );
 
+  // 1. Account resolution & canonical display mapping
+  assert.equal(
+    formatAccountDisplay(resolveTransactionAccount({ meta: { account: 'amazon store card' } })),
+    'Amazon Card'
+  );
+  assert.equal(
+    getCanonicalAccountKey('amazon store card'),
+    getCanonicalAccountKey('amazon-synchrony')
+  );
+  assert.equal(
+    formatAccountDisplay(resolveTransactionAccount({ labels: ['priyanka chase', 'flexible'] })),
+    'Priyanka Chase'
+  );
 
+  // 2. Visible user tags & sanitization
+  assert.deepEqual(
+    getVisibleUserTags({
+      labels: ['bilt', 'flexible', 'imported', 'needs-review', 'refund', 'japan-trip', 'tax-2026'],
+      meta: { account: 'bilt' },
+    }),
+    ['japan-trip', 'tax-2026']
+  );
+  assert.deepEqual(
+    sanitizeUserTagsInput(['#Japan-Trip', 'fixed', 'bilt', 'imported', 'tax-2026'], 'bilt'),
+    ['japan-trip', 'tax-2026']
+  );
 
+  // 3. Pending & boilerplate note extraction (settled note with "(was $50.00 Pending)" must NOT be pending)
+  assert.equal(
+    isTransactionPending({
+      notes: 'Google Wallet (Plaid) • Bilt Palladium Card (7702) • Settled with $5.00 tip (was $50.00 Pending)',
+      meta: { provisional: false },
+    }),
+    false
+  );
+  assert.equal(
+    isTransactionPending({
+      notes: 'Google Wallet (Plaid) • Bilt Palladium Card (7702) • Pending',
+    }),
+    true
+  );
+  assert.equal(
+    getUserFacingNote({
+      notes: 'Google Wallet (Plaid) • Bilt Palladium Card (7702) • Pending',
+      meta: { account: 'bilt' },
+    }),
+    ''
+  );
+  assert.equal(
+    getUserFacingNote({ notes: 'Imported via CSV' }),
+    ''
+  );
+  assert.equal(
+    getUserFacingNote({
+      notes: 'Google Wallet (Plaid) • Bilt Palladium Card (7702) • Settled with $5.00 tip (was $50.00 Pending)',
+      meta: { account: 'bilt' },
+    }),
+    'Settled with $5.00 tip (was $50.00 Pending)'
+  );
+
+  // 4. Duplicate dismissal records duplicate-verified and clears needs-review
+  const dupTx = {
+    id: 'dup-1',
+    date: '2026-11-05',
+    category: 'food',
+    subCategory: null,
+    amount: 14.5,
+    type: 'expense',
+    description: 'Starbucks',
+    labels: [],
+    hash: 'h-dup-1',
+  };
+  assert.equal(isTransactionNeedsReview(dupTx, new Set(['dup-1'])), true);
+  const resolvedDup = resolveTransactionReview(dupTx, '2026-11-06T00:00:00Z', {
+    clearDuplicate: true,
+  });
+  assert.equal(isDuplicateVerified(resolvedDup), true);
+  assert.ok(resolvedDup.labels.includes('duplicate-verified'));
+  assert.ok(resolvedDup.meta.review.reasons.includes('duplicate'));
+
+  // 5. markUserEditedFields tracks account edits & preserves cleared account cleanly
+  const oldTx = {
+    ...dupTx,
+    meta: { account: 'bilt', userEdited: [] },
+  };
+  const editedAcctMeta = markUserEditedFields(oldTx, {
+    ...oldTx,
+    meta: { account: 'priyanka chase' },
+  });
+  assert.equal(editedAcctMeta.account, 'priyanka chase');
+  assert.ok(editedAcctMeta.userEdited.includes('account'));
+
+  const clearedAcctMeta = markUserEditedFields(oldTx, {
+    ...oldTx,
+    meta: { account: undefined },
+  });
+  assert.equal('account' in clearedAcctMeta, false);
+  assert.ok(clearedAcctMeta.userEdited.includes('account'));
+
+  // 6. cleanup_sheet_labels.py promotes account & bucket before stripping redundant labels
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nebula-cleanup-32-'));
+  try {
+    const sampleSheetPath = path.join(tmpDir, 'sheet.json');
+    const batchOutPath = path.join(tmpDir, 'cleanup_batch.json');
+    fs.writeFileSync(
+      sampleSheetPath,
+      JSON.stringify([
+        [
+          'id',
+          'date',
+          'category',
+          'subCategory',
+          'amount',
+          'type',
+          'description',
+          'notes',
+          'labels',
+          'hash',
+          'spendingBucket',
+          'meta',
+        ],
+        [
+          'r1',
+          '2026-10-10',
+          'food',
+          'food-groceries',
+          '42.50',
+          'expense',
+          'Trader Joes',
+          'Imported via CSV',
+          '["bilt","flexible","imported","japan-trip"]',
+          'h1',
+          '',
+          '',
+        ],
+        [
+          'r2',
+          '2026-10-11',
+          'entertainment',
+          'entertainment-subs',
+          '16.77',
+          'income',
+          'Google One',
+          'Google Wallet (Plaid) • Bilt Palladium Card (7702)',
+          '["refund","needs-review","non-monthly"]',
+          'h2',
+          '',
+          '{}',
+        ],
+        [
+          'r3',
+          '2026-10-12',
+          'food',
+          'food-dine-in',
+          '28.00',
+          'expense',
+          'Blue Bottle Coffee',
+          'Google Wallet (Plaid) • Bilt Palladium Card (7702)',
+          '["amazon card","expense"]',
+          'h3',
+          'flexible',
+          '{"userEdited":["account"]}',
+        ],
+      ]),
+      'utf8'
+    );
+
+    const cleanupScript = path.join(
+      repoRoot,
+      '.agents/skills/expense-ingest/scripts/cleanup_sheet_labels.py'
+    );
+    const out = JSON.parse(
+      execFileSync(
+        'python3',
+        [cleanupScript, '--transactions-json', sampleSheetPath, '--batch-out', batchOutPath],
+        { encoding: 'utf8' }
+      )
+    );
+    assert.equal(out.summary.totalDataRows, 3);
+    assert.equal(out.summary.rowsTouched, 3);
+    assert.equal(out.summary.promotedBucketCounts.flexible, 1);
+    assert.equal(out.summary.promotedBucketCounts['non-monthly'], 1);
+    assert.equal(out.summary.promotedAccountCounts.bilt, 2);
+    assert.deepEqual(out.sampleChanges[0].newLabels, ['japan-trip']);
+    assert.equal(out.sampleChanges[0].newBucket, 'flexible');
+    assert.equal(out.sampleChanges[0].newAccount, 'bilt');
+    // Refund row promotes "non-monthly" bucket to Col K before stripping it from Col I
+    assert.deepEqual(out.sampleChanges[1].newLabels, ['refund', 'needs-review']);
+    assert.equal(out.sampleChanges[1].newBucket, 'non-monthly');
+    assert.equal(out.sampleChanges[1].newAccount, 'bilt');
+    // User-cleared account row ("account" in userEdited) must NOT re-populate meta.account
+    assert.deepEqual(out.sampleChanges[2].newLabels, []);
+    assert.equal(out.sampleChanges[2].newAccount, null);
+
+    const batchOps = JSON.parse(fs.readFileSync(batchOutPath, 'utf8'));
+    // Verify NO columns outside I, K, L are ever written!
+    for (const op of batchOps) {
+      assert.match(op.range, /^Transactions![IKL]\d+(?::[IKL]\d+)?$/);
+    }
+  } finally {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('34. Legacy needs-review resolution on category edit, cleared legacy account protection, and canonical sample data IDs', async () => {
+  const { resolveTransactionAccount } = await import(
+    pathToFileURL(path.join(repoRoot, 'src/utils/transactionTaxonomy.ts')).href
+  );
+  const { generateSampleData } = await import(
+    pathToFileURL(path.join(repoRoot, 'src/utils/sampleDataGenerator.ts')).href
+  );
+
+  // 1. Legacy needs-review row (labels: ['refund', 'needs-review'], no meta.review) resolves on category edit
+  const legacyReviewTx = {
+    id: 'legacy-rev-1',
+    date: '2026-10-15',
+    category: 'misc',
+    subCategory: null,
+    amount: 24.99,
+    type: 'income',
+    spendingBucket: 'flexible',
+    description: 'Merchant Refund',
+    notes: '',
+    labels: ['refund', 'needs-review'],
+    hash: 'h_legacy_rev_1',
+    meta: {},
+  };
+  const editedMeta = markUserEditedFields(
+    legacyReviewTx,
+    { ...legacyReviewTx, category: 'shopping', subCategory: 'shopping-amazon' },
+    '2026-11-11T12:00:00.000Z'
+  );
+  assert.ok(editedMeta.review?.resolvedAt, 'legacy needs-review must receive resolvedAt on category edit');
+  assert.ok(editedMeta.userEdited?.includes('category'));
+
+  // 2. Clearing an account that lived in legacy labels records 'account' in userEdited and suppresses fallback
+  const legacyAcctTx = {
+    id: 'legacy-acc-1',
+    date: '2026-10-16',
+    category: 'food',
+    subCategory: 'food-dine-in',
+    amount: 32.0,
+    type: 'expense',
+    spendingBucket: 'flexible',
+    description: 'Cafe',
+    notes: 'Google Wallet (Plaid) • Card (8885)',
+    labels: ['priyanka chase'],
+    hash: 'h_legacy_acc_1',
+  };
+  const clearedAcctMeta = markUserEditedFields(
+    legacyAcctTx,
+    { ...legacyAcctTx, labels: [], meta: { account: undefined } },
+    '2026-11-11T12:00:00.000Z'
+  );
+  assert.ok(clearedAcctMeta.userEdited?.includes('account'));
+  assert.equal(clearedAcctMeta.account, undefined);
+  assert.equal(
+    resolveTransactionAccount({ ...legacyAcctTx, meta: clearedAcctMeta }),
+    null,
+    'resolveTransactionAccount must not resurrect legacy label account when userEdited includes account'
+  );
+
+  // 3. Sample data generator only emits canonical DEFAULT_CATEGORIES IDs
+  const defaultCatIds = new Set(DEFAULT_CATEGORIES.map(c => c.id));
+  const sample = await generateSampleData();
+  assert.ok(sample.transactions.length > 0);
+  for (const tx of sample.transactions) {
+    assert.ok(
+      defaultCatIds.has(tx.category),
+      `Invalid sample category ID: ${tx.category}`
+    );
+    if (tx.subCategory) {
+      assert.ok(
+        defaultCatIds.has(tx.subCategory),
+        `Invalid sample subCategory ID: ${tx.subCategory}`
+      );
+    }
+  }
+  for (const b of sample.budgets) {
+    assert.ok(
+      defaultCatIds.has(b.category),
+      `Invalid sample budget category ID: ${b.category}`
+    );
+  }
+});
 

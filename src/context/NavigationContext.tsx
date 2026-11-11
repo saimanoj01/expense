@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { AppRoute } from '../types/navigation';
 import { parseHash, routeToHash, computeParentRoute, buildBreadcrumbs } from '../utils/navigation';
-import { Category } from '../services/storage';
+import { Category, Transaction, DEFAULT_CATEGORIES } from '../services/storage';
 import { NavigationContext } from './NavigationContextDef';
 
 interface NavigationProviderProps {
@@ -10,6 +10,7 @@ interface NavigationProviderProps {
   onMonthChange?: (month: string) => void;
   onSelectProject?: (projectId: string | null) => void;
   categories?: Category[];
+  monthTransactions?: Transaction[];
   categoryTxnCount?: number;
   monthTxnCount?: number;
   mainRef?: React.RefObject<HTMLElement>;
@@ -21,6 +22,7 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({
   onMonthChange,
   onSelectProject,
   categories = [],
+  monthTransactions,
   categoryTxnCount,
   monthTxnCount,
   mainRef: externalMainRef,
@@ -191,8 +193,26 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({
   }, [canGoBack, goBack]);
 
   const breadcrumbs = useMemo(() => {
-    return buildBreadcrumbs(currentRoute, categories, { categoryTxnCount, monthTxnCount });
-  }, [currentRoute, categories, categoryTxnCount, monthTxnCount]);
+    let scopedCategoryTxnCount = categoryTxnCount;
+    if (currentRoute.categoryId && Array.isArray(monthTransactions)) {
+      const target = currentRoute.categoryId.toLowerCase();
+      const allCats = [...DEFAULT_CATEGORIES, ...categories];
+      const matchedCat = allCats.find(
+        c => c.id.toLowerCase() === target || c.name.toLowerCase() === target
+      );
+      const matchId = matchedCat?.id.toLowerCase() || target;
+      const matchName = matchedCat?.name.toLowerCase() || target;
+      scopedCategoryTxnCount = monthTransactions.filter(t => {
+        const c = (t.category || '').toLowerCase();
+        const s = (t.subCategory || '').toLowerCase();
+        return c === matchId || c === matchName || s === matchId || s === matchName;
+      }).length;
+    }
+    return buildBreadcrumbs(currentRoute, categories, {
+      categoryTxnCount: scopedCategoryTxnCount,
+      monthTxnCount,
+    });
+  }, [currentRoute, categories, monthTransactions, categoryTxnCount, monthTxnCount]);
 
   const value = useMemo(() => ({
     currentRoute,

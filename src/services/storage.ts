@@ -36,7 +36,8 @@ export type EditableTxField =
   | 'amount'
   | 'date'
   | 'type'
-  | 'notes';
+  | 'notes'
+  | 'account';
 
 export interface TxReviewInfo {
   reason: ReviewReason;

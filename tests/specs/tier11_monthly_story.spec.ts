@@ -266,7 +266,8 @@ test.describe('Tier 11: The Monthly Financial Story & Cash Flow Analytics', () =
     });
     await expect(page.getByTestId('level4-transactions-workspace')).toBeVisible();
 
-    // t3 (Groceries & Dining) is currently flexible
+    // t3 (Groceries & Dining) is currently flexible: click its quiet bucket pill to open the floating switcher
+    await page.getByTestId('bucket-pill-t3').click();
     const switcher = page.getByTestId('bucket-switcher-t3');
     await expect(switcher).toBeVisible();
 

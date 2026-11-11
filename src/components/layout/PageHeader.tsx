@@ -49,6 +49,19 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
     return () => mainEl.removeEventListener('scroll', handleScroll);
   }, []);
 
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        setMenuOpen(false);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  }, [menuOpen]);
+
   const isOverview = currentRoute.view === 'overview';
 
   return (
@@ -61,6 +74,25 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
       <BreadcrumbTrail />
 
       <div className="flex items-center gap-1.5 shrink-0">
+        {selectedMonth !== 'all' && !isOverview && (onLockMonth || onUnlockMonth) && (
+          <button
+            type="button"
+            data-testid={isLockedMonth ? 'unlock-month-btn' : 'lock-month-btn'}
+            onClick={isLockedMonth ? onUnlockMonth : onLockMonth}
+            title={isLockedMonth ? 'Unlock Month' : 'Lock Month'}
+            className={`hidden sm:inline-flex items-center gap-1.5 h-8 px-2.5 rounded-[10px] text-label font-medium transition-colors focus-visible:ring-2 ring-ring/40 ${
+              isLockedMonth
+                ? 'bg-warning/15 border border-warning/30 text-warning hover:bg-warning/20'
+                : 'text-muted-foreground hover:text-foreground hover:bg-surface2'
+            }`}
+          >
+            {isLockedMonth ? <Lock className="w-3 h-3" /> : <Unlock className="w-3 h-3" />}
+            <span data-testid="lock-status-indicator">
+              {isLockedMonth ? 'Locked' : 'Unlocked'}
+            </span>
+          </button>
+        )}
+
         {isOverview && (
           <div className="hidden sm:flex items-center gap-1 mr-1">
             {onOpenCategoryManager && (
@@ -172,8 +204,11 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
         <div className="relative">
           <button
             type="button"
-            onClick={() => setMenuOpen(prev => !prev)}
+            data-testid="page-header-more-btn"
             aria-label="More actions"
+            aria-haspopup="menu"
+            aria-expanded={menuOpen}
+            onClick={() => setMenuOpen(prev => !prev)}
             className="w-8 h-8 rounded-[10px] hover:bg-surface2 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors focus-visible:ring-2 ring-ring/40"
           >
             <MoreHorizontal className="w-4 h-4" />
@@ -187,6 +222,8 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
               />
               <div
                 data-popover="page-header-overflow"
+                role="menu"
+                aria-label="More actions"
                 className="absolute right-0 mt-1.5 w-52 rounded-[14px] bg-popover border border-border p-1.5 shadow-lg z-30 space-y-0.5"
               >
                 <button
@@ -206,6 +243,8 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
                 {onOpenReport && (
                   <button
                     type="button"
+                    role="menuitem"
+                    data-testid={!isOverview ? 'view-monthly-report-btn' : undefined}
                     onClick={() => {
                       setMenuOpen(false);
                       onOpenReport();
@@ -219,6 +258,8 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
                 {onOpenShare && (
                   <button
                     type="button"
+                    role="menuitem"
+                    data-testid={!isOverview ? 'share-project-btn' : undefined}
                     onClick={() => {
                       setMenuOpen(false);
                       onOpenShare();
@@ -232,6 +273,7 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
                 {onOpenCsvWizard && !isLockedMonth && (
                   <button
                     type="button"
+                    role="menuitem"
                     onClick={() => {
                       setMenuOpen(false);
                       onOpenCsvWizard();
@@ -245,6 +287,7 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
                 {selectedMonth !== 'all' && (onLockMonth || onUnlockMonth) && (
                   <button
                     type="button"
+                    role="menuitem"
                     onClick={() => {
                       setMenuOpen(false);
                       if (isLockedMonth) {
@@ -253,7 +296,7 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
                         onLockMonth?.();
                       }
                     }}
-                    className="w-full px-3 py-2 text-left text-body text-foreground hover:bg-surface2 rounded-[10px] flex items-center gap-2.5 transition-colors"
+                    className="w-full px-3 py-2 text-left text-body text-foreground hover:bg-surface2 rounded-[10px] flex items-center gap-2.5 transition-colors sm:hidden"
                   >
                     {isLockedMonth ? (
                       <>

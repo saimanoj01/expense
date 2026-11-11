@@ -1,4 +1,4 @@
-import { Transaction, Budget, SpendingBucket } from '../services/storage';
+import type { Transaction, Budget, SpendingBucket } from '../services/storage';
 import { computeTxHash } from './crypto';
 
 function formatMonth(d: Date): string {
@@ -27,6 +27,7 @@ export async function generateSampleData(): Promise<{
     type: 'income' | 'expense' | 'transfer';
     spendingBucket?: SpendingBucket;
     description: string;
+    account?: string;
     labels: string[];
   }> = [];
 
@@ -43,11 +44,13 @@ export async function generateSampleData(): Promise<{
     pushTx({
       monthIdx: idx,
       day: 1,
-      category: 'salary',
+      category: 'income',
+      subCategory: 'income-salary',
       amount: 4500,
       type: 'income',
       description: 'Monthly Salary',
-      labels: ['salary', 'income']
+      account: 'Chase Checking',
+      labels: [],
     });
 
     // Fixed: Rent
@@ -55,11 +58,13 @@ export async function generateSampleData(): Promise<{
       monthIdx: idx,
       day: 1,
       category: 'housing',
+      subCategory: 'housing-mortgage',
       amount: 1400,
       type: 'expense',
       spendingBucket: 'fixed',
       description: 'Apartment Rent',
-      labels: ['rent', 'fixed']
+      account: 'Bilt',
+      labels: [],
     });
 
     // Fixed: Utilities
@@ -67,11 +72,13 @@ export async function generateSampleData(): Promise<{
       monthIdx: idx,
       day: 4,
       category: 'utilities',
+      subCategory: 'utilities-electric',
       amount: 145,
       type: 'expense',
       spendingBucket: 'fixed',
       description: 'Electric & Gas Utility',
-      labels: ['utilities', 'fixed']
+      account: 'Chase Checking',
+      labels: [],
     });
 
     // Fixed: Internet
@@ -79,23 +86,27 @@ export async function generateSampleData(): Promise<{
       monthIdx: idx,
       day: 5,
       category: 'utilities',
+      subCategory: 'utilities-internet',
       amount: 70,
       type: 'expense',
       spendingBucket: 'fixed',
       description: 'High-Speed Fiber Internet',
-      labels: ['wifi', 'fixed']
+      account: 'Bilt',
+      labels: [],
     });
 
     // Flexible: Groceries 1
     pushTx({
       monthIdx: idx,
       day: 7,
-      category: 'food',
-      amount: 110 + (idx * 5),
+      category: 'groceries',
+      subCategory: 'groceries-supermarket',
+      amount: 110 + idx * 5,
       type: 'expense',
       spendingBucket: 'flexible',
       description: 'Weekly Supermarket Groceries',
-      labels: ['groceries', 'flexible']
+      account: 'Bilt',
+      labels: [],
     });
 
     // Flexible: Dining out
@@ -103,11 +114,13 @@ export async function generateSampleData(): Promise<{
       monthIdx: idx,
       day: 10,
       category: 'food',
+      subCategory: 'food-dine-in',
       amount: 38,
       type: 'expense',
       spendingBucket: 'flexible',
       description: 'Sushi Dinner with Friends',
-      labels: ['dining', 'flexible']
+      account: 'Bilt',
+      labels: idx === 3 ? ['friends-night'] : [],
     });
 
     // Flexible: Gas
@@ -115,23 +128,27 @@ export async function generateSampleData(): Promise<{
       monthIdx: idx,
       day: 12,
       category: 'transport',
+      subCategory: 'transport-fuel',
       amount: 48,
       type: 'expense',
       spendingBucket: 'flexible',
       description: 'Shell Fuel Station',
-      labels: ['transport', 'flexible']
+      account: 'BofA Atmos',
+      labels: [],
     });
 
     // Flexible: Groceries 2
     pushTx({
       monthIdx: idx,
       day: 18,
-      category: 'food',
+      category: 'groceries',
+      subCategory: 'groceries-supermarket',
       amount: 95,
       type: 'expense',
       spendingBucket: 'flexible',
-      description: 'Trader Joe\'s Groceries',
-      labels: ['groceries', 'flexible']
+      description: "Trader Joe's Groceries",
+      account: 'Bilt',
+      labels: [],
     });
 
     // Flexible: Entertainment
@@ -139,11 +156,13 @@ export async function generateSampleData(): Promise<{
       monthIdx: idx,
       day: 22,
       category: 'entertainment',
+      subCategory: 'entertainment-movies',
       amount: 35,
       type: 'expense',
       spendingBucket: 'flexible',
       description: 'Movie & Snacks',
-      labels: ['entertainment', 'flexible']
+      account: 'Bilt',
+      labels: [],
     });
 
     // Non-monthly expenses distributed across history
@@ -152,11 +171,13 @@ export async function generateSampleData(): Promise<{
         monthIdx: idx,
         day: 20,
         category: 'transport',
+        subCategory: 'transport-maint',
         amount: 280,
         type: 'expense',
         spendingBucket: 'non-monthly',
         description: 'Auto Maintenance & Oil Change',
-        labels: ['car', 'non-monthly']
+        account: 'BofA Atmos',
+        labels: [],
       });
     }
 
@@ -165,11 +186,13 @@ export async function generateSampleData(): Promise<{
         monthIdx: idx,
         day: 15,
         category: 'misc',
+        subCategory: 'misc-other',
         amount: 350,
         type: 'expense',
         spendingBucket: 'non-monthly',
-        description: 'Annual Renter\'s Insurance',
-        labels: ['insurance', 'non-monthly']
+        description: "Annual Renter's Insurance",
+        account: 'Chase Checking',
+        labels: ['annual'],
       });
     }
   });
@@ -192,16 +215,18 @@ export async function generateSampleData(): Promise<{
       description: item.description,
       notes: '',
       labels: item.labels,
-      hash
+      hash,
+      meta: item.account ? { account: item.account } : undefined,
     });
   }
 
   const budgets: Budget[] = [
     { category: 'housing', amount: 1500 },
     { category: 'utilities', amount: 250 },
-    { category: 'food', amount: 500 },
+    { category: 'groceries', amount: 350 },
+    { category: 'food', amount: 150 },
     { category: 'transport', amount: 250 },
-    { category: 'entertainment', amount: 150 }
+    { category: 'entertainment', amount: 150 },
   ];
 
   return { transactions, budgets };

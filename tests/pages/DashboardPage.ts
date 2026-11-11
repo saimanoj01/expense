@@ -94,7 +94,16 @@ export class DashboardPage {
     description?: string;
   }) {
     await this.ensureTransactionsView();
-    await this.page.getByTestId(`edit-transaction-btn-${id}`).click();
+    const editBtn = this.page.getByTestId(`edit-transaction-btn-${id}`);
+    const row = this.page.locator('[data-testid="transaction-row"]', { has: editBtn });
+    if ((await row.count()) > 0) {
+      await row.hover();
+    }
+    if (await editBtn.isVisible()) {
+      await editBtn.click();
+    } else {
+      await row.click();
+    }
     if (updatedData.amount) {
       await this.amountInput.fill(updatedData.amount);
     }
@@ -107,7 +116,17 @@ export class DashboardPage {
 
   async deleteTransaction(id: string) {
     await this.ensureTransactionsView();
-    await this.page.getByTestId(`delete-transaction-btn-${id}`).click();
+    const delBtn = this.page.getByTestId(`delete-transaction-btn-${id}`);
+    const row = this.page.locator('[data-testid="transaction-row"]', { has: delBtn });
+    if ((await row.count()) > 0) {
+      await row.hover();
+    }
+    if (await delBtn.isVisible()) {
+      await delBtn.click();
+    } else {
+      await row.click();
+      await this.page.getByTestId('modal-delete-transaction-btn').click();
+    }
   }
 
   async setBudget(category: string, amount: string) {
@@ -123,11 +142,17 @@ export class DashboardPage {
 
   async lockCurrentMonth() {
     await this.ensureTransactionsView();
+    if (!(await this.lockMonthBtn.isVisible())) {
+      await this.page.getByTestId('page-header-more-btn').click();
+    }
     await this.lockMonthBtn.click();
   }
 
   async unlockCurrentMonth() {
     await this.ensureTransactionsView();
+    if (!(await this.unlockMonthBtn.isVisible())) {
+      await this.page.getByTestId('page-header-more-btn').click();
+    }
     await this.unlockMonthBtn.click();
   }
 }

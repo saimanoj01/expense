@@ -266,7 +266,8 @@ test.describe('Tier 1: Feature Coverage (Happy Paths)', () => {
       });
       await appPage.goto();
       await dashboardPage.ensureTransactionsView();
-      // Click filter or tag
+      // Open Filter popover and select tag
+      await page.getByTestId('ledger-filter-btn').click();
       await page.getByTestId('filter-tag-groceries').click();
       await expect(page.locator('text=Grocery')).toBeVisible();
       await expect(page.locator('text=Electricity')).not.toBeVisible();

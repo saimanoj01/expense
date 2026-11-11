@@ -282,12 +282,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsLoading(false);
   }, [googleClientIdExists]);
 
-  const login = async () => {
-    if (!navigator.onLine) {
-      setAuthErrorToast('You are currently offline');
-      showToast('You are currently offline', 'error');
-      return;
+  const checkIsTrulyOffline = async (): Promise<boolean> => {
+    if (typeof fetch === 'undefined' || typeof window === 'undefined') {
+      return typeof navigator !== 'undefined' && !navigator.onLine;
     }
+    try {
+      await fetch(window.location.origin + window.location.pathname, { method: 'HEAD', cache: 'no-store' });
+      return false;
+    } catch {
+      return true;
+    }
+  };
+
+  const login = async () => {
     let clientId = getClientId();
     if (!clientId) {
       const input = window.prompt("To sign in with your real Google account, please enter your Google OAuth Client ID (or click Cancel to use Demo mode):");
@@ -296,9 +303,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         localStorage.setItem('custom_google_client_id', clientId);
       } else {
         console.warn("No Google Client ID provided. Falling back to Mock Login.");
-        loginAsMock();
+        await loginAsMock();
         return;
       }
+    }
+    if (await checkIsTrulyOffline()) {
+      setAuthErrorToast('You are currently offline');
+      showToast('You are currently offline', 'error');
+      return;
     }
     setIsLoading(true);
     try {
@@ -352,14 +364,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const loginAsMock = async () => {
-    let isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
-    if (!isOffline && typeof fetch !== 'undefined') {
-      try {
-        await fetch(window.location.origin + window.location.pathname, { method: 'HEAD', cache: 'no-store' });
-      } catch {
-        isOffline = true;
-      }
-    }
+    const isOffline = await checkIsTrulyOffline();
     if (isOffline) {
       setAuthErrorToast('You are currently offline');
       showToast('You are currently offline', 'error');

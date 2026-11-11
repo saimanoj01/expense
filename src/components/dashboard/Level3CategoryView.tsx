@@ -9,6 +9,11 @@ import { DailySpendTimeline } from './DailySpendTimeline';
 import { BUCKETS, bucketColor, negativeColor } from '../../theme/buckets';
 import { spring } from '../../theme/motion';
 import { RollingNumber } from '../motion/RollingNumber';
+import {
+  resolveTransactionAccount,
+  formatAccountDisplay,
+  getVisibleUserTags,
+} from '../../utils/transactionTaxonomy';
 
 export interface Level3CategoryViewProps {
   categoryId: string;
@@ -404,15 +409,26 @@ export const Level3CategoryView: React.FC<Level3CategoryViewProps> = ({
                           <div className="text-body font-medium text-foreground truncate">
                             {t.description || category.name}
                           </div>
-                          <div className="flex items-center gap-1.5 text-label text-muted-foreground truncate">
-                            <span>{category.name}</span>
-                            {t.labels && t.labels.length > 0 && (
-                              <>
-                                <span>·</span>
-                                <span>#{t.labels.join(' #')}</span>
-                              </>
-                            )}
-                          </div>
+                          {(() => {
+                            const subObj = t.subCategory
+                              ? categories.find(c => c.id === t.subCategory) ||
+                                DEFAULT_CATEGORIES.find(c => c.id === t.subCategory)
+                              : undefined;
+                            const accDisplay = formatAccountDisplay(resolveTransactionAccount(t));
+                            const visibleTags = getVisibleUserTags(t);
+                            const parts: string[] = [];
+                            if (subObj) parts.push(subObj.name);
+                            if (accDisplay) parts.push(accDisplay);
+                            if (visibleTags.length > 0) {
+                              parts.push(visibleTags.map(tag => `#${tag}`).join(' '));
+                            }
+                            if (parts.length === 0) return null;
+                            return (
+                              <div className="flex items-center gap-1.5 text-label text-muted-foreground truncate">
+                                {parts.join(' · ')}
+                              </div>
+                            );
+                          })()}
                         </div>
                       </div>
 

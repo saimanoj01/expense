@@ -847,7 +847,7 @@ def classify_wallet_item(
                     notes_out = f"{notes_out} • Pending"
                 tx_type = b_rule["type"]
                 bucket = b_rule.get("spendingBucket")
-                labels = [l for l in [acc_label, bucket] if l]
+                labels: List[str] = []
                 return {
                     "description": final_desc,
                     "amount": amt_val,
@@ -875,7 +875,7 @@ def classify_wallet_item(
         for pat in rules.get("creditCardPayoffPatterns", [])
     ):
         notes_out = raw_notes or " • ".join(provenance_parts)
-        labels = [acc_label] if acc_label else []
+        labels = []
         return {
             "description": raw_desc,
             "amount": amt_val,
@@ -925,7 +925,7 @@ def classify_wallet_item(
 
     if hist:
         bucket = hist["spendingBucket"] if (tx_type == "expense" or is_refund) else None
-        labels = [l for l in [acc_label, ("refund" if is_refund else None), bucket] if l]
+        labels = ["refund"] if is_refund else []
         notes_out = raw_notes or " • ".join(provenance_parts)
         return {
             "description": raw_desc,
@@ -953,7 +953,7 @@ def classify_wallet_item(
                 continue
             resolved_type = "income" if is_refund else k_rule["type"]
             bucket = k_rule.get("spendingBucket") if (resolved_type == "expense" or is_refund) else None
-            labels = [l for l in [acc_label, ("refund" if is_refund else None), bucket] if l]
+            labels = ["refund"] if is_refund else []
             notes_out = raw_notes or " • ".join(provenance_parts)
             return {
                 "description": raw_desc,
@@ -995,9 +995,7 @@ def classify_wallet_item(
             labels = [
                 l
                 for l in [
-                    acc_label,
                     ("refund" if is_refund else None),
-                    bucket,
                     ("needs-review" if rev_reason else None),
                 ]
                 if l
@@ -1024,7 +1022,7 @@ def classify_wallet_item(
     fallback_cat = "income" if is_pure_income else "misc"
     fallback_sub = "income-other" if is_pure_income else "misc-other"
     bucket = "flexible" if (tx_type == "expense" or is_refund) else None
-    labels = [l for l in [acc_label, ("refund" if is_refund else None), bucket, "needs-review"] if l]
+    labels = [l for l in [("refund" if is_refund else None), "needs-review"] if l]
     notes_out = raw_notes or " • ".join(provenance_parts)
     return {
         "description": raw_desc,
@@ -1092,12 +1090,15 @@ def parse_sheet_row_dict(
         meta = json.loads(meta_raw) if meta_raw.strip() else {}
     except Exception:
         meta = {}
-    _, acc_label, _ = extract_account_digits(
-        meta.get("account") or " ".join(labels) or row_dict.get("notes") or "",
-        rules,
-    )
-    if acc_label and not meta.get("account"):
-        meta["account"] = acc_label
+    raw_user_edited = meta.get("userEdited")
+    user_edited_fields = raw_user_edited if isinstance(raw_user_edited, list) else []
+    if not meta.get("account") and "account" not in user_edited_fields:
+        _, acc_label, _ = extract_account_digits(
+            " ".join(labels) or row_dict.get("notes") or "",
+            rules,
+        )
+        if acc_label:
+            meta["account"] = acc_label
     try:
         amt_float = round(float(raw_amt.replace("$", "").replace(",", "") or 0.0), 2)
     except Exception:
@@ -1768,15 +1769,16 @@ def format_digest_markdown(plan: Dict[str, Any]) -> str:
             [
                 "",
                 "#### ➕ Newly Ingested Transactions",
-                "| Date | Description | Amount | Type | Category | Labels |",
-                "| :--- | :--- | ---: | :--- | :--- | :--- |",
+                "| Date | Description | Amount | Type | Category | Account | Flags / Tags |",
+                "| :--- | :--- | ---: | :--- | :--- | :--- | :--- |",
             ]
         )
         for tx in plan["insertedTransactions"]:
             cat_str = f"{tx['category']}/{tx['subCategory']}" if tx.get("subCategory") else tx["category"]
-            lbl_str = ", ".join(tx.get("labels") or [])
+            acc_str = (tx.get("meta") or {}).get("account") or "—"
+            lbl_str = ", ".join(tx.get("labels") or []) or "—"
             lines.append(
-                f"| {tx['date']} | {tx['description']} | ${tx['amount']:.2f} | {tx['type']} | `{cat_str}` | {lbl_str} |"
+                f"| {tx['date']} | {tx['description']} | ${tx['amount']:.2f} | {tx['type']} | `{cat_str}` | {acc_str} | {lbl_str} |"
             )
 
     if plan["updateOps"]:

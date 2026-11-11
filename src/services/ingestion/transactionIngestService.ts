@@ -22,6 +22,7 @@ import {
   classifyTransactionsWithLLM,
   type ClassifiedResultItem,
 } from '../llmCategorizer';
+import { resolveTransactionAccount } from '../../utils/transactionTaxonomy';
 import type {
   RawTransactionInput,
   IngestRequest,
@@ -204,6 +205,11 @@ export function markUserEditedFields(
 ): TxMeta {
   const prevMeta: TxMeta = oldTx?.meta || newTx.meta || {};
   const edited = new Set<EditableTxField>(prevMeta.userEdited || []);
+  const hasExplicitNewAccount = Boolean(
+    newTx.meta && Object.prototype.hasOwnProperty.call(newTx.meta, 'account')
+  );
+  const nextAccount = hasExplicitNewAccount ? newTx.meta?.account : prevMeta.account;
+  const prevResolvedAccount = resolveTransactionAccount(oldTx) || '';
 
   if (oldTx) {
     if (oldTx.date !== newTx.date) edited.add('date');
@@ -216,29 +222,50 @@ export function markUserEditedFields(
     }
     if (oldTx.type !== newTx.type) edited.add('type');
     if ((oldTx.notes || '') !== (newTx.notes || '')) edited.add('notes');
+    if (hasExplicitNewAccount && prevResolvedAccount !== (nextAccount || '')) {
+      edited.add('account');
+    }
   } else {
-    // Manual creation (!oldTx): mark category (and present subCategory/spendingBucket) as user-edited
+    // Manual creation (!oldTx): mark category (and present subCategory/spendingBucket/account) as user-edited
     // so subsequent automated cross-source enrichments preserve the user's chosen classification.
     edited.add('category');
     if (newTx.subCategory) edited.add('subCategory');
     if (newTx.spendingBucket) edited.add('spendingBucket');
+    if (nextAccount) edited.add('account');
   }
 
   const categoryEdited =
     edited.has('category') || edited.has('subCategory') || edited.has('spendingBucket');
 
+  const hadLegacyNeedsReview = [
+    ...(Array.isArray(oldTx?.labels) ? oldTx.labels : []),
+    ...(Array.isArray(newTx.labels) ? newTx.labels : []),
+  ].some(l => typeof l === 'string' && l.trim().toLowerCase() === 'needs-review');
+
   let review = prevMeta.review;
   if (review && !review.resolvedAt && categoryEdited) {
     review = clearReviewReason(review, 'category', nowIso);
+  } else if (!review && categoryEdited && hadLegacyNeedsReview) {
+    review = {
+      reason: 'category',
+      reasons: ['category'],
+      resolvedAt: nowIso,
+    };
   }
 
-  return {
+  const result: TxMeta = {
     ...prevMeta,
     userEdited: Array.from(edited),
     categorizedBy: categoryEdited ? 'user' : prevMeta.categorizedBy || 'user',
     confidence: categoryEdited ? 1.0 : prevMeta.confidence ?? 1.0,
     review,
   };
+  if (nextAccount) {
+    result.account = nextAccount;
+  } else if (hasExplicitNewAccount) {
+    delete result.account;
+  }
+  return result;
 }
 
 /**
@@ -246,7 +273,8 @@ export function markUserEditedFields(
  */
 export function resolveTransactionReview(
   tx: Transaction,
-  nowIso: string = new Date().toISOString()
+  nowIso: string = new Date().toISOString(),
+  options?: { clearDuplicate?: boolean }
 ): Transaction {
   const currentLabels = Array.isArray(tx.labels) ? tx.labels : [];
   const nextLabels = currentLabels.filter(l => l !== 'needs-review');
@@ -262,6 +290,7 @@ export function resolveTransactionReview(
   // unknown-reason flag: treat "Looks Good" as the user confirming the best-guess category.
   const isLegacyLabelReview = !existingReview && hasReviewLabel;
   const isDuplicateReview =
+    Boolean(options?.clearDuplicate) ||
     activeReasons.includes('duplicate') ||
     (!existingReview && !hasReviewLabel);
   const isCategoryReview = activeReasons.includes('category') || isLegacyLabelReview;
@@ -269,6 +298,14 @@ export function resolveTransactionReview(
   if (isDuplicateReview && !nextLabels.includes('duplicate-verified')) {
     nextLabels.push('duplicate-verified');
   }
+
+  const resolvedReasons: ReviewReason[] = Array.from(
+    new Set<ReviewReason>([
+      ...activeReasons,
+      ...(isLegacyLabelReview ? (['category'] as ReviewReason[]) : []),
+      ...(isDuplicateReview ? (['duplicate'] as ReviewReason[]) : []),
+    ])
+  );
 
   const nextMeta: TxMeta = {
     ...(tx.meta || {}),
@@ -279,17 +316,18 @@ export function resolveTransactionReview(
     review: existingReview
       ? {
           ...existingReview,
+          reasons: resolvedReasons.length > 0 ? resolvedReasons : existingReview.reasons,
           resolvedAt: nowIso,
         }
       : isLegacyLabelReview
       ? {
           reason: 'category',
-          reasons: ['category'],
+          reasons: resolvedReasons,
           resolvedAt: nowIso,
         }
       : {
           reason: 'duplicate',
-          reasons: ['duplicate'],
+          reasons: resolvedReasons.length > 0 ? resolvedReasons : ['duplicate'],
           resolvedAt: nowIso,
         },
   };
@@ -1163,10 +1201,17 @@ function buildTransactionFromCandidate(
       : Math.max(existingToMerge?.meta?.confidence ?? 0, candidate.confidence);
 
   const resolvedAccount =
-    candidate.account || existingToMerge?.meta?.account;
+    existingToMerge && userEdited.has('account')
+      ? existingToMerge.meta?.account
+      : candidate.account || existingToMerge?.meta?.account;
+
+  const basePrevMeta: TxMeta = { ...(existingToMerge?.meta || {}) };
+  if (!resolvedAccount) {
+    delete basePrevMeta.account;
+  }
 
   const meta: TxMeta = {
-    ...(existingToMerge?.meta || {}),
+    ...basePrevMeta,
     sources: nextSources,
     externalIds: Object.keys(nextExternalIds).length > 0 ? nextExternalIds : undefined,
     ...(resolvedAccount ? { account: resolvedAccount } : {}),

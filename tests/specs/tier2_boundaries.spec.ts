@@ -452,10 +452,11 @@ test.describe('Tier 2: Boundary, Edge and Error Handling Cases', () => {
       await page.getByTestId('csv-next-step-btn').click();
       await csvWizardPage.clickImport();
 
-      // Check dates standardization in transactions list (sorted date-desc)
-      await expect(page.locator('[data-testid="transaction-date-row"]').nth(0)).toContainText('2026-07-12');
-      await expect(page.locator('[data-testid="transaction-date-row"]').nth(1)).toContainText('2026-07-06');
-      await expect(page.locator('[data-testid="transaction-date-row"]').nth(2)).toContainText('2026-07-05');
+      // Check dates standardization in day-grouped transactions list (sorted date-desc)
+      const dayHeaders = page.getByTestId('transaction-day-header');
+      await expect(dayHeaders.nth(0)).toHaveAttribute('data-date', '2026-07-12');
+      await expect(dayHeaders.nth(1)).toHaveAttribute('data-date', '2026-07-06');
+      await expect(dayHeaders.nth(2)).toHaveAttribute('data-date', '2026-07-05');
     });
 
     test('24. Total Duplicate Files: Disables action inputs when all rows are flagged duplicates', async ({ page }) => {
