@@ -118,7 +118,7 @@ export function Modal({
         className={
           isSheet
             ? `w-full sm:w-[420px] sm:h-full max-h-[90vh] sm:max-h-screen rounded-t-[18px] sm:rounded-none sm:border-l border-t sm:border-t-0 border-border bg-popover p-6 shadow-2xl relative overflow-y-auto custom-scrollbar ${className}`
-            : `glass-panel w-full ${maxWidth} rounded-[14px] p-6 shadow-2xl border border-border relative overflow-hidden ${className}`
+            : `bg-popover text-popover-foreground w-full ${maxWidth} rounded-[14px] p-6 shadow-2xl border border-border relative overflow-hidden ${className}`
         }
         onClick={e => e.stopPropagation()}
       >

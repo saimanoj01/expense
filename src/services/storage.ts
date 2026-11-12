@@ -190,7 +190,7 @@ export const DEFAULT_CATEGORIES: Category[] = [
   // 13 Parent Categories
   { id: 'groceries', name: 'Groceries', color: '#51CF66', emoji: '🛒' },
   { id: 'shopping', name: 'Shopping', color: '#E64980', emoji: '🛍️' },
-  { id: 'merchandise', name: 'Merchandise', color: '#BE4BDB', emoji: '📦' },
+  { id: 'merchandise', name: 'Merchandise', color: '#14B8A6', emoji: '📦' },
   { id: 'utilities', name: 'Utilities', color: '#FCC419', emoji: '⚡' },
   { id: 'food', name: 'Food & Dining', color: '#FF6B6B', emoji: '🍔' },
   { id: 'entertainment', name: 'Entertainment', color: '#FF8787', emoji: '🎬' },
@@ -199,7 +199,7 @@ export const DEFAULT_CATEGORIES: Category[] = [
   { id: 'transfers', name: 'Transfers', color: '#339AF0', emoji: '↔️' },
   { id: 'travel', name: 'Travel', color: '#38BDF8', emoji: '✈️' },
   { id: 'housing', name: 'Housing', color: '#4DABF7', emoji: '🏠' },
-  { id: 'transport', name: 'Transport', color: '#845EF7', emoji: '🚗' },
+  { id: 'transport', name: 'Transport', color: '#0EA5E9', emoji: '🚗' },
   { id: 'healthcare', name: 'Health & Medical', color: '#20C997', emoji: '🏥' },
 
   // Sub-Categories
@@ -214,8 +214,8 @@ export const DEFAULT_CATEGORIES: Category[] = [
   { id: 'shopping-general', name: 'General Shopping', color: '#E64980', emoji: '🛍️', parentId: 'shopping' },
 
   // Merchandise
-  { id: 'merchandise-retail', name: 'Retail Goods', color: '#BE4BDB', emoji: '🏷️', parentId: 'merchandise' },
-  { id: 'merchandise-electronics', name: 'Electronics & Supplies', color: '#BE4BDB', emoji: '💻', parentId: 'merchandise' },
+  { id: 'merchandise-retail', name: 'Retail Goods', color: '#14B8A6', emoji: '🏷️', parentId: 'merchandise' },
+  { id: 'merchandise-electronics', name: 'Electronics & Supplies', color: '#14B8A6', emoji: '💻', parentId: 'merchandise' },
 
   // Utilities
   { id: 'utilities-phone', name: 'Phone & Mobile', color: '#FCC419', emoji: '📱', parentId: 'utilities' },
@@ -255,9 +255,9 @@ export const DEFAULT_CATEGORIES: Category[] = [
   { id: 'housing-hoa', name: 'HOA Fees & Dues', color: '#4DABF7', emoji: '🏢', parentId: 'housing' },
 
   // Transport
-  { id: 'transport-fuel', name: 'Gas & Fuel', color: '#845EF7', emoji: '⛽', parentId: 'transport' },
-  { id: 'transport-transit', name: 'Rideshare & Transit', color: '#845EF7', emoji: '🚕', parentId: 'transport' },
-  { id: 'transport-maint', name: 'Vehicle Maintenance', color: '#845EF7', emoji: '🔧', parentId: 'transport' },
+  { id: 'transport-fuel', name: 'Gas & Fuel', color: '#0EA5E9', emoji: '⛽', parentId: 'transport' },
+  { id: 'transport-transit', name: 'Rideshare & Transit', color: '#0EA5E9', emoji: '🚕', parentId: 'transport' },
+  { id: 'transport-maint', name: 'Vehicle Maintenance', color: '#0EA5E9', emoji: '🔧', parentId: 'transport' },
 
   // Health & Medical
   { id: 'healthcare-doctor', name: 'Doctor & Copay', color: '#20C997', emoji: '🩺', parentId: 'healthcare' },
@@ -277,7 +277,7 @@ export const SEED_CATEGORIES: Record<string, Category[]> = {
     { id: "rent", name: "Rent", color: "#4DABF7", emoji: "🏠" },
     { id: "utilities", name: "Utilities", color: "#FCC419", emoji: "⚡" },
     { id: "food", name: "Food", color: "#FF6B6B", emoji: "🍔" },
-    { id: "transport", name: "Transport", color: "#845EF7", emoji: "🚗" },
+    { id: "transport", name: "Transport", color: "#0EA5E9", emoji: "🚗" },
     { id: "entertainment", name: "Entertainment", color: "#FF8787", emoji: "🎬" },
     { id: "healthcare", name: "Healthcare", color: "#20C997", emoji: "🏥" },
     { id: "misc", name: "Miscellaneous", color: "#ADB5BD", emoji: "📦" }
@@ -315,6 +315,17 @@ export const SEED_LOCKS: Record<string, MonthlyLock[]> = {
   ],
   'saas-hackathon': []
 };
+
+function extractLockedNoteMonth(key: string, locks: MonthlyLock[]): string | null {
+  if (!key || key.startsWith('__meta_')) return null;
+  const colonIdx = key.indexOf(':');
+  if (colonIdx === -1) return null;
+  const monthPrefix = key.slice(0, colonIdx);
+  if (/^\d{4}-\d{2}$/.test(monthPrefix) && locks.some(l => l.month === monthPrefix && l.locked)) {
+    return monthPrefix;
+  }
+  return null;
+}
 
 export const SEED_TRANSACTIONS: Record<string, Transaction[]> = {
   'personal-finances': [
@@ -740,6 +751,11 @@ export class LocalStorageAdapter implements StorageAdapter {
   }
 
   async saveBudgetNote(projectId: string, key: string, note: BudgetNote): Promise<void> {
+    const locks = await this.getLocks(projectId);
+    const lockedMonth = extractLockedNoteMonth(key, locks);
+    if (lockedMonth) {
+      throw new Error(`Cannot modify budget notes. The month ${lockedMonth} is locked.`);
+    }
     const notes = await this.getBudgetNotes(projectId);
     notes[key] = note;
     try {
@@ -750,6 +766,11 @@ export class LocalStorageAdapter implements StorageAdapter {
   }
 
   async deleteBudgetNote(projectId: string, key: string): Promise<void> {
+    const locks = await this.getLocks(projectId);
+    const lockedMonth = extractLockedNoteMonth(key, locks);
+    if (lockedMonth) {
+      throw new Error(`Cannot modify budget notes. The month ${lockedMonth} is locked.`);
+    }
     const notes = await this.getBudgetNotes(projectId);
     delete notes[key];
     try {
@@ -1580,6 +1601,10 @@ export class GoogleSheetsAdapter implements StorageAdapter {
   async saveBudgetNote(projectId: string, key: string, note: BudgetNote): Promise<void> {
     return this.enqueueWrite(projectId, async () => {
       await this.ensureCache(projectId);
+      const lockedMonth = extractLockedNoteMonth(key, this.cache[projectId].locks || []);
+      if (lockedMonth) {
+        throw new Error(`Cannot modify budget notes. The month ${lockedMonth} is locked.`);
+      }
       const nextNotes = { ...(this.cache[projectId].notes || {}), [key]: note };
       await this.saveNotesToSheet(projectId, nextNotes);
       this.cache[projectId].notes = nextNotes;
@@ -1589,6 +1614,10 @@ export class GoogleSheetsAdapter implements StorageAdapter {
   async deleteBudgetNote(projectId: string, key: string): Promise<void> {
     return this.enqueueWrite(projectId, async () => {
       await this.ensureCache(projectId);
+      const lockedMonth = extractLockedNoteMonth(key, this.cache[projectId].locks || []);
+      if (lockedMonth) {
+        throw new Error(`Cannot modify budget notes. The month ${lockedMonth} is locked.`);
+      }
       if (this.cache[projectId].notes && key in this.cache[projectId].notes) {
         const nextNotes = { ...this.cache[projectId].notes };
         delete nextNotes[key];

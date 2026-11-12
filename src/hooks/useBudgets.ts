@@ -1,10 +1,29 @@
 import { useState, useMemo, useCallback } from 'react';
-import { Budget, Category, Transaction, BudgetNote, Project, StorageAdapter } from '../services/storage';
+import {
+  Budget,
+  Category,
+  Transaction,
+  BudgetNote,
+  Project,
+  StorageAdapter,
+} from '../services/storage';
 import {
   isRefundTransaction,
   deriveCategoryBucket,
   isNonBudgetableCategory,
+  doesBudgetMatchCategory,
+  getCategoryAliasOptions,
+  resolveEffectiveCategoryBudget,
 } from '../utils/metrics';
+import {
+  cleanBudgetsForSave,
+  computeBudgetDirtyState,
+  computeDonutSegments,
+  computeSpendingHistory,
+  countActiveTransactionMonths,
+  getBudgetCatKey,
+} from '../utils/budgetPlanning';
+import type { CategorySummary, SubCategorySummary } from '../utils/budgetPlanning';
 
 export { deriveCategoryBucket, isNonBudgetableCategory };
 
@@ -15,176 +34,250 @@ export function useBudgets(
   allTransactions: Transaction[] = [],
   selectedMonth: string = '',
   showToast: (msg: string, type?: 'success' | 'error' | 'info') => void,
-  setAuthErrorToast: (msg: string) => void
+  setAuthErrorToast: (msg: string) => void,
+  isLockedMonth: boolean = false
 ) {
-  const [budgets, setBudgets] = useState<Budget[]>([]);
+  const [persistedBudgets, setPersistedBudgets] = useState<Budget[]>([]);
+  const [workingBudgets, setWorkingBudgets] = useState<Budget[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [budgetErrors, setBudgetErrors] = useState<Record<string, string>>({});
   const [budgetDrafts, setBudgetDrafts] = useState<Record<string, string>>({});
   const [budgetNotes, setBudgetNotes] = useState<Record<string, BudgetNote>>({});
-  const prevProjectIdRef = useState<{ current: string | undefined }>(() => ({ current: activeProject?.id }))[0];
-  if (prevProjectIdRef.current !== activeProject?.id) {
-    prevProjectIdRef.current = activeProject?.id;
+
+  const [prevProjectId, setPrevProjectId] = useState<string | undefined>(
+    activeProject?.id
+  );
+  if (prevProjectId !== activeProject?.id) {
+    setPrevProjectId(activeProject?.id);
     setBudgetDrafts({});
     setBudgetErrors({});
   }
 
-  const refreshBudgetsAndCategories = useCallback(async () => {
-    if (!activeProject || !storageAdapter) return;
-    try {
-      const bgs = await storageAdapter.getBudgets(activeProject.id);
-      const cats = await storageAdapter.getCategories(activeProject.id);
-      const notes = await storageAdapter.getBudgetNotes(activeProject.id);
-      setBudgets(bgs);
-      setCategories(cats);
-      setBudgetNotes(notes || {});
-    } catch (err) {
-      console.error("Failed to load budgets/categories/notes:", err);
-    }
-  }, [activeProject, storageAdapter]);
-
-  const categorySummary = useMemo(() => {
-    // Identify top-level parent categories
-    const parentCats = [...categories.filter(c => !c.parentId)];
-    const existingKeys = new Set(parentCats.flatMap(c => [c.id.toLowerCase(), c.name.toLowerCase()]));
-    const subCatKeys = new Set(
-      categories.filter(c => Boolean(c.parentId)).flatMap(c => [c.id.toLowerCase(), c.name.toLowerCase()])
-    );
-    if (existingKeys.has('food & dining')) existingKeys.add('food');
-
-    budgets.forEach(b => {
-      const catKey = (b.category || '').toLowerCase();
-      if (b.category && !existingKeys.has(catKey) && !subCatKeys.has(catKey)) {
-        parentCats.push({
-          id: b.category,
-          name: b.category,
-          emoji: '🏷️',
-          color: '#0B79A8'
-        });
-        existingKeys.add(catKey);
+  const refreshBudgetsAndCategories = useCallback(
+    async (options?: { preserveWorkingDrafts?: boolean; deletedCategoryId?: string }) => {
+      if (!activeProject || !storageAdapter) return;
+      try {
+        const bgs = await storageAdapter.getBudgets(activeProject.id);
+        const cats = await storageAdapter.getCategories(activeProject.id);
+        const notes = await storageAdapter.getBudgetNotes(activeProject.id);
+        setPersistedBudgets(bgs);
+        if (options?.preserveWorkingDrafts) {
+          if (options.deletedCategoryId) {
+            const delLower = options.deletedCategoryId.toLowerCase();
+            setWorkingBudgets(prev =>
+              prev.filter(b => (b.category || '').toLowerCase() !== delLower)
+            );
+            setBudgetDrafts(prev => {
+              const next = { ...prev };
+              delete next[options.deletedCategoryId!];
+              return next;
+            });
+            setBudgetErrors(prev => {
+              const next = { ...prev };
+              delete next[options.deletedCategoryId!];
+              return next;
+            });
+          }
+        } else {
+          setWorkingBudgets(bgs);
+          setBudgetDrafts({});
+          setBudgetErrors({});
+        }
+        setCategories(cats);
+        setBudgetNotes(notes || {});
+      } catch (err) {
+        console.error('Failed to load budgets/categories/notes:', err);
       }
-    });
+    },
+    [activeProject, storageAdapter]
+  );
 
-    monthTransactions.forEach(t => {
-      const catKey = (t.category || '').toLowerCase();
-      if (t.category && !existingKeys.has(catKey) && !subCatKeys.has(catKey)) {
-        parentCats.push({
-          id: t.category,
-          name: t.category,
-          emoji: '🏷️',
-          color: '#4DABF7'
-        });
-        existingKeys.add(catKey);
+  const activeMonthsCount = useMemo(
+    () => countActiveTransactionMonths(allTransactions),
+    [allTransactions]
+  );
+
+  const buildSummaryForBudgets = useCallback(
+    (
+      targetBudgets: Budget[],
+      options: { normalizeAllTime: boolean }
+    ): CategorySummary[] => {
+      const aliasOpts = getCategoryAliasOptions(categories);
+      const parentCats = [...categories.filter(c => !c.parentId)];
+      const existingKeys = new Set(
+        parentCats.flatMap(c => [c.id.toLowerCase(), c.name.toLowerCase()])
+      );
+      const subCatKeys = new Set(
+        categories
+          .filter(c => Boolean(c.parentId))
+          .flatMap(c => [c.id.toLowerCase(), c.name.toLowerCase()])
+      );
+
+      if (existingKeys.has('food & dining') || existingKeys.has('food')) {
+        existingKeys.add('food');
+        existingKeys.add('food & dining');
       }
-    });
+      if (existingKeys.has('housing') && !aliasOpts.hasExplicitRentCategory) {
+        existingKeys.add('rent');
+      }
+      if (existingKeys.has('rent') && !aliasOpts.hasExplicitHousingCategory) {
+        existingKeys.add('housing');
+      }
 
-    const items: Array<{
-      id: string;
-      name: string;
-      emoji: string;
-      color: string;
-      budget: number;
-      spent: number;
-      percent: number;
-      bucket: 'fixed' | 'flexible' | 'non-monthly';
-      isNonBudgetable?: boolean;
-      subCategories: Array<{
-        id: string;
-        name: string;
-        emoji: string;
-        color: string;
-        budget: number;
-        spent: number;
-        percent: number;
-        bucket: 'fixed' | 'flexible' | 'non-monthly';
-      }>;
-    }> = [];
+      const combinedBudgetPool = [...persistedBudgets, ...targetBudgets];
+      combinedBudgetPool.forEach(b => {
+        const catKey = (b.category || '').trim().toLowerCase();
+        if (b.category && !existingKeys.has(catKey) && !subCatKeys.has(catKey)) {
+          parentCats.push({
+            id: b.category,
+            name: b.category,
+            emoji: '🏷️',
+            color: '#0B79A8',
+          });
+          existingKeys.add(catKey);
+        }
+      });
 
-    parentCats.forEach(pCat => {
-      // Find sub-categories for this parent
-      const subCats = categories.filter(c => c.parentId === pCat.id);
-      const validSubKeys = new Set(subCats.flatMap(s => [s.id.toLowerCase(), s.name.toLowerCase()]));
+      monthTransactions.forEach(t => {
+        const catKey = (t.category || '').trim().toLowerCase();
+        if (t.category && !existingKeys.has(catKey) && !subCatKeys.has(catKey)) {
+          parentCats.push({
+            id: t.category,
+            name: t.category,
+            emoji: '🏷️',
+            color: '#4DABF7',
+          });
+          existingKeys.add(catKey);
+        }
+      });
 
-      const subCategorySummaries = subCats.map(sCat => {
-        const bObj = budgets.find(b => b.category === sCat.id || b.category === sCat.name);
-        const subBudget = Number(bObj?.amount) || 0;
-        const rawSubSpent = monthTransactions
-          .filter(t => (t.type === 'expense' || isRefundTransaction(t)) && (
-            t.subCategory === sCat.id ||
-            (t.subCategory && t.subCategory.toLowerCase() === sCat.name.toLowerCase()) ||
-            ((t.category === sCat.id || (t.category && t.category.toLowerCase() === sCat.name.toLowerCase())) && !t.subCategory)
-          ))
+      const allKnownCats = [
+        ...parentCats,
+        ...categories.filter(c => Boolean(c.parentId)),
+      ];
+
+      const isAllTime = selectedMonth === 'all';
+      const allTimeDivisor = isAllTime ? Math.max(1, activeMonthsCount) : 1;
+      const items: CategorySummary[] = [];
+
+      parentCats.forEach(pCat => {
+        const subCats = categories.filter(c => c.parentId === pCat.id);
+        const validSubKeys = new Set(
+          subCats.flatMap(s => [s.id.toLowerCase(), s.name.toLowerCase()])
+        );
+
+        const subCategorySummaries: SubCategorySummary[] = subCats.map(sCat => {
+          const subRes = resolveEffectiveCategoryBudget(
+            sCat.id,
+            targetBudgets,
+            allKnownCats
+          );
+          const subBudget = subRes.effectiveBudget;
+
+          const rawSubNet = monthTransactions
+            .filter(
+              t =>
+                (t.type === 'expense' || isRefundTransaction(t)) &&
+                (doesBudgetMatchCategory(t.subCategory, sCat, aliasOpts) ||
+                  (!t.subCategory &&
+                    doesBudgetMatchCategory(t.category, sCat, aliasOpts)))
+            )
+            .reduce((sum, t) => {
+              const amt = Number(t.amount) || 0;
+              return sum + (t.type === 'expense' ? amt : -amt);
+            }, 0);
+
+          const rawSubSpent = Math.max(0, rawSubNet);
+          const effectiveSubSpent = rawSubSpent / allTimeDivisor;
+          const exposedSubSpent = options.normalizeAllTime
+            ? effectiveSubSpent
+            : rawSubSpent;
+          const subPercent =
+            subBudget > 0 ? Math.round((exposedSubSpent / subBudget) * 100) : 0;
+          const subBucket = deriveCategoryBucket(sCat.id || sCat.name, sCat);
+
+          return {
+            id: sCat.id,
+            name: sCat.name,
+            emoji: sCat.emoji,
+            color: sCat.color,
+            budget: subBudget,
+            spent: exposedSubSpent,
+            rawSpent: rawSubSpent,
+            effectiveSpent: effectiveSubSpent,
+            percent: subPercent,
+            bucket: subBucket,
+          };
+        });
+
+        const isNonBudgetable =
+          isNonBudgetableCategory(pCat.id) || isNonBudgetableCategory(pCat.name);
+        const parentBucket = deriveCategoryBucket(pCat.id || pCat.name, pCat);
+
+        const directParentSpent = monthTransactions
+          .filter(
+            t =>
+              (t.type === 'expense' || isRefundTransaction(t)) &&
+              t.category &&
+              doesBudgetMatchCategory(t.category, pCat, aliasOpts) &&
+              (!t.subCategory || !validSubKeys.has(t.subCategory.toLowerCase()))
+          )
           .reduce((sum, t) => {
             const amt = Number(t.amount) || 0;
             return sum + (t.type === 'expense' ? amt : -amt);
           }, 0);
-        const subSpent = Math.max(0, rawSubSpent);
-        const subPercent = subBudget > 0 ? Math.round((subSpent / subBudget) * 100) : 0;
-        const subBucket = deriveCategoryBucket(sCat.id || sCat.name, sCat);
-        return {
-          id: sCat.id,
-          name: sCat.name,
-          emoji: sCat.emoji,
-          color: sCat.color,
-          budget: subBudget,
-          spent: subSpent,
-          percent: subPercent,
-          bucket: subBucket
-        };
+
+        const rawTotalParentSpent = isNonBudgetable
+          ? 0
+          : Math.max(
+              0,
+              directParentSpent +
+                subCategorySummaries.reduce((sum, s) => sum + (s.rawSpent ?? s.spent), 0)
+            );
+        const effectiveParentSpent = rawTotalParentSpent / allTimeDivisor;
+        const exposedParentSpent = options.normalizeAllTime
+          ? effectiveParentSpent
+          : rawTotalParentSpent;
+
+        const budgetRes = resolveEffectiveCategoryBudget(
+          pCat.id,
+          targetBudgets,
+          allKnownCats
+        );
+        const parentBudget = isNonBudgetable ? 0 : budgetRes.effectiveBudget;
+        const parentPercent =
+          parentBudget > 0 ? Math.round((exposedParentSpent / parentBudget) * 100) : 0;
+
+        items.push({
+          id: pCat.id,
+          name: pCat.name,
+          emoji: pCat.emoji,
+          color: pCat.color,
+          budget: parentBudget,
+          spent: exposedParentSpent,
+          rawSpent: rawTotalParentSpent,
+          effectiveSpent: effectiveParentSpent,
+          explicitBudget: budgetRes.explicitBudget,
+          subCategoryBudgetSum: budgetRes.subCategoryBudgetSum,
+          isRolledUpFromSubs: budgetRes.isRolledUpFromSubs,
+          catKey: getBudgetCatKey(pCat),
+          percent: parentPercent,
+          bucket: parentBucket,
+          isNonBudgetable,
+          subCategories: subCategorySummaries,
+        });
       });
 
-      const isNonBudgetable = isNonBudgetableCategory(pCat.id) || isNonBudgetableCategory(pCat.name);
-      const parentBucket = deriveCategoryBucket(pCat.id || pCat.name, pCat);
+      return items;
+    },
+    [categories, persistedBudgets, monthTransactions, selectedMonth, activeMonthsCount]
+  );
 
-      // Calculate direct parent spent (transactions assigned to parent without subCategory or with orphaned subCategory)
-      const directParentSpent = monthTransactions
-        .filter(t => (t.type === 'expense' || isRefundTransaction(t)) && t.category && (
-          t.category === pCat.id || 
-          t.category.toLowerCase() === pCat.id.toLowerCase() || 
-          t.category.toLowerCase() === pCat.name.toLowerCase() ||
-          (pCat.id === 'food' && t.category.toLowerCase() === 'food')
-        ) && (!t.subCategory || !validSubKeys.has(t.subCategory.toLowerCase())))
-        .reduce((sum, t) => {
-          const amt = Number(t.amount) || 0;
-          return sum + (t.type === 'expense' ? amt : -amt);
-        }, 0);
-
-      // Roll up total parent spent
-      const totalParentSpent = isNonBudgetable
-        ? 0
-        : Math.max(0, directParentSpent + subCategorySummaries.reduce((sum, s) => sum + s.spent, 0));
-
-      // Calculate total parent budget (explicit parent budget or sum of sub-category budgets)
-      const parentBObj = budgets.find(b => 
-        b.category && (
-          b.category === pCat.id || 
-          b.category.toLowerCase() === pCat.id.toLowerCase() || 
-          b.category === pCat.name || 
-          b.category.toLowerCase() === pCat.name.toLowerCase() ||
-          (pCat.id === 'food' && b.category.toLowerCase() === 'food')
-        )
-      );
-      const subCategoryBudgetSum = subCategorySummaries.reduce((sum, s) => sum + s.budget, 0);
-      const parentBudget = isNonBudgetable ? 0 : (parentBObj ? (Number(parentBObj.amount) || 0) : subCategoryBudgetSum);
-
-      const parentPercent = parentBudget > 0 ? Math.round((totalParentSpent / parentBudget) * 100) : 0;
-
-      items.push({
-        id: pCat.id,
-        name: pCat.name,
-        emoji: pCat.emoji,
-        color: pCat.color,
-        budget: parentBudget,
-        spent: totalParentSpent,
-        percent: parentPercent,
-        bucket: parentBucket,
-        isNonBudgetable,
-        subCategories: subCategorySummaries
-      });
-    });
-
-    return items;
-  }, [categories, budgets, monthTransactions]);
+  // Working summary & totalBudget drive #/budgets live planning preview
+  const categorySummary = useMemo(
+    () => buildSummaryForBudgets(workingBudgets, { normalizeAllTime: true }),
+    [buildSummaryForBudgets, workingBudgets]
+  );
 
   const totalBudget = useMemo(() => {
     return categorySummary.reduce((sum, c) => {
@@ -193,130 +286,161 @@ export function useBudgets(
     }, 0);
   }, [categorySummary]);
 
-  const piePaths = useMemo(() => {
-    const expenseTxns = monthTransactions.filter(t => t.type === 'expense' || isRefundTransaction(t));
-    const catMap = new Map<string, { total: number; name: string; color: string; id: string }>();
-    const PALETTE = ['#FF6B6B', '#4DABF7', '#51CF66', '#FCC419', '#0B79A8', '#FF8787', '#20C997', '#38BDF8', '#ADB5BD', '#E64980'];
-    let pIdx = 0;
+  // Saved summary & savedTotalBudget insulate Overview and Reports from uncommitted edits (Guardrail G1)
+  const savedCategorySummary = useMemo(
+    () => buildSummaryForBudgets(persistedBudgets, { normalizeAllTime: false }),
+    [buildSummaryForBudgets, persistedBudgets]
+  );
 
-    expenseTxns.forEach(t => {
-      if (!t.category) return;
-      const rawAmt = Number(t.amount) || 0;
-      const amt = t.type === 'expense' ? rawAmt : -rawAmt;
-      const matched = categories.find(c =>
-        c.id.toLowerCase() === t.category.toLowerCase() ||
-        c.name.toLowerCase() === t.category.toLowerCase()
-      );
-      const catId = matched?.parentId || matched?.id || t.category;
-      const parentObj = categories.find(c => c.id === catId);
-      const catName = parentObj?.name || matched?.name || t.category;
-      const catColor = parentObj?.color || matched?.color || PALETTE[pIdx++ % PALETTE.length];
+  const savedTotalBudget = useMemo(() => {
+    return savedCategorySummary.reduce((sum, c) => {
+      if (c.isNonBudgetable) return sum;
+      return sum + (Number(c.budget) || 0);
+    }, 0);
+  }, [savedCategorySummary]);
 
-      const entry = catMap.get(catId);
-      if (entry) {
-        entry.total += amt;
-      } else {
-        catMap.set(catId, { id: catId, name: catName, color: catColor, total: amt });
-      }
-    });
-
-    const grouped = Array.from(catMap.values()).filter(item => item.total > 0);
-    const totalPieExpense = grouped.reduce((sum, item) => sum + item.total, 0);
-    const cx = 150;
-    const cy = 96;
-    const r = 60;
-    const result: Array<{ pathData: string; color: string; category: string; name: string; expense: number }> = [];
-
-    if (totalPieExpense > 0) {
-      let accumulatedAngle = -Math.PI / 2;
-      grouped.forEach(item => {
-        const percentage = item.total / totalPieExpense;
-        let angleSpan = percentage * 2 * Math.PI;
-        if (percentage >= 0.999) {
-          angleSpan = 2 * Math.PI - 0.001;
-        }
-        const startAngle = accumulatedAngle;
-        const endAngle = accumulatedAngle + angleSpan;
-        const x1 = cx + r * Math.cos(startAngle);
-        const y1 = cy + r * Math.sin(startAngle);
-        const x2 = cx + r * Math.cos(endAngle);
-        const y2 = cy + r * Math.sin(endAngle);
-        const largeArcFlag = angleSpan > Math.PI ? 1 : 0;
-        const pathData = `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${largeArcFlag} 1 ${x2} ${y2} Z`;
-        result.push({ pathData, color: item.color, category: item.id, name: item.name, expense: item.total });
-        accumulatedAngle = endAngle;
-      });
+  const committedBudgetMap = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const item of savedCategorySummary) {
+      map.set(item.id, item.budget);
     }
-    return { segments: result, totalPieExpense };
-  }, [monthTransactions, categories]);
+    return map;
+  }, [savedCategorySummary]);
 
-  const spendingHistory = useMemo(() => {
-    if (!selectedMonth || selectedMonth === 'all') return {};
+  const piePaths = useMemo(
+    () => computeDonutSegments(categorySummary, 'all'),
+    [categorySummary]
+  );
 
-    const parts = selectedMonth.split('-');
-    if (parts.length !== 2) return {};
-    const year = parseInt(parts[0], 10);
-    const month = parseInt(parts[1], 10);
-    if (isNaN(year) || isNaN(month)) return {};
+  const spendingHistory = useMemo(
+    () => computeSpendingHistory(allTransactions, categories, selectedMonth),
+    [allTransactions, categories, selectedMonth]
+  );
 
-    const getMonthStr = (y: number, m: number) => {
-      const d = new Date(Date.UTC(y, m - 1, 1));
-      return d.toISOString().substring(0, 7);
-    };
+  const dirtyState = useMemo(
+    () =>
+      computeBudgetDirtyState(
+        persistedBudgets,
+        workingBudgets,
+        categories,
+        budgetErrors
+      ),
+    [persistedBudgets, workingBudgets, categories, budgetErrors]
+  );
 
-    const prev1Month = getMonthStr(year, month - 1);
-    const prev2Month = getMonthStr(year, month - 2);
-    const prev3Month = getMonthStr(year, month - 3);
+  const setBudgets = useCallback((updater: React.SetStateAction<Budget[]>) => {
+    setPersistedBudgets(updater);
+    setWorkingBudgets(updater);
+  }, []);
 
-    const catMap = new Map<string, string>();
-    categories.forEach(c => {
-      catMap.set(c.id, c.id);
-      catMap.set(c.name.toLowerCase(), c.id);
-    });
+  const handleBudgetInputChange = useCallback(
+    (catName: string, val: string) => {
+      setBudgetDrafts(prev => ({ ...prev, [catName]: val }));
+      const aliasOpts = getCategoryAliasOptions(categories);
+      const matchedCat = categories.find(c =>
+        doesBudgetMatchCategory(catName, c, aliasOpts)
+      );
+      const targetIdentity = matchedCat || { id: catName, name: catName };
+      const canonicalKey = matchedCat ? matchedCat.id : catName;
 
-    const lastMonthTotals: Record<string, number> = {};
-    const total3moTotals: Record<string, number> = {};
-    const activePriorMonths = new Set<string>();
-
-    allTransactions.forEach(t => {
-      if (t.type === 'transfer') return;
-      const tMonth = (t.date || '').substring(0, 7);
-      const isPrev1 = tMonth === prev1Month;
-      const isPrev3 = isPrev1 || tMonth === prev2Month || tMonth === prev3Month;
-      if (!isPrev3) return;
-      activePriorMonths.add(tMonth);
-
-      if (t.type !== 'expense' && !isRefundTransaction(t)) return;
-      const targetCatId = catMap.get(t.subCategory || '') || catMap.get(t.category) || catMap.get((t.category || '').toLowerCase());
-      if (!targetCatId) return;
-
-      const rawAmt = Number(t.amount) || 0;
-      const amt = t.type === 'expense' ? rawAmt : -rawAmt;
-      if (isPrev1) {
-        lastMonthTotals[targetCatId] = (lastMonthTotals[targetCatId] || 0) + amt;
+      if (val.trim() === '') {
+        setBudgetErrors(prev => ({ ...prev, [catName]: '' }));
+        setWorkingBudgets(prev =>
+          prev.filter(b => !doesBudgetMatchCategory(b.category, targetIdentity, aliasOpts))
+        );
+        return;
       }
-      total3moTotals[targetCatId] = (total3moTotals[targetCatId] || 0) + amt;
-    });
 
-    const activePriorMonthsCount = Math.max(1, activePriorMonths.size);
-    const history: Record<string, { lastMonth: number; avg3mo: number }> = {};
-    categories.forEach(cat => {
-      history[cat.id] = {
-        lastMonth: Math.max(0, lastMonthTotals[cat.id] || 0),
-        avg3mo: Math.max(0, Math.round((total3moTotals[cat.id] || 0) / activePriorMonthsCount))
-      };
-    });
+      const num = parseFloat(val);
+      if (isNaN(num) || num < 0) {
+        setBudgetErrors(prev => ({ ...prev, [catName]: 'Budget must be positive' }));
+        return;
+      }
 
-    return history;
-  }, [categories, allTransactions, selectedMonth]);
+      setBudgetErrors(prev => ({ ...prev, [catName]: '' }));
+      setWorkingBudgets(prev => {
+        const withoutTarget = prev.filter(
+          b => !doesBudgetMatchCategory(b.category, targetIdentity, aliasOpts)
+        );
+        const next =
+          num > 0
+            ? [...withoutTarget, { category: canonicalKey, amount: num }]
+            : withoutTarget;
 
-  const handleSaveBudgets = async () => {
+        // Keep explicit parent target >= sum of child sub-category targets (BUG-BUD-07)
+        if (matchedCat?.parentId) {
+          const parentCat = categories.find(c => c.id === matchedCat.parentId);
+          if (parentCat) {
+            const siblings = categories.filter(c => c.parentId === parentCat.id);
+            let newSubSum = 0;
+            for (const sib of siblings) {
+              const sibEntry = next.find(b =>
+                doesBudgetMatchCategory(b.category, sib, aliasOpts)
+              );
+              newSubSum += Math.max(0, Number(sibEntry?.amount) || 0);
+            }
+            const parentIdx = next.findIndex(b =>
+              doesBudgetMatchCategory(b.category, parentCat, aliasOpts)
+            );
+            if (parentIdx > -1) {
+              const existingParentAmt = Number(next[parentIdx].amount) || 0;
+              if (existingParentAmt > 0 && newSubSum > existingParentAmt) {
+                next[parentIdx] = { category: parentCat.id, amount: newSubSum };
+                setBudgetDrafts(drafts => {
+                  if (!(parentCat.id in drafts)) return drafts;
+                  const copy = { ...drafts };
+                  delete copy[parentCat.id];
+                  return copy;
+                });
+              }
+            }
+          }
+        }
+
+        return next;
+      });
+    },
+    [categories]
+  );
+
+  const handleSaveBudgets = useCallback(async () => {
     if (!activeProject || !storageAdapter) return;
-    if (Object.values(budgetErrors).some(Boolean)) {
+    if (isLockedMonth && selectedMonth !== 'all') {
+      showToast(`Month ${selectedMonth} is locked.`, 'error');
       return;
     }
+
+    if (dirtyState.hasErrors) {
+      showToast('Please fix invalid budget amounts before saving.', 'error');
+      if (dirtyState.firstErrorCategoryId && typeof document !== 'undefined') {
+        const errCat = categories.find(c => c.id === dirtyState.firstErrorCategoryId);
+        const keyCandidate =
+          errCat && !errCat.parentId
+            ? getBudgetCatKey(errCat)
+            : dirtyState.firstErrorCategoryId;
+        const allInputs = Array.from(
+          document.querySelectorAll<HTMLInputElement>('[data-testid^="budget-input-"]')
+        );
+        const matchInput = allInputs.find(el => {
+          const tid = el.getAttribute('data-testid');
+          return (
+            tid === `budget-input-${keyCandidate}` ||
+            tid === `budget-input-${dirtyState.firstErrorCategoryId}`
+          );
+        });
+        matchInput?.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+        matchInput?.focus?.();
+      }
+      return;
+    }
+
+    const cleaned = cleanBudgetsForSave(workingBudgets, categories);
     try {
-      await storageAdapter.saveBudgets(activeProject.id, budgets);
+      await storageAdapter.saveBudgets(activeProject.id, cleaned);
+      setPersistedBudgets(cleaned);
+      setWorkingBudgets(cleaned);
+      setBudgetDrafts({});
+      setBudgetErrors({});
       showToast('Budgets saved successfully');
     } catch (err: unknown) {
       const e = err as { name?: string; message?: string };
@@ -326,45 +450,90 @@ export function useBudgets(
         showToast(e.message || 'Failed to save budgets', 'error');
       }
     }
-  };
+  }, [
+    activeProject,
+    storageAdapter,
+    isLockedMonth,
+    selectedMonth,
+    dirtyState,
+    categories,
+    workingBudgets,
+    showToast,
+    setAuthErrorToast,
+  ]);
 
-  const handleBudgetInputChange = (catName: string, val: string) => {
-    setBudgetDrafts(prev => ({ ...prev, [catName]: val }));
-    if (val.trim() === '') {
-      setBudgetErrors(prev => ({ ...prev, [catName]: '' }));
-      setBudgets(prev => {
-        const existing = prev.findIndex(b => b.category === catName || b.category.toLowerCase() === catName.toLowerCase());
-        if (existing > -1) {
-          const next = [...prev];
-          next[existing] = { category: catName, amount: 0 };
-          return next;
-        }
-        return prev;
-      });
-      return;
-    }
-    const num = parseFloat(val);
-    if (isNaN(num) || num < 0) {
-      setBudgetErrors(prev => ({ ...prev, [catName]: 'Budget must be positive' }));
-      return;
-    }
-    setBudgetErrors(prev => ({ ...prev, [catName]: '' }));
-    setBudgets(prev => {
-      const existing = prev.findIndex(b => b.category === catName || b.category.toLowerCase() === catName.toLowerCase());
-      if (existing > -1) {
-        const next = [...prev];
-        next[existing] = { category: catName, amount: num };
-        return next;
+  const handleDiscardBudgetChanges = useCallback(() => {
+    setWorkingBudgets(persistedBudgets);
+    setBudgetDrafts({});
+    setBudgetErrors({});
+  }, [persistedBudgets]);
+
+  const handleApplyBudgetPreset = useCallback(
+    (catId: string, amount: number) => {
+      if (isLockedMonth && selectedMonth !== 'all') return;
+      const rounded = Math.max(0, Math.round(amount));
+      handleBudgetInputChange(catId, String(rounded));
+    },
+    [isLockedMonth, selectedMonth, handleBudgetInputChange]
+  );
+
+  const handleAutoFillFromHistory = useCallback((): number => {
+    if (isLockedMonth && selectedMonth !== 'all') return 0;
+    const aliasOpts = getCategoryAliasOptions(categories);
+    let filledCount = 0;
+    const additions: Budget[] = [];
+    const nextDrafts: Record<string, string> = {};
+
+    for (const item of categorySummary) {
+      if (item.isNonBudgetable || item.budget > 0) continue;
+      const hist = spendingHistory[item.id];
+      const candidate =
+        selectedMonth === 'all'
+          ? Math.round(item.effectiveSpent ?? 0)
+          : hist?.avg3mo || hist?.lastMonth || 0;
+      if (candidate > 0) {
+        additions.push({ category: item.id, amount: candidate });
+        nextDrafts[item.id] = String(candidate);
+        filledCount += 1;
       }
-      return [...prev, { category: catName, amount: num }];
+    }
+
+    if (filledCount === 0) {
+      showToast('No historical category spend available to auto-fill.', 'info');
+      return 0;
+    }
+
+    setWorkingBudgets(prev => {
+      const filtered = prev.filter(
+        b =>
+          !additions.some(add =>
+            doesBudgetMatchCategory(
+              b.category,
+              categories.find(c => c.id === add.category) || {
+                id: add.category,
+                name: add.category,
+              },
+              aliasOpts
+            )
+          )
+      );
+      return [...filtered, ...additions];
     });
-  };
+    setBudgetDrafts(prev => ({ ...prev, ...nextDrafts }));
+    showToast(
+      `Filled ${filledCount} category target${
+        filledCount === 1 ? '' : 's'
+      } — click Save Budgets to apply`,
+      'info'
+    );
+    return filledCount;
+  }, [isLockedMonth, selectedMonth, categories, categorySummary, spendingHistory, showToast]);
 
   const handleSaveCategory = async (newCat: Category, isEdit: boolean) => {
     if (!activeProject || !storageAdapter) return false;
     try {
       await storageAdapter.saveCategory(activeProject.id, newCat);
-      await refreshBudgetsAndCategories();
+      await refreshBudgetsAndCategories({ preserveWorkingDrafts: true });
       showToast(isEdit ? 'Category edited successfully' : 'Category added successfully');
       return true;
     } catch (err: unknown) {
@@ -379,64 +548,82 @@ export function useBudgets(
       if (typeof storageAdapter.deleteCategory === 'function') {
         await storageAdapter.deleteCategory(activeProject.id, catId);
       }
-      await refreshBudgetsAndCategories();
+      await refreshBudgetsAndCategories({
+        preserveWorkingDrafts: true,
+        deletedCategoryId: catId,
+      });
       showToast('Category deleted');
     } catch (err: unknown) {
       showToast(err instanceof Error ? err.message : 'Failed to delete category', 'error');
     }
   };
 
-  const handleSaveBudgetNote = useCallback(async (month: string, keyId: string, text: string, mood?: string) => {
-    if (!activeProject || !storageAdapter) return;
-    const key = `${month}:${keyId}`;
-    const noteObj: BudgetNote = {
-      text: text.trim(),
-      updatedAt: new Date().toISOString(),
-      ...(mood ? { mood } : {})
-    };
-    try {
-      await storageAdapter.saveBudgetNote(activeProject.id, key, noteObj);
-      setBudgetNotes(prev => ({ ...prev, [key]: noteObj }));
-      showToast('Note saved');
-    } catch (err: unknown) {
-      showToast(err instanceof Error ? err.message : 'Failed to save note', 'error');
-    }
-  }, [activeProject, storageAdapter, showToast]);
+  const handleSaveBudgetNote = useCallback(
+    async (month: string, keyId: string, text: string, mood?: string) => {
+      if (!activeProject || !storageAdapter) return;
+      const key = `${month}:${keyId}`;
+      const noteObj: BudgetNote = {
+        text: text.trim(),
+        updatedAt: new Date().toISOString(),
+        ...(mood ? { mood } : {}),
+      };
+      try {
+        await storageAdapter.saveBudgetNote(activeProject.id, key, noteObj);
+        setBudgetNotes(prev => ({ ...prev, [key]: noteObj }));
+        showToast('Note saved');
+      } catch (err: unknown) {
+        showToast(err instanceof Error ? err.message : 'Failed to save note', 'error');
+      }
+    },
+    [activeProject, storageAdapter, showToast]
+  );
 
-  const handleDeleteBudgetNote = useCallback(async (month: string, keyId: string) => {
-    if (!activeProject || !storageAdapter) return;
-    const key = `${month}:${keyId}`;
-    try {
-      await storageAdapter.deleteBudgetNote(activeProject.id, key);
-      setBudgetNotes(prev => {
-        const next = { ...prev };
-        delete next[key];
-        return next;
-      });
-      showToast('Note removed');
-    } catch (err: unknown) {
-      showToast(err instanceof Error ? err.message : 'Failed to delete note', 'error');
-    }
-  }, [activeProject, storageAdapter, showToast]);
+  const handleDeleteBudgetNote = useCallback(
+    async (month: string, keyId: string) => {
+      if (!activeProject || !storageAdapter) return;
+      const key = `${month}:${keyId}`;
+      try {
+        await storageAdapter.deleteBudgetNote(activeProject.id, key);
+        setBudgetNotes(prev => {
+          const next = { ...prev };
+          delete next[key];
+          return next;
+        });
+        showToast('Note removed');
+      } catch (err: unknown) {
+        showToast(err instanceof Error ? err.message : 'Failed to delete note', 'error');
+      }
+    },
+    [activeProject, storageAdapter, showToast]
+  );
 
   return {
-    budgets,
+    budgets: persistedBudgets,
+    workingBudgets,
     setBudgets,
     categories,
     budgetErrors,
     budgetDrafts,
     totalBudget,
+    savedTotalBudget,
     categorySummary,
+    savedCategorySummary,
+    committedBudgetMap,
+    activeMonthsCount,
+    isDirty: dirtyState.isDirty,
+    dirtyCount: dirtyState.dirtyCount,
     piePaths,
     budgetNotes,
     spendingHistory,
     refreshBudgetsAndCategories,
     handleSaveBudgets,
+    handleDiscardBudgetChanges,
     handleBudgetInputChange,
+    handleApplyBudgetPreset,
+    handleAutoFillFromHistory,
     handleSaveCategory,
     handleDeleteCategory,
     handleSaveBudgetNote,
-    handleDeleteBudgetNote
+    handleDeleteBudgetNote,
   };
 }
-

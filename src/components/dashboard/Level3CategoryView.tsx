@@ -4,7 +4,13 @@ import { ArrowRight, Search, Plus, Edit2, Trash2 } from 'lucide-react';
 import { Transaction, Category, Budget, SpendingBucket, MonthlyLock, DEFAULT_CATEGORIES } from '../../services/storage';
 import { useNavigation } from '../../hooks/useNavigation';
 import { formatMoney, splitMoneyParts } from '../../utils/formatters';
-import { deriveCategoryBucket, isRefundTransaction } from '../../utils/metrics';
+import {
+  deriveCategoryBucket,
+  isRefundTransaction,
+  doesBudgetMatchCategory,
+  getCategoryAliasOptions,
+  resolveEffectiveCategoryBudget,
+} from '../../utils/metrics';
 import { DailySpendTimeline } from './DailySpendTimeline';
 import { BUCKETS, bucketColor, negativeColor } from '../../theme/buckets';
 import { spring } from '../../theme/motion';
@@ -60,26 +66,27 @@ export const Level3CategoryView: React.FC<Level3CategoryViewProps> = ({
   const isCategoryMonthLocked =
     month !== 'all' && isTransactionMonthLocked(`${month}-01`, locks);
 
+  const effectiveCategories = useMemo(
+    () => (categories.length > 0 ? categories : DEFAULT_CATEGORIES),
+    [categories]
+  );
+  const aliasOpts = useMemo(
+    () => getCategoryAliasOptions(effectiveCategories),
+    [effectiveCategories]
+  );
+  const defaultAliasOpts = useMemo(() => getCategoryAliasOptions(DEFAULT_CATEGORIES), []);
+
   const isKnownCategory = useMemo(() => {
-    const lower = categoryId.toLowerCase();
     return (
-      categories.some(c => c.id.toLowerCase() === lower || c.name.toLowerCase() === lower) ||
-      DEFAULT_CATEGORIES.some(c => c.id.toLowerCase() === lower || c.name.toLowerCase() === lower)
+      categories.some(c => doesBudgetMatchCategory(categoryId, c, aliasOpts)) ||
+      DEFAULT_CATEGORIES.some(c => doesBudgetMatchCategory(categoryId, c, defaultAliasOpts))
     );
-  }, [categories, categoryId]);
+  }, [categories, categoryId, aliasOpts, defaultAliasOpts]);
 
   const category = useMemo(() => {
     const match =
-      categories.find(
-        c =>
-          c.id.toLowerCase() === categoryId.toLowerCase() ||
-          c.name.toLowerCase() === categoryId.toLowerCase()
-      ) ||
-      DEFAULT_CATEGORIES.find(
-        c =>
-          c.id.toLowerCase() === categoryId.toLowerCase() ||
-          c.name.toLowerCase() === categoryId.toLowerCase()
-      );
+      categories.find(c => doesBudgetMatchCategory(categoryId, c, aliasOpts)) ||
+      DEFAULT_CATEGORIES.find(c => doesBudgetMatchCategory(categoryId, c, defaultAliasOpts));
     if (match) return match;
 
     return {
@@ -88,7 +95,7 @@ export const Level3CategoryView: React.FC<Level3CategoryViewProps> = ({
       emoji: '🏷️',
       color: bucketColor('fixed'),
     };
-  }, [categories, categoryId]);
+  }, [categories, categoryId, aliasOpts, defaultAliasOpts]);
 
   const bucketId: SpendingBucket = useMemo(
     () => deriveCategoryBucket(category.id || category.name, category),
@@ -100,25 +107,36 @@ export const Level3CategoryView: React.FC<Level3CategoryViewProps> = ({
   const accentColor = bucketColor(bucketId);
 
   const budget = useMemo(() => {
-    const bObj = budgets.find(
-      b =>
-        b.category.toLowerCase() === category.id.toLowerCase() ||
-        b.category.toLowerCase() === category.name.toLowerCase()
-    );
-    return Number(bObj?.amount) || 0;
-  }, [budgets, category]);
+    return resolveEffectiveCategoryBudget(category.id, budgets, effectiveCategories)
+      .effectiveBudget;
+  }, [budgets, category.id, effectiveCategories]);
+
+  const childSubCats = useMemo(
+    () => effectiveCategories.filter(c => c.parentId === category.id),
+    [effectiveCategories, category.id]
+  );
 
   const categoryTransactions = useMemo(() => {
     return transactions.filter(t => {
       const matchMonth = month === 'all' || (t.date && t.date.startsWith(month));
       if (!matchMonth) return false;
-      const matchCat =
-        (t.category || '').toLowerCase() === category.id.toLowerCase() ||
-        (t.category || '').toLowerCase() === category.name.toLowerCase() ||
-        (t.subCategory || '').toLowerCase() === category.id.toLowerCase();
-      return matchCat && (t.type === 'expense' || isRefundTransaction(t));
+      if (t.type !== 'expense' && !isRefundTransaction(t)) return false;
+
+      const matchParent =
+        doesBudgetMatchCategory(t.category, category, aliasOpts) ||
+        Boolean(t.subCategory && doesBudgetMatchCategory(t.subCategory, category, aliasOpts));
+
+      const matchChild =
+        childSubCats.length > 0 &&
+        childSubCats.some(
+          sub =>
+            doesBudgetMatchCategory(t.subCategory, sub, aliasOpts) ||
+            doesBudgetMatchCategory(t.category, sub, aliasOpts)
+        );
+
+      return matchParent || matchChild;
     });
-  }, [transactions, month, category]);
+  }, [transactions, month, category, aliasOpts, childSubCats]);
 
   const totalSpent = useMemo(() => {
     return Math.max(

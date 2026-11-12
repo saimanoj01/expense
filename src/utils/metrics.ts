@@ -104,9 +104,163 @@ export function deriveCategoryBucket(catIdOrName: string, catObj?: Category): Sp
   return suggestSpendingBucket('', catIdOrName);
 }
 
+export interface EffectiveCategoryBudgetResult {
+  effectiveBudget: number;
+  explicitBudget: number;
+  subCategoryBudgetSum: number;
+  isRolledUpFromSubs: boolean;
+}
+
+export interface CategoryAliasOptions {
+  hasExplicitRentCategory?: boolean;
+  hasExplicitHousingCategory?: boolean;
+}
+
+export function getCategoryAliasOptions(categories: Category[] = []): CategoryAliasOptions {
+  let hasExplicitRentCategory = false;
+  let hasExplicitHousingCategory = false;
+  for (const c of categories) {
+    const idL = (c.id || '').trim().toLowerCase();
+    const nameL = (c.name || '').trim().toLowerCase();
+    if (idL === 'rent' || nameL === 'rent') hasExplicitRentCategory = true;
+    if (idL === 'housing' || nameL === 'housing') hasExplicitHousingCategory = true;
+  }
+  return { hasExplicitRentCategory, hasExplicitHousingCategory };
+}
+
+/**
+ * Matches a Budget or Transaction `category` string against a Category object (`id` or `name`),
+ * supporting canonical aliases ('food' <-> 'food & dining', and 'housing' <-> 'rent' when
+ * no separate 'rent' / 'housing' category coexists in the category list).
+ */
+export function doesBudgetMatchCategory(
+  rawBudgetCategory: string | undefined | null,
+  cat: { id: string; name: string },
+  options?: CategoryAliasOptions
+): boolean {
+  const bKey = (rawBudgetCategory || '').trim().toLowerCase();
+  if (!bKey) return false;
+  const idLower = (cat.id || '').trim().toLowerCase();
+  const nameLower = (cat.name || '').trim().toLowerCase();
+
+  if (bKey === idLower || bKey === nameLower) return true;
+
+  // Canonical Food <-> Food & Dining alias
+  if (
+    (idLower === 'food' || nameLower === 'food & dining') &&
+    (bKey === 'food' || bKey === 'food & dining')
+  ) {
+    return true;
+  }
+
+  // Canonical Housing <-> Rent alias (only when both don't exist as separate categories)
+  if (
+    (idLower === 'housing' || nameLower === 'housing') &&
+    !options?.hasExplicitRentCategory &&
+    bKey === 'rent'
+  ) {
+    return true;
+  }
+  if (
+    (idLower === 'rent' || nameLower === 'rent') &&
+    !options?.hasExplicitHousingCategory &&
+    bKey === 'housing'
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Resolves the effective monthly target for any parent or sub-category (`BUG-BUD-07`):
+ * - Non-budgetable categories (`income`, `transfers`, etc.) always resolve to `0`.
+ * - An explicit entry with `amount <= 0` is treated as unset (`0`), never clobbering `subCategoryBudgetSum`.
+ * - For a parent category:
+ *     effectiveBudget = explicit > 0 ? Math.max(explicit, subCategoryBudgetSum) : subCategoryBudgetSum
+ *     isRolledUpFromSubs = subCategoryBudgetSum > 0 && (explicit <= 0 || subCategoryBudgetSum > explicit)
+ */
+export function resolveEffectiveCategoryBudget(
+  catIdOrName: string,
+  budgets: Budget[],
+  categories: Category[] = []
+): EffectiveCategoryBudgetResult {
+  const zeroResult: EffectiveCategoryBudgetResult = {
+    effectiveBudget: 0,
+    explicitBudget: 0,
+    subCategoryBudgetSum: 0,
+    isRolledUpFromSubs: false,
+  };
+
+  if (!catIdOrName || isNonBudgetableCategory(catIdOrName)) {
+    return zeroResult;
+  }
+
+  const aliasOpts = getCategoryAliasOptions(categories);
+  const matchedCat = categories.find(c => doesBudgetMatchCategory(catIdOrName, c, aliasOpts));
+
+  if (
+    matchedCat &&
+    (isNonBudgetableCategory(matchedCat.id) || isNonBudgetableCategory(matchedCat.name))
+  ) {
+    return zeroResult;
+  }
+
+  const targetIdentity = matchedCat || { id: catIdOrName, name: catIdOrName };
+
+  let explicitBudget = 0;
+  for (const b of budgets) {
+    if (doesBudgetMatchCategory(b.category, targetIdentity, aliasOpts)) {
+      const amt = Number(b.amount) || 0;
+      if (amt > explicitBudget) {
+        explicitBudget = amt;
+      }
+    }
+  }
+
+  if (!matchedCat || matchedCat.parentId) {
+    return {
+      effectiveBudget: explicitBudget,
+      explicitBudget,
+      subCategoryBudgetSum: 0,
+      isRolledUpFromSubs: false,
+    };
+  }
+
+  let subCategoryBudgetSum = 0;
+  const subCats = categories.filter(c => c.parentId === matchedCat.id);
+  for (const sCat of subCats) {
+    if (isNonBudgetableCategory(sCat.id) || isNonBudgetableCategory(sCat.name)) {
+      continue;
+    }
+    let subExplicit = 0;
+    for (const b of budgets) {
+      if (doesBudgetMatchCategory(b.category, sCat, aliasOpts)) {
+        const amt = Number(b.amount) || 0;
+        if (amt > subExplicit) {
+          subExplicit = amt;
+        }
+      }
+    }
+    subCategoryBudgetSum += subExplicit;
+  }
+
+  const effectiveBudget =
+    explicitBudget > 0 ? Math.max(explicitBudget, subCategoryBudgetSum) : subCategoryBudgetSum;
+  const isRolledUpFromSubs =
+    subCategoryBudgetSum > 0 && (explicitBudget <= 0 || subCategoryBudgetSum > explicitBudget);
+
+  return {
+    effectiveBudget,
+    explicitBudget,
+    subCategoryBudgetSum,
+    isRolledUpFromSubs,
+  };
+}
+
 /**
  * Computes deduplicated bucket budget targets (parent vs sub-category rollup),
- * ensuring Fixed and Non-monthly budgets never leak into Variable (BUG-01).
+ * ensuring Fixed and Non-monthly budgets never leak into Variable (BUG-01 & BUG-BUD-07).
  */
 export function computeBucketBudgets(
   budgets: Budget[],
@@ -116,6 +270,7 @@ export function computeBucketBudgets(
   let variableBudget = 0;
   let nonMonthlyBudget = 0;
 
+  const aliasOpts = getCategoryAliasOptions(categories);
   const parentCats = [...categories.filter(c => !c.parentId)];
   const existingKeys = new Set(
     parentCats.flatMap(c => [c.id.toLowerCase(), c.name.toLowerCase()])
@@ -125,13 +280,21 @@ export function computeBucketBudgets(
       .filter(c => Boolean(c.parentId))
       .flatMap(c => [c.id.toLowerCase(), c.name.toLowerCase()])
   );
-  if (existingKeys.has('food & dining')) {
+  if (existingKeys.has('food & dining') || existingKeys.has('food')) {
     existingKeys.add('food');
+    existingKeys.add('food & dining');
+  }
+  if (existingKeys.has('housing') && !aliasOpts.hasExplicitRentCategory) {
+    existingKeys.add('rent');
+  }
+  if (existingKeys.has('rent') && !aliasOpts.hasExplicitHousingCategory) {
+    existingKeys.add('housing');
   }
 
   for (const b of budgets) {
     const catKey = (b.category || '').trim().toLowerCase();
-    if (b.category && !existingKeys.has(catKey) && !subCatKeys.has(catKey)) {
+    const amt = Number(b.amount) || 0;
+    if (b.category && amt > 0 && !existingKeys.has(catKey) && !subCatKeys.has(catKey)) {
       parentCats.push({
         id: b.category,
         name: b.category,
@@ -141,6 +304,11 @@ export function computeBucketBudgets(
       existingKeys.add(catKey);
     }
   }
+
+  const allKnownCats = [
+    ...parentCats,
+    ...categories.filter(c => Boolean(c.parentId)),
+  ];
 
   const addToBucket = (bucket: SpendingBucket, amt: number) => {
     if (amt <= 0) return;
@@ -153,35 +321,17 @@ export function computeBucketBudgets(
     if (isNonBudgetableCategory(pCat.id) || isNonBudgetableCategory(pCat.name)) {
       continue;
     }
-    const subCats = categories.filter(c => c.parentId === pCat.id);
-    const parentBObj = budgets.find(
-      b =>
-        b.category &&
-        (b.category === pCat.id ||
-          b.category.toLowerCase() === pCat.id.toLowerCase() ||
-          b.category === pCat.name ||
-          b.category.toLowerCase() === pCat.name.toLowerCase() ||
-          (pCat.id === 'food' && b.category.toLowerCase() === 'food'))
-    );
-
-    if (parentBObj) {
-      const amt = Number(parentBObj.amount) || 0;
-      addToBucket(deriveCategoryBucket(pCat.id || pCat.name, pCat), amt);
-    } else {
+    const res = resolveEffectiveCategoryBudget(pCat.id, budgets, allKnownCats);
+    if (res.explicitBudget > 0 && res.explicitBudget >= res.subCategoryBudgetSum) {
+      addToBucket(deriveCategoryBucket(pCat.id || pCat.name, pCat), res.explicitBudget);
+    } else if (res.subCategoryBudgetSum > 0) {
+      const subCats = categories.filter(c => c.parentId === pCat.id);
       for (const sCat of subCats) {
         if (isNonBudgetableCategory(sCat.id) || isNonBudgetableCategory(sCat.name)) {
           continue;
         }
-        const subBObj = budgets.find(
-          b =>
-            b.category &&
-            (b.category === sCat.id ||
-              b.category.toLowerCase() === sCat.id.toLowerCase() ||
-              b.category === sCat.name ||
-              b.category.toLowerCase() === sCat.name.toLowerCase())
-        );
-        const subAmt = Number(subBObj?.amount) || 0;
-        addToBucket(deriveCategoryBucket(sCat.id || sCat.name, sCat), subAmt);
+        const subRes = resolveEffectiveCategoryBudget(sCat.id, budgets, allKnownCats);
+        addToBucket(deriveCategoryBucket(sCat.id || sCat.name, sCat), subRes.effectiveBudget);
       }
     }
   }

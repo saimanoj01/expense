@@ -94,7 +94,7 @@ export function parseLedgerUrlState(
   const bucket = normalizeBucketParam(params.get('bucket'));
   const type = normalizeTypeParam(params.get('type'));
 
-  const rawCat = params.get('cat')?.trim() || null;
+  const rawCat = (params.get('cat') || params.get('category'))?.trim() || null;
   const cat =
     context.isCategoryTransactions && context.initialCategoryId
       ? context.initialCategoryId

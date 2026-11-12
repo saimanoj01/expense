@@ -121,6 +121,7 @@ export const ModalHost: React.FC<ModalHostProps> = ({
           setShowModal={setShowCategoryManagerModal}
           categories={budgetHooks.categories}
           transactions={txnHooks.transactions}
+          locks={locks}
           handleSaveCategory={budgetHooks.handleSaveCategory}
           handleDeleteCategory={budgetHooks.handleDeleteCategory}
           handleExecuteBulkCategoryUpdate={txnHooks.handleExecuteBulkCategoryUpdate}

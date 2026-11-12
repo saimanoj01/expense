@@ -244,6 +244,9 @@ function MainRouter({
           budgetDrafts={budgetHooks.budgetDrafts}
           onBudgetInputChange={budgetHooks.handleBudgetInputChange}
           onSaveBudgets={budgetHooks.handleSaveBudgets}
+          onDiscardBudgetChanges={budgetHooks.handleDiscardBudgetChanges}
+          onApplyBudgetPreset={budgetHooks.handleApplyBudgetPreset}
+          onAutoFillFromHistory={budgetHooks.handleAutoFillFromHistory}
           onOpenCategoryManager={() => setShowCategoryManagerModal(true)}
           budgetNotes={budgetHooks.budgetNotes}
           spendingHistory={budgetHooks.spendingHistory}
@@ -252,6 +255,17 @@ function MainRouter({
           isLockedMonth={isCurrentMonthLocked}
           totalBudget={budgetHooks.totalBudget}
           totalSpent={txnHooks.totalExpenses}
+          totalIncome={txnHooks.totalIncome}
+          flexibleExpenses={txnHooks.flexibleExpenses}
+          flexNumber={txnHooks.flexNumber}
+          savingsAmount={txnHooks.savingsAmount}
+          allTransactions={txnHooks.transactions}
+          categories={budgetHooks.categories}
+          workingBudgets={budgetHooks.workingBudgets}
+          committedBudgetMap={budgetHooks.committedBudgetMap}
+          activeMonthsCount={budgetHooks.activeMonthsCount}
+          isDirty={budgetHooks.isDirty}
+          dirtyCount={budgetHooks.dirtyCount}
           availableMonths={txnHooks.availableMonths}
           onSelectMonth={txnHooks.setSelectedMonth}
         />
@@ -286,9 +300,9 @@ function MainRouter({
             nonMonthlyExpenses: txnHooks.nonMonthlyExpenses,
             savingsAmount: txnHooks.savingsAmount,
             savingsRate: txnHooks.savingsRate,
-            totalBudget: budgetHooks.totalBudget
+            totalBudget: budgetHooks.savedTotalBudget
           }}
-          categories={budgetHooks.categorySummary}
+          categories={budgetHooks.savedCategorySummary}
           transactions={txnHooks.transactions}
           isLocked={isCurrentMonthLocked}
         />
@@ -321,7 +335,7 @@ function MainRouter({
         availableMonths={txnHooks.availableMonths}
         onSelectMonth={txnHooks.setSelectedMonth}
         activeProject={activeProject}
-        totalBudget={budgetHooks.totalBudget}
+        totalBudget={budgetHooks.savedTotalBudget}
         totalExpenses={txnHooks.totalExpenses}
         totalIncome={txnHooks.totalIncome}
         totalTransfers={txnHooks.totalTransfers}
@@ -336,7 +350,7 @@ function MainRouter({
         allTransactions={txnHooks.transactions}
         categories={budgetHooks.categories}
         budgets={budgetHooks.budgets}
-        categorySummary={budgetHooks.categorySummary}
+        categorySummary={budgetHooks.savedCategorySummary}
         duplicateTxnIds={txnHooks.duplicateTxnIds}
         isLockedMonth={isCurrentMonthLocked}
         isMockMode={isMockMode}
@@ -487,6 +501,7 @@ function AppInner() {
 
   // Hooks
   const txnHooks = useTransactions(storageAdapter, activeProject, locks, showToast, categories);
+  const isCurrentMonthLocked = locks.some(lk => lk.month === txnHooks.selectedMonth && lk.locked);
   const budgetHooks = useBudgets(
     storageAdapter,
     activeProject,
@@ -494,7 +509,8 @@ function AppInner() {
     txnHooks.transactions,
     txnHooks.selectedMonth,
     showToast,
-    setAuthErrorToast
+    setAuthErrorToast,
+    isCurrentMonthLocked
   );
 
   useEffect(() => {
@@ -527,8 +543,6 @@ function AppInner() {
     refreshProjectData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated, activeProject, storageAdapter]);
-
-  const isCurrentMonthLocked = locks.some(lk => lk.month === txnHooks.selectedMonth && lk.locked);
 
   useEffect(() => {
     if (isCurrentMonthLocked) {

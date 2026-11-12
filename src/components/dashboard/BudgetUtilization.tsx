@@ -1,42 +1,27 @@
 import { useState, useMemo } from 'react';
-import { Target, Plus, Save, ChevronDown, ChevronRight, FileText, Edit2, Trash2, Check, Sparkles, Calendar } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { BudgetNote } from '../../services/storage';
-import { bucketColor } from '../../theme/buckets';
+import { Target, Plus, Save, Sparkles } from 'lucide-react';
+import { BudgetNote, SpendingBucket } from '../../services/storage';
+import { useNavigation } from '../../hooks/useNavigation';
+import { getMonthPhase } from '../../utils/metrics';
+import type { MonthPhaseInfo } from '../../utils/metrics';
+import {
+  computeDonutSegments,
+  getBudgetCatKey,
+  sortBudgetCategories,
+  toSoftBadgeBg,
+} from '../../utils/budgetPlanning';
+import type {
+  CategorySpendingHistoryEntry,
+  CategorySummary,
+  PieSegment,
+  SubCategorySummary,
+} from '../../utils/budgetPlanning';
+import { BudgetAllocationStrip } from '../budgets/BudgetAllocationStrip';
+import { BudgetCategoryRow } from '../budgets/BudgetCategoryRow';
 
-export interface SubCategorySummary {
-  id: string;
-  name: string;
-  emoji: string;
-  color: string;
-  budget: number;
-  spent: number;
-  percent: number;
-  bucket?: 'fixed' | 'flexible' | 'non-monthly';
-}
+export type { CategorySummary, SubCategorySummary, PieSegment };
 
-export interface CategorySummary {
-  id: string;
-  name: string;
-  emoji: string;
-  color: string;
-  budget: number;
-  spent: number;
-  percent: number;
-  bucket?: 'fixed' | 'flexible' | 'non-monthly';
-  isNonBudgetable?: boolean;
-  subCategories?: SubCategorySummary[];
-}
-
-export interface PieSegment {
-  pathData: string;
-  color: string;
-  category: string;
-  name: string;
-  expense: number;
-}
-
-interface BudgetUtilizationProps {
+export interface BudgetUtilizationProps {
   categorySummary: CategorySummary[];
   piePaths?: { segments: PieSegment[]; totalPieExpense: number };
   budgetErrors?: Record<string, string>;
@@ -45,39 +30,24 @@ interface BudgetUtilizationProps {
   handleSaveBudgets?: () => void;
   onOpenCategoryManager?: () => void;
   selectedMonth?: string;
+  phaseInfo?: MonthPhaseInfo;
+  activeMonthsCount?: number;
+  committedBudgetMap?: Map<string, number>;
   budgetNotes?: Record<string, BudgetNote>;
-  spendingHistory?: Record<string, { lastMonth: number; avg3mo: number }>;
-  handleSaveBudgetNote?: (month: string, keyId: string, text: string, mood?: string) => Promise<void>;
+  spendingHistory?: Record<string, CategorySpendingHistoryEntry>;
+  handleSaveBudgetNote?: (
+    month: string,
+    keyId: string,
+    text: string,
+    mood?: string
+  ) => Promise<void>;
   handleDeleteBudgetNote?: (month: string, keyId: string) => Promise<void>;
+  onApplyBudgetPreset?: (catId: string, amount: number) => void;
+  onAutoFillFromHistory?: () => number;
   isLockedMonth?: boolean;
-}
-
-const MOOD_OPTIONS = [
-  { emoji: '👍', label: 'Good' },
-  { emoji: '⚠️', label: 'Tough' },
-  { emoji: '🎉', label: 'Great' },
-  { emoji: '📉', label: 'Cutback' },
-];
-
-function formatDateTimestamp(isoString?: string) {
-  if (!isoString) return '';
-  try {
-    const d = new Date(isoString);
-    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-  } catch {
-    return '';
-  }
-}
-
-function formatMonthDisplay(monthStr?: string) {
-  if (!monthStr || monthStr === 'all') return '';
-  const parts = monthStr.split('-');
-  if (parts.length !== 2) return monthStr;
-  const year = parseInt(parts[0], 10);
-  const monthNum = parseInt(parts[1], 10);
-  if (isNaN(year) || isNaN(monthNum)) return monthStr;
-  const date = new Date(Date.UTC(year, monthNum - 1, 1));
-  return date.toLocaleDateString(undefined, { month: 'long', year: 'numeric', timeZone: 'UTC' });
+  hideTopActionBar?: boolean;
+  activeBucketTab?: 'all' | SpendingBucket;
+  onActiveBucketTabChange?: (tab: 'all' | SpendingBucket) => void;
 }
 
 export function BudgetUtilization({
@@ -89,20 +59,94 @@ export function BudgetUtilization({
   handleSaveBudgets,
   onOpenCategoryManager,
   selectedMonth = '',
+  phaseInfo: phaseInfoProp,
+  activeMonthsCount = 1,
+  committedBudgetMap,
   budgetNotes = {},
   spendingHistory = {},
   handleSaveBudgetNote,
   handleDeleteBudgetNote,
+  onApplyBudgetPreset,
+  onAutoFillFromHistory,
   isLockedMonth = false,
+  hideTopActionBar = false,
+  activeBucketTab: controlledBucketTab,
+  onActiveBucketTabChange,
 }: BudgetUtilizationProps) {
+  const { navigate } = useNavigation();
   const [expandedParents, setExpandedParents] = useState<Set<string>>(new Set());
+  const [internalBucketTab, setInternalBucketTab] = useState<'all' | SpendingBucket>('all');
 
-  // Edit states for notes
+  const activeBucketTab = controlledBucketTab ?? internalBucketTab;
+  const setActiveBucketTab = (tab: 'all' | SpendingBucket) => {
+    setInternalBucketTab(tab);
+    onActiveBucketTabChange?.(tab);
+  };
+
+  // Edit states for monthly & category notes
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const [noteText, setNoteText] = useState('');
   const [selectedMood, setSelectedMood] = useState<string | undefined>(undefined);
 
   const isSpecificMonth = Boolean(selectedMonth && selectedMonth !== 'all');
+  const isAllTime = selectedMonth === 'all';
+  const isSpecificLocked = isLockedMonth && isSpecificMonth;
+
+  const phaseInfo = useMemo(
+    () => phaseInfoProp ?? getMonthPhase(selectedMonth),
+    [phaseInfoProp, selectedMonth]
+  );
+
+  const fallbackCommittedMap = useMemo(() => {
+    if (committedBudgetMap) return committedBudgetMap;
+    const map = new Map<string, number>();
+    for (const c of categorySummary) {
+      map.set(c.id, c.budget);
+    }
+    return map;
+  }, [committedBudgetMap, categorySummary]);
+
+  const { budgetableItems, nonBudgetableItems } = useMemo(() => {
+    const sorted = sortBudgetCategories(categorySummary, fallbackCommittedMap, phaseInfo);
+    if (activeBucketTab === 'all') {
+      return sorted;
+    }
+    return {
+      budgetableItems: sorted.budgetableItems.filter(
+        item => (item.bucket || 'flexible') === activeBucketTab
+      ),
+      nonBudgetableItems: [],
+    };
+  }, [categorySummary, fallbackCommittedMap, phaseInfo, activeBucketTab]);
+
+  const scopedPie = useMemo(() => {
+    if (activeBucketTab === 'all' && piePaths && categorySummary.length === 0) {
+      return piePaths;
+    }
+    return computeDonutSegments(categorySummary, activeBucketTab);
+  }, [categorySummary, activeBucketTab, piePaths]);
+
+  const hasAnyBudgetSet = useMemo(
+    () => categorySummary.some(c => !c.isNonBudgetable && c.budget > 0),
+    [categorySummary]
+  );
+
+  const hasAutoFillCandidates = useMemo(() => {
+    if (hasAnyBudgetSet || isSpecificLocked || !onAutoFillFromHistory) return false;
+    return categorySummary.some(c => {
+      if (c.isNonBudgetable) return false;
+      if (isAllTime) return Math.round(c.effectiveSpent ?? c.spent) > 0;
+      const hist = spendingHistory[c.id];
+      return Boolean((hist?.avg3mo ?? 0) > 0 || (hist?.lastMonth ?? 0) > 0);
+    });
+  }, [
+    hasAnyBudgetSet,
+    isSpecificLocked,
+    onAutoFillFromHistory,
+    categorySummary,
+    isAllTime,
+    spendingHistory,
+  ]);
 
   const toggleExpand = (id: string) => {
     setExpandedParents(prev => {
@@ -114,6 +158,7 @@ export function BudgetUtilization({
   };
 
   const startEditNote = (keyId: string, initialText = '', initialMood?: string) => {
+    if (isSpecificLocked) return;
     setEditingKey(keyId);
     setNoteText(initialText);
     setSelectedMood(initialMood);
@@ -126,688 +171,230 @@ export function BudgetUtilization({
   };
 
   const submitSaveNote = async (keyId: string, moodToSave?: string) => {
-    if (!handleSaveBudgetNote || !selectedMonth) return;
-    await handleSaveBudgetNote(selectedMonth, keyId, noteText, moodToSave ?? selectedMood);
-    cancelEditNote();
+    if (!handleSaveBudgetNote || !selectedMonth || isSpecificLocked) return;
+    const targetNote = budgetNotes[`${selectedMonth}:${keyId}`];
+    const resolvedText = editingKey === keyId ? noteText : targetNote?.text ?? '';
+    const resolvedMood =
+      moodToSave !== undefined
+        ? moodToSave || undefined
+        : editingKey === keyId
+        ? selectedMood
+        : targetNote?.mood;
+    await handleSaveBudgetNote(selectedMonth, keyId, resolvedText, resolvedMood);
+    if (editingKey === keyId) {
+      cancelEditNote();
+    }
   };
 
   const submitDeleteNote = async (keyId: string) => {
-    if (!handleDeleteBudgetNote || !selectedMonth) return;
+    if (!handleDeleteBudgetNote || !selectedMonth || isSpecificLocked) return;
     await handleDeleteBudgetNote(selectedMonth, keyId);
     if (editingKey === keyId) cancelEditNote();
   };
 
-  // Overall month note object
+  const handleDrilldownCategory = (catId: string) => {
+    if (selectedMonth && selectedMonth !== 'all') {
+      navigate(`#/month/${selectedMonth}/category/${encodeURIComponent(catId)}`);
+    } else {
+      navigate(`#/transactions?month=all&cat=${encodeURIComponent(catId)}`);
+    }
+  };
+
   const overallKey = `${selectedMonth}:__overall__`;
   const overallNote = isSpecificMonth ? budgetNotes[overallKey] : undefined;
 
-  const [activeBucketTab, setActiveBucketTab] = useState<'flexible' | 'fixed' | 'non-monthly' | 'all'>('all');
-
-  const displayedCategories = useMemo(() => {
-    if (activeBucketTab === 'all') return categorySummary;
-    return categorySummary.filter(item => {
-      if (item.isNonBudgetable) return false;
-      return item.bucket === activeBucketTab;
-    });
-  }, [categorySummary, activeBucketTab]);
-
   return (
-    <motion.div 
-      initial={{ opacity: 0, scale: 0.98 }}
-      animate={{ opacity: 1, scale: 1 }}
-      transition={{ duration: 0.16 }}
-      className="bg-card border border-border p-6 rounded-[14px] flex-1 flex flex-col"
-    >
-      {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
-        <div className="flex items-center gap-3">
-          <div className="p-2 rounded-[10px] bg-surface2 text-muted-foreground">
-            <Target className="w-4 h-4" />
-          </div>
-          <div>
-            <h3 className="text-section font-semibold text-foreground">Budget Utilization</h3>
-            <p className="text-label text-muted-foreground">Monitor spending vs limits</p>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          {onOpenCategoryManager && (
-            <button
-              onClick={onOpenCategoryManager}
-              data-testid="open-add-category-btn"
-              className="flex items-center gap-1 text-label font-medium px-3 py-1.5 rounded-[10px] bg-card hover:bg-surface2 border border-border transition-colors focus-visible:ring-2 ring-ring/40"
-            >
-              <Plus className="w-3.5 h-3.5" /> Category
-            </button>
-          )}
-
-          {handleSaveBudgets && (
-            <button
-              onClick={handleSaveBudgets}
-              data-testid="save-budgets-btn"
-              className="flex items-center gap-1 text-label font-medium px-3 py-1.5 rounded-[10px] bg-primary text-primary-foreground hover:bg-primary/90 transition-colors focus-visible:ring-2 ring-ring/40"
-            >
-              <Save className="w-3.5 h-3.5" /> Save Budgets
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Bucket Filter Tabs */}
-      <div className="flex items-center gap-1 mb-4 p-1 bg-card rounded-[10px] border border-border" data-testid="budget-bucket-tabs">
-        <button
-          onClick={() => setActiveBucketTab('flexible')}
-          aria-label="Flexible / Variable"
-          className={`flex-1 py-1.5 px-3 rounded-[8px] text-label font-medium transition-colors flex items-center justify-center gap-2 focus-visible:ring-2 ring-ring/40 ${activeBucketTab === 'flexible' ? 'bg-surface2 text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-        >
-          <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: bucketColor('flexible') }} />
-          <span>Variable</span>
-        </button>
-        <button
-          onClick={() => setActiveBucketTab('fixed')}
-          aria-label="Fixed"
-          className={`flex-1 py-1.5 px-3 rounded-[8px] text-label font-medium transition-colors flex items-center justify-center gap-2 focus-visible:ring-2 ring-ring/40 ${activeBucketTab === 'fixed' ? 'bg-surface2 text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-        >
-          <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: bucketColor('fixed') }} />
-          <span>Fixed</span>
-        </button>
-        <button
-          onClick={() => setActiveBucketTab('non-monthly')}
-          aria-label="Non-Monthly"
-          className={`flex-1 py-1.5 px-3 rounded-[8px] text-label font-medium transition-colors flex items-center justify-center gap-2 focus-visible:ring-2 ring-ring/40 ${activeBucketTab === 'non-monthly' ? 'bg-surface2 text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-        >
-          <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: bucketColor('non-monthly') }} />
-          <span>Non-Monthly</span>
-        </button>
-        <button
-          onClick={() => setActiveBucketTab('all')}
-          aria-label="All"
-          className={`py-1.5 px-3 rounded-[8px] text-label font-medium transition-colors focus-visible:ring-2 ring-ring/40 ${activeBucketTab === 'all' ? 'bg-surface2 text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
-        >
-          All
-        </button>
-      </div>
-
-      {/* Monthly Overview Note Banner (Item 5: Mood tags & Whole Month Note) */}
-      {isSpecificMonth && (
-        <div className="mb-5 bg-card/40 border border-border/50 rounded-xl p-3.5 transition-all">
-          <div className="flex items-center justify-between gap-2 mb-2">
-            <div className="flex items-center gap-2 text-xs font-bold text-foreground">
-              <Calendar className="w-4 h-4 text-primary" />
-              <span>{formatMonthDisplay(selectedMonth)} Overview Note</span>
-              {overallNote?.mood && (
-                <span className="px-2 py-0.5 rounded-full text-xs bg-primary/15 border border-primary/30">
-                  {overallNote.mood}
-                </span>
-              )}
+    <div className="space-y-2.5 flex-1 flex flex-col min-w-0">
+      {/* Standalone Fallback Action Header (Hidden when hosted inside BudgetsView) */}
+      {!hideTopActionBar && (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-[10px] bg-surface2 text-muted-foreground">
+              <Target className="w-4 h-4" />
             </div>
-
-            {/* Mood selector buttons */}
-            <div className="flex items-center gap-1">
-              {MOOD_OPTIONS.map(opt => {
-                const isSelected = overallNote?.mood === opt.emoji || selectedMood === opt.emoji;
-                return (
-                  <button
-                    key={opt.label}
-                    onClick={() => {
-                      const nextMood = isSelected ? undefined : opt.emoji;
-                      setSelectedMood(nextMood);
-                      if (overallNote && handleSaveBudgetNote) {
-                        handleSaveBudgetNote(selectedMonth, '__overall__', overallNote.text, nextMood);
-                      }
-                    }}
-                    title={opt.label}
-                    className={`px-1.5 py-0.5 text-xs rounded-md border transition-all ${
-                      isSelected
-                        ? 'bg-primary/20 border-primary text-foreground scale-105 font-bold'
-                        : 'bg-card/40 border-border/40 text-muted-foreground hover:bg-card hover:text-foreground'
-                    }`}
-                  >
-                    {opt.emoji}
-                  </button>
-                );
-              })}
+            <div>
+              <h3 className="text-heading font-semibold text-foreground">
+                Budget Utilization
+              </h3>
+              <p className="text-label text-muted-foreground">
+                Monitor spending vs limits
+              </p>
             </div>
           </div>
 
-          {editingKey === '__overall__' ? (
-            <div className="space-y-2 pt-1">
-              <textarea
-                value={noteText}
-                onChange={e => setNoteText(e.target.value)}
-                placeholder={`Add summary context for ${formatMonthDisplay(selectedMonth)} (e.g. Vacation month, hosting family)...`}
-                rows={2}
-                className="w-full text-xs p-2.5 rounded-lg bg-card border border-primary/50 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-              />
-              <div className="flex justify-end gap-2">
-                <button
-                  onClick={cancelEditNote}
-                  className="px-2.5 py-1 text-xs font-medium rounded-md bg-card border border-border text-muted-foreground hover:text-foreground"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={() => submitSaveNote('__overall__')}
-                  className="px-2.5 py-1 text-xs font-bold rounded-md bg-primary text-primary-foreground hover:bg-primary/90 flex items-center gap-1"
-                >
-                  <Check className="w-3 h-3" /> Save Note
-                </button>
-              </div>
-            </div>
-          ) : overallNote?.text ? (
-            <div className="flex items-start justify-between gap-3 text-xs bg-card/60 rounded-lg p-2.5 border border-border/40">
-              <div className="space-y-0.5 flex-1 min-w-0">
-                <p className="text-foreground whitespace-pre-wrap leading-relaxed">{overallNote.text}</p>
-                {overallNote.updatedAt && (
-                  <p className="text-[10px] text-muted-foreground/80 font-medium">
-                    Updated {formatDateTimestamp(overallNote.updatedAt)}
-                  </p>
-                )}
-              </div>
-              <div className="flex items-center gap-1 shrink-0">
-                <button
-                  onClick={() => startEditNote('__overall__', overallNote.text, overallNote.mood)}
-                  className="p-1 rounded hover:bg-card text-muted-foreground hover:text-foreground transition-colors"
-                  title="Edit note"
-                >
-                  <Edit2 className="w-3.5 h-3.5" />
-                </button>
-                <button
-                  onClick={() => submitDeleteNote('__overall__')}
-                  className="p-1 rounded hover:bg-card text-muted-foreground hover:text-destructive transition-colors"
-                  title="Delete note"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </div>
-          ) : (
-            <button
-              onClick={() => startEditNote('__overall__')}
-              className="text-xs text-muted-foreground hover:text-primary flex items-center gap-1.5 font-medium transition-colors pt-0.5"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Add Monthly Overview Note for {formatMonthDisplay(selectedMonth)}...</span>
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            {onOpenCategoryManager && (
+              <button
+                type="button"
+                onClick={onOpenCategoryManager}
+                data-testid="open-add-category-btn"
+                className="min-h-[34px] inline-flex items-center gap-1 text-label font-medium px-3 rounded-[10px] bg-card hover:bg-surface2 border border-border transition-colors focus-visible:ring-2 ring-ring/40"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Category</span>
+              </button>
+            )}
+            {handleSaveBudgets && (
+              <button
+                type="button"
+                disabled={isSpecificLocked}
+                onClick={handleSaveBudgets}
+                data-testid="save-budgets-btn"
+                className="min-h-[34px] inline-flex items-center gap-1 text-label font-medium px-3 rounded-[10px] bg-primary text-primary-foreground hover:bg-primary/90 transition-colors focus-visible:ring-2 ring-ring/40 disabled:opacity-50"
+              >
+                <Save className="w-3.5 h-3.5" />
+                <span>Save Budgets</span>
+              </button>
+            )}
+          </div>
         </div>
       )}
 
-      {/* Visual Charts Container for E2E and User Analytics */}
-      <div data-testid="charts-container" className="grid grid-cols-1 gap-4 mb-4">
-        {/* SVG Pie Chart */}
-        <div className="bg-card p-4 rounded-[14px] border border-border flex flex-col items-center">
-          <span className="text-label font-medium text-muted-foreground mb-2">Category Breakdown (Pie)</span>
-          <svg className="w-full h-40" data-testid="chart-svg-pie" viewBox="0 0 300 192">
-            <rect width="100%" height="100%" fill="rgba(255,255,255,0.02)" rx="8" />
-            {(!piePaths || piePaths.totalPieExpense === 0) ? (
-              <text x="50%" y="50%" textAnchor="middle" fill="currentColor" className="no-data-text text-muted-foreground text-label">
-                No data available
-              </text>
-            ) : (
-              piePaths.segments.map(p => (
-                <path
-                  key={p.category}
-                  d={p.pathData}
-                  fill={p.color}
-                  data-testid={`pie-segment-${p.category}`}
-                />
-              ))
-            )}
-          </svg>
-          {piePaths?.segments && piePaths.segments.length > 0 && (
-            <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 mt-3 pt-2 border-t border-border/30 w-full text-label text-muted-foreground">
-              {piePaths.segments.map(seg => {
-                const pct = piePaths.totalPieExpense > 0 ? Math.round((seg.expense / piePaths.totalPieExpense) * 100) : 0;
-                return (
-                  <div key={seg.category} className="flex items-center gap-1.5">
-                    <span className="w-2.5 h-2.5 rounded-full shrink-0 shadow-sm" style={{ backgroundColor: seg.color }} />
-                    <span className="font-semibold text-foreground truncate max-w-[80px]">{seg.name || seg.category}</span>
-                    <span className="tabular-nums font-medium">${Math.round(seg.expense).toLocaleString()} ({pct}%)</span>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+      {/* Bucket Tabs + Compact Donut Strip + Single-Line Month Note */}
+      <BudgetAllocationStrip
+        activeBucketTab={activeBucketTab}
+        onSelectBucketTab={setActiveBucketTab}
+        categorySummary={categorySummary}
+        scopedPie={scopedPie}
+        isAllTime={isAllTime}
+        isSpecificMonth={isSpecificMonth}
+        selectedMonth={selectedMonth}
+        isLockedMonth={isSpecificLocked}
+        overallNote={overallNote}
+        editingKey={editingKey}
+        noteText={noteText}
+        selectedMood={selectedMood}
+        onNoteTextChange={setNoteText}
+        onSelectMood={setSelectedMood}
+        onStartEditNote={startEditNote}
+        onCancelEditNote={cancelEditNote}
+        onSaveNote={submitSaveNote}
+        onDeleteNote={submitDeleteNote}
+      />
+
+      {/* 1-Click Auto-Fill Onboarding Helper when $0 budgeted */}
+      {hasAutoFillCandidates && (
+        <div
+          data-testid="budgets-autofill-banner"
+          className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 rounded-[10px] bg-surface2/70 border border-border text-xs"
+        >
+          <span className="text-muted-foreground">
+            No monthly targets set yet — jump-start your plan from historical category
+            spending.
+          </span>
+          <button
+            type="button"
+            data-testid="autofill-budgets-btn"
+            onClick={() => onAutoFillFromHistory?.()}
+            className="min-h-[32px] px-3 rounded-[8px] bg-card hover:bg-surface2 border border-border text-foreground font-semibold inline-flex items-center gap-1.5 transition-colors focus-visible:ring-2 ring-ring/40"
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>
+              {isAllTime ? 'Auto-fill from monthly avg' : 'Auto-fill from 3-mo avg'}
+            </span>
+          </button>
         </div>
-      </div>
+      )}
 
-      {/* Target Policy Label */}
-      <div className="flex items-center justify-between text-label text-muted-foreground px-1 mb-2">
-        <span className="font-medium text-foreground/90">
-          Monthly Budget Target <span className="text-label font-normal text-muted-foreground">(applies across months)</span>
-        </span>
-        <span className="text-label">
-          {displayedCategories.length} {displayedCategories.length === 1 ? 'category' : 'categories'}
-        </span>
-      </div>
+      {/* Single-Surface Calm Ledger (overflow-y-auto WITHOUT max-h-[800px] eliminates double scrollbars) */}
+      <div
+        data-testid="budget-grid-container"
+        className="w-full overflow-y-auto rounded-[12px] border border-border bg-card divide-y divide-border"
+      >
+        {/* Desktop Ledger Column Header */}
+        <div className="hidden lg:grid lg:grid-cols-[minmax(175px,1.35fr)_minmax(185px,1.4fr)_auto] items-center gap-x-4 px-3.5 py-2 bg-surface2/40 text-[11px] leading-4 font-semibold uppercase tracking-wider text-muted-foreground">
+          <span>
+            Category{' '}
+            <span className="normal-case font-normal text-muted-foreground/80">
+              ({budgetableItems.length})
+            </span>
+          </span>
+          <span>Progress & Pace</span>
+          <span className="text-right pr-9">
+            {isAllTime ? 'Avg / mo · Target' : 'Spent · Monthly Target'}
+          </span>
+        </div>
 
-      {/* Categories List */}
-      <div className="w-full space-y-3 flex-1 overflow-y-auto max-h-[800px]" data-testid="budget-grid-container">
-        {displayedCategories.length > 0 ? (
-          displayedCategories.map(item => {
-            const catKey = item.id === 'food' ? 'Food' : (item.id === 'meals' ? 'Meals' : (item.id === 'housing' ? 'Rent' : item.name));
-            if (item.isNonBudgetable) {
+        {/* Budgetable Category Rows */}
+        {budgetableItems.length > 0 ? (
+          budgetableItems.map(item => (
+            <BudgetCategoryRow
+              key={item.id}
+              item={item}
+              phaseInfo={phaseInfo}
+              isExpanded={expandedParents.has(item.id)}
+              onToggleExpand={toggleExpand}
+              isSpecificMonth={isSpecificMonth}
+              isAllTime={isAllTime}
+              activeMonthsCount={activeMonthsCount}
+              selectedMonth={selectedMonth}
+              isLockedMonth={isSpecificLocked}
+              budgetErrors={budgetErrors}
+              budgetDrafts={budgetDrafts}
+              budgetNotes={budgetNotes}
+              spendingHistory={spendingHistory}
+              editingKey={editingKey}
+              noteText={noteText}
+              onNoteTextChange={setNoteText}
+              onStartEditNote={startEditNote}
+              onCancelEditNote={cancelEditNote}
+              onSaveNote={submitSaveNote}
+              onDeleteNote={submitDeleteNote}
+              onBudgetInputChange={handleBudgetInputChange}
+              onApplyBudgetPreset={onApplyBudgetPreset}
+              onDrilldownCategory={handleDrilldownCategory}
+            />
+          ))
+        ) : (
+          <div className="px-4 py-8 text-center text-body text-muted-foreground">
+            No categories in this spending bucket.
+          </div>
+        )}
+
+        {/* Compact Cash-Flow Exclusions Footer (All Tab Only; Preserves 13 Default Categories Contract) */}
+        {activeBucketTab === 'all' && nonBudgetableItems.length > 0 && (
+          <div
+            data-testid="budget-exclusions-footer"
+            className="bg-surface2/25 divide-y divide-border/50"
+          >
+            <div className="px-3.5 py-1.5 text-[10px] leading-4 font-semibold uppercase tracking-wider text-muted-foreground">
+              Cash-Flow Exclusions (Tracked outside expense targets)
+            </div>
+            {nonBudgetableItems.map(item => {
+              const catKey = item.catKey || getBudgetCatKey(item);
+              const isIncome =
+                item.name.toLowerCase().includes('income') ||
+                item.id.toLowerCase().includes('income') ||
+                item.id.toLowerCase() === 'salary';
               return (
-                <div key={item.id} className="bg-card p-4 rounded-[14px] border border-border space-y-2">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="font-medium flex items-center gap-2.5 text-row truncate min-w-0">
-                      <span 
+                <div
+                  key={item.id}
+                  className="px-3.5 py-2 flex items-center justify-between gap-2 text-xs"
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span
                       data-testid={`category-badge-${catKey}`}
-                      className="text-base leading-none shrink-0"
-                      style={{ backgroundColor: item.color }}
+                      className="w-6 h-6 rounded-[6px] flex items-center justify-center text-xs leading-none shrink-0 border border-border/50"
+                      style={{ backgroundColor: toSoftBadgeBg(item.color) }}
                     >
                       {item.emoji}
                     </span>
-                      <span className="truncate" data-testid={`budget-label-${item.id === 'food' ? 'Food' : item.name}`}>{item.name}</span>
-                    </div>
-                    <span className="px-2.5 py-0.5 rounded-full text-label font-medium uppercase tracking-wider bg-surface2 text-muted-foreground border border-border shrink-0">
-                      {item.name.toLowerCase().includes('income') || item.id.toLowerCase().includes('income') ? 'Inflow (Non-budgetable)' : 'Transfer (Non-budgetable)'}
+                    <span
+                      data-testid={`budget-label-${catKey}`}
+                      className="font-medium text-muted-foreground truncate"
+                    >
+                      {item.name}
                     </span>
                   </div>
-                  <p className="text-label text-muted-foreground/80 italic">
-                    Tracked in monthly cash flow — excluded from expense budget limits.
-                  </p>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] leading-4 font-medium bg-surface2 text-muted-foreground border border-border shrink-0">
+                    {isIncome ? 'Inflow (Excluded)' : 'Transfer (Excluded)'}
+                  </span>
                 </div>
               );
-            }
-
-            const hasSubCats = item.subCategories && item.subCategories.length > 0;
-            const isExpanded = expandedParents.has(item.id);
-            const isOver = item.spent > item.budget && item.budget > 0;
-            const isNearCap = !isOver && item.percent >= 80 && item.budget > 0;
-            const remaining = item.budget - item.spent;
-
-            // Note for parent category
-            const parentNoteKey = `${selectedMonth}:${item.id}`;
-            const parentNote = isSpecificMonth ? budgetNotes[parentNoteKey] : undefined;
-
-            // Spending history (Item 4)
-            const catHistory = spendingHistory[item.id];
-
-            // Smart placeholder text (Item 2)
-            let placeholderText = `Add context for ${item.name} this month...`;
-            if (isOver) {
-              const overAmt = Math.abs(remaining).toFixed(0);
-              placeholderText = `Why did ${item.name} go $${overAmt} over target this month?`;
-            } else if (isNearCap) {
-              placeholderText = `${item.name} is at ${item.percent.toFixed(0)}% limit — anything to note?`;
-            } else if (item.budget > 0) {
-              placeholderText = `Anything notable about ${item.name} spending this month?`;
-            }
-
-            return (
-              <div key={item.id} className="bg-card p-4 rounded-[14px] border border-border space-y-3">
-                {/* Line 1: Category Header & Status Badge */}
-                <div className="flex items-center justify-between gap-2">
-                  <div 
-                    onClick={() => toggleExpand(item.id)}
-                    className="font-medium flex items-center gap-2.5 text-row cursor-pointer hover:text-primary transition-colors truncate min-w-0"
-                  >
-                    <span className="text-muted-foreground shrink-0">
-                      {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-                    </span>
-                    <span 
-                      data-testid={`category-badge-${catKey}`}
-                      className="text-base leading-none shrink-0"
-                      style={{ backgroundColor: item.color }}
-                    >
-                      {item.emoji}
-                    </span>
-                    <span className="truncate" data-testid={`budget-label-${catKey}`}>{item.name}</span>
-
-                    {/* Note indicator icon (Item 1: Note indicator on collapsed cards) */}
-                    {isSpecificMonth && parentNote && (
-                      <span className="shrink-0 flex items-center gap-1 px-1.5 py-0.5 rounded text-label font-medium bg-surface2 text-foreground border border-border">
-                        <FileText className="w-3 h-3" />
-                        <span>Note</span>
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Status Badge */}
-                  {item.budget > 0 ? (
-                    <span
-                      className={`px-2.5 py-0.5 rounded-full text-label font-medium uppercase tracking-wider shrink-0 ${
-                        isOver
-                          ? 'bg-destructive/15 text-destructive border border-destructive/30'
-                          : isNearCap
-                          ? 'bg-amber-500/15 text-amber-500 border border-amber-500/30'
-                          : 'bg-emerald-500/15 text-emerald-500 border border-emerald-500/30'
-                      }`}
-                    >
-                      {isOver ? `Over by $${Math.abs(remaining).toFixed(0)}` : isNearCap ? 'Near Limit' : 'On Track'}
-                    </span>
-                  ) : (
-                    <span className="px-2.5 py-0.5 rounded-full text-label font-medium bg-card text-muted-foreground border border-border shrink-0">
-                      No Target
-                    </span>
-                  )}
-                </div>
-
-                {/* Line 2 & 3: Stacked Metrics (Spent on top, Budget below it) */}
-                <div className="bg-background/40 rounded-[10px] p-3 border border-border/50 space-y-2">
-                  {/* Spent Line */}
-                  <div className="flex justify-between items-center text-row">
-                    <span className="text-muted-foreground font-medium">Spent</span>
-                    <span className={`font-semibold tabular-nums ${isOver ? 'text-destructive' : 'text-foreground'}`}>
-                      ${item.spent.toFixed(0)}
-                    </span>
-                  </div>
-
-                  {/* Budget Line */}
-                  <div className="flex justify-between items-center text-row pt-1 border-t border-border/40">
-                    <span className="text-muted-foreground font-medium">Budget</span>
-                    {handleBudgetInputChange ? (
-                      <div className="flex items-center gap-1 bg-card border border-border hover:border-primary/50 focus-within:border-primary focus-within:ring-2 focus-within:ring-ring/40 rounded-[8px] px-2.5 py-1 transition-colors">
-                        <span className="text-label text-muted-foreground font-medium">$</span>
-                        <input
-                          disabled={isLockedMonth}
-                          type="number"
-                          min="0"
-                          data-testid={`budget-input-${catKey}`}
-                          value={budgetDrafts[item.id] !== undefined ? budgetDrafts[item.id] : (item.budget === 0 ? '0' : (item.budget || ''))}
-                          placeholder="0"
-                          onChange={e => handleBudgetInputChange(item.id, e.target.value)}
-                          className="w-16 bg-transparent text-row font-semibold text-foreground tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded text-right disabled:opacity-50 disabled:cursor-not-allowed"
-                        />
-                      </div>
-                    ) : (
-                      <span className="font-semibold text-foreground tabular-nums">${item.budget}</span>
-                    )}
-                  </div>
-                </div>
-
-                {budgetErrors[item.id] && (
-                  <p className={`text-label text-destructive font-semibold budget-error-${catKey}`} data-testid="budget-error">
-                    {budgetErrors[item.id]}
-                  </p>
-                )}
-
-                {/* Line 4: Progress Bar & Status Text */}
-                {item.budget > 0 ? (
-                  <div className="space-y-1 pt-0.5">
-                    <div className="h-2 bg-surface2 rounded-full overflow-hidden">
-                      <motion.div
-                        data-testid={`budget-indicator-${catKey}`}
-                        initial={{ width: 0 }}
-                        animate={{ width: `${Math.min(item.percent, 100)}%` }}
-                        transition={{ duration: 0.4 }}
-                        className={`h-full rounded-full ${isOver || item.percent > 100 ? 'bg-destructive bg-red-500 budget-overspent' : ''}`}
-                        style={{ backgroundColor: !isOver && item.percent <= 100 ? item.color : undefined }}
-                      />
-                    </div>
-                    <div className="flex justify-between items-center text-label text-muted-foreground px-0.5 font-medium tabular-nums">
-                      <span data-testid={`budget-utilization-${catKey}`}>{item.percent.toFixed(0)}% used</span>
-                      <span 
-                        data-testid={`budget-remaining-${catKey}`}
-                        className={isOver ? 'text-destructive font-semibold' : ''}
-                      >
-                        {isOver
-                          ? `$${Math.abs(remaining).toFixed(2)} over target`
-                          : `$${remaining.toFixed(2)} remaining`}
-                      </span>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="text-label text-muted-foreground/70 italic px-0.5 pt-0.5">
-                    Enter a budget target above to track utilization
-                  </div>
-                )}
-
-                {/* Expanded Section (Sub-categories & Category Notes) */}
-                <AnimatePresence>
-                  {isExpanded && (
-                    <motion.div
-                      initial={{ opacity: 0, height: 0 }}
-                      animate={{ opacity: 1, height: 'auto' }}
-                      exit={{ opacity: 0, height: 0 }}
-                      className="pt-3 pl-3 sm:pl-4 border-l-2 border-primary/20 space-y-3 mt-2"
-                    >
-                      {/* Spending Delta Context (Item 4) */}
-                      {isSpecificMonth && catHistory && (
-                        <div className="text-[11px] text-muted-foreground bg-card/30 rounded-md px-2.5 py-1.5 border border-border/20 flex flex-wrap items-center justify-between gap-2 tabular-nums">
-                          <span className="font-semibold text-foreground flex items-center gap-1">
-                            <Sparkles className="w-3 h-3 text-primary" /> Context:
-                          </span>
-                          <div className="flex items-center gap-3">
-                            <span>Last month: <strong className="text-foreground">${catHistory.lastMonth}</strong></span>
-                            <span>3-mo avg: <strong className="text-foreground">${catHistory.avg3mo}</strong></span>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Parent Category Note Block */}
-                      {isSpecificMonth && (
-                        <div className="bg-card/30 rounded-lg p-3 border border-border/30 space-y-2">
-                          <div className="flex items-center justify-between text-xs font-semibold text-foreground">
-                            <span className="flex items-center gap-1.5">
-                              <FileText className="w-3.5 h-3.5 text-primary" />
-                              <span>{item.name} Monthly Note</span>
-                            </span>
-                            {parentNote?.updatedAt && (
-                              <span className="text-[10px] text-muted-foreground font-normal">
-                                {formatDateTimestamp(parentNote.updatedAt)}
-                              </span>
-                            )}
-                          </div>
-
-                          {editingKey === item.id ? (
-                            <div className="space-y-2 pt-1">
-                              <textarea
-                                value={noteText}
-                                onChange={e => setNoteText(e.target.value)}
-                                placeholder={placeholderText}
-                                rows={2}
-                                className="w-full text-xs p-2 rounded-md bg-card border border-primary/50 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-                              />
-                              <div className="flex justify-end gap-2">
-                                <button
-                                  onClick={cancelEditNote}
-                                  className="px-2 py-1 text-[11px] font-medium rounded bg-card border border-border text-muted-foreground hover:text-foreground"
-                                >
-                                  Cancel
-                                </button>
-                                <button
-                                  onClick={() => submitSaveNote(item.id)}
-                                  className="px-2 py-1 text-[11px] font-bold rounded bg-primary text-primary-foreground hover:bg-primary/90 flex items-center gap-1"
-                                >
-                                  <Check className="w-3 h-3" /> Save
-                                </button>
-                              </div>
-                            </div>
-                          ) : parentNote?.text ? (
-                            <div className="flex items-start justify-between gap-2 text-xs bg-card/60 rounded p-2 border border-border/30">
-                              <p className="text-foreground whitespace-pre-wrap leading-relaxed flex-1">{parentNote.text}</p>
-                              <div className="flex items-center gap-1 shrink-0">
-                                <button
-                                  onClick={() => startEditNote(item.id, parentNote.text)}
-                                  className="p-1 rounded hover:bg-card text-muted-foreground hover:text-foreground"
-                                  title="Edit note"
-                                >
-                                  <Edit2 className="w-3 h-3" />
-                                </button>
-                                <button
-                                  onClick={() => submitDeleteNote(item.id)}
-                                  className="p-1 rounded hover:bg-card text-muted-foreground hover:text-destructive"
-                                  title="Delete note"
-                                >
-                                  <Trash2 className="w-3 h-3" />
-                                </button>
-                              </div>
-                            </div>
-                          ) : (
-                            <button
-                              onClick={() => startEditNote(item.id)}
-                              className="text-xs text-muted-foreground hover:text-primary flex items-center gap-1 font-medium transition-colors"
-                            >
-                              <Plus className="w-3 h-3" /> Add note for {item.name}...
-                            </button>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Sub-categories Accordion */}
-                      {hasSubCats && (
-                        <div className="space-y-2.5 pt-1">
-                          {item.subCategories!.map(sub => {
-                            const subOver = sub.spent > sub.budget && sub.budget > 0;
-                            const subRemaining = sub.budget - sub.spent;
-
-                            const subNoteKey = `${selectedMonth}:${sub.id}`;
-                            const subNote = isSpecificMonth ? budgetNotes[subNoteKey] : undefined;
-
-                            return (
-                              <div key={sub.id} className="bg-card/20 p-3 rounded-lg border border-border/30 space-y-2">
-                                {/* Sub-category Header */}
-                                <div className="flex items-center justify-between gap-2 text-xs">
-                                  <span className="font-semibold text-foreground flex items-center gap-1.5 truncate">
-                                    <span>{sub.emoji}</span>
-                                    <span className="truncate">{sub.name}</span>
-                                    {isSpecificMonth && subNote && (
-                                      <FileText className="w-3 h-3 text-primary shrink-0" />
-                                    )}
-                                  </span>
-                                  {sub.budget > 0 && (
-                                    <span className="text-[10px] font-medium text-muted-foreground tabular-nums">
-                                      {sub.percent.toFixed(0)}% used
-                                    </span>
-                                  )}
-                                </div>
-
-                                {/* Sub-category Stacked Metrics */}
-                                <div className="bg-card/40 rounded p-2 border border-border/20 space-y-1 text-xs">
-                                  <div className="flex justify-between items-center">
-                                    <span className="text-muted-foreground">Spent</span>
-                                    <span className={`font-bold tabular-nums ${subOver ? 'text-destructive' : 'text-foreground'}`}>
-                                      ${sub.spent.toFixed(0)}
-                                    </span>
-                                  </div>
-                                  <div className="flex justify-between items-center pt-1 border-t border-border/20">
-                                    <span className="text-muted-foreground">Budget</span>
-                                    {handleBudgetInputChange ? (
-                                      <div className="flex items-center gap-1 bg-card border border-border/70 focus-within:ring-2 focus-within:ring-primary/40 rounded px-2 py-0.5">
-                                        <span className="text-[10px] text-muted-foreground">$</span>
-                                        <input
-                                          disabled={isLockedMonth}
-                                          type="number"
-                                          min="0"
-                                          data-testid={`budget-input-${sub.id}`}
-                                          value={budgetDrafts[sub.id] !== undefined ? budgetDrafts[sub.id] : (sub.budget === 0 ? '0' : (sub.budget || ''))}
-                                          placeholder="0"
-                                          onChange={e => handleBudgetInputChange(sub.id, e.target.value)}
-                                          className="w-14 bg-transparent text-xs text-right font-bold tabular-nums outline-none focus-visible:ring-2 focus-visible:ring-primary/40 rounded text-foreground disabled:opacity-50 disabled:cursor-not-allowed"
-                                        />
-                                      </div>
-                                    ) : (
-                                      <span className="font-bold tabular-nums">${sub.budget}</span>
-                                    )}
-                                  </div>
-                                </div>
-
-                                {budgetErrors[sub.id] && (
-                                  <p className={`text-[11px] text-destructive font-semibold budget-error-${sub.id}`} data-testid="budget-error">
-                                    {budgetErrors[sub.id]}
-                                  </p>
-                                )}
-
-                                {sub.budget > 0 && (
-                                  <div className="space-y-0.5">
-                                    <div className="h-1.5 bg-card/60 rounded-full overflow-hidden border border-border/30">
-                                      <motion.div
-                                        initial={{ width: 0 }}
-                                        animate={{ width: `${Math.min(sub.percent, 100)}%` }}
-                                        transition={{ duration: 0.6, delay: 0.15 }}
-                                        className={`h-full rounded-full ${sub.percent > 100 ? 'bg-destructive' : ''}`}
-                                        style={{
-                                          backgroundColor: sub.percent <= 100 ? sub.color : undefined
-                                        }}
-                                      />
-                                    </div>
-                                    <div className="flex justify-between text-[10px] text-muted-foreground px-0.5 tabular-nums">
-                                      <span>{sub.percent.toFixed(0)}%</span>
-                                      <span>{subOver ? `$${Math.abs(subRemaining).toFixed(0)} over` : `$${subRemaining.toFixed(0)} left`}</span>
-                                    </div>
-                                  </div>
-                                )}
-
-                                {/* Sub-category Note Block */}
-                                {isSpecificMonth && (
-                                  <div className="pt-1 border-t border-border/20">
-                                    {editingKey === sub.id ? (
-                                      <div className="space-y-1.5">
-                                        <textarea
-                                          value={noteText}
-                                          onChange={e => setNoteText(e.target.value)}
-                                          placeholder={`Add note for ${sub.name}...`}
-                                          rows={2}
-                                          className="w-full text-[11px] p-1.5 rounded bg-card border border-primary/50 text-foreground placeholder:text-muted-foreground focus:outline-none"
-                                        />
-                                        <div className="flex justify-end gap-1.5">
-                                          <button
-                                            onClick={cancelEditNote}
-                                            className="px-2 py-0.5 text-[10px] rounded bg-card border border-border text-muted-foreground"
-                                          >
-                                            Cancel
-                                          </button>
-                                          <button
-                                            onClick={() => submitSaveNote(sub.id)}
-                                            className="px-2 py-0.5 text-[10px] font-bold rounded bg-primary text-primary-foreground"
-                                          >
-                                            Save
-                                          </button>
-                                        </div>
-                                      </div>
-                                    ) : subNote?.text ? (
-                                      <div className="flex items-start justify-between gap-2 text-[11px] bg-card/40 rounded p-1.5 border border-border/20">
-                                        <div className="flex-1">
-                                          <p className="text-foreground leading-relaxed">{subNote.text}</p>
-                                          {subNote.updatedAt && (
-                                            <span className="text-[9px] text-muted-foreground">
-                                              {formatDateTimestamp(subNote.updatedAt)}
-                                            </span>
-                                          )}
-                                        </div>
-                                        <div className="flex items-center gap-1 shrink-0">
-                                          <button
-                                            onClick={() => startEditNote(sub.id, subNote.text)}
-                                            className="p-0.5 hover:text-foreground text-muted-foreground"
-                                          >
-                                            <Edit2 className="w-3 h-3" />
-                                          </button>
-                                          <button
-                                            onClick={() => submitDeleteNote(sub.id)}
-                                            className="p-0.5 hover:text-destructive text-muted-foreground"
-                                          >
-                                            <Trash2 className="w-3 h-3" />
-                                          </button>
-                                        </div>
-                                      </div>
-                                    ) : (
-                                      <button
-                                        onClick={() => startEditNote(sub.id)}
-                                        className="text-[10px] text-muted-foreground/80 hover:text-primary flex items-center gap-1 transition-colors"
-                                      >
-                                        <Plus className="w-2.5 h-2.5" /> Note for {sub.name}
-                                      </button>
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
-            );
-          })
-        ) : (
-          <div className="text-muted-foreground text-center py-8">No budget data available</div>
+            })}
+          </div>
         )}
       </div>
-    </motion.div>
+    </div>
   );
 }
