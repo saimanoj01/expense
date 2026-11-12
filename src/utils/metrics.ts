@@ -1,6 +1,6 @@
 import type { Transaction, Category, Budget, SpendingBucket } from '../services/storage';
 import { bucketOf, suggestSpendingBucket } from './categorizer';
-import { formatMoney } from './formatters';
+import { formatCurrency, formatMoney } from './formatters';
 
 export interface MonthMetrics {
   income: number;
@@ -732,3 +732,146 @@ export function computeSafeToSpendRunway(params: {
 
   return hidden;
 }
+
+/**
+ * Defensively coerces numeric or string transaction amounts into finite numbers.
+ */
+export function coerceAmount(raw: unknown): number {
+  if (typeof raw === 'number') return Number.isFinite(raw) ? raw : 0;
+  const parsed = parseFloat(String(raw ?? 0));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+export interface LedgerSliceSummaryOptions {
+  isFiltered: boolean;
+  selectedType?: 'expense' | 'income' | 'refund' | 'transfer' | null;
+  selectedBucket?: 'income' | SpendingBucket | null;
+  needsReviewOnly?: boolean;
+}
+
+export interface LedgerSliceSummary {
+  count: number;
+  totalMonthCount: number;
+  grossExpenses: number;
+  refundsTotal: number;
+  unclampedNetOutflow: number;
+  incomeTotal: number;
+  transferTotal: number;
+  unclampedNetCashflow: number;
+  reviewTotal: number;
+  expenseCount: number;
+  refundCount: number;
+  incomeCount: number;
+  transferCount: number;
+  formattedText: string;
+}
+
+/**
+ * Computes unclamped slice totals and human-readable summary copy for `displayedTransactions`.
+ * Never clamps net-refund credits (`refundsTotal > grossExpenses`) to `$0.00`!
+ */
+export function computeLedgerSliceSummary(
+  displayedTransactions: Transaction[],
+  totalMonthCount: number,
+  options: LedgerSliceSummaryOptions
+): LedgerSliceSummary {
+  let grossExpenses = 0;
+  let refundsTotal = 0;
+  let incomeTotal = 0;
+  let transferTotal = 0;
+  let reviewTotal = 0;
+  let expenseCount = 0;
+  let refundCount = 0;
+  let incomeCount = 0;
+  let transferCount = 0;
+
+  for (const t of displayedTransactions) {
+    const amt = Math.abs(coerceAmount(t.amount));
+    reviewTotal += amt;
+    if (t.type === 'transfer') {
+      transferTotal += amt;
+      transferCount += 1;
+    } else if (t.type === 'income') {
+      if (isRefundTransaction(t)) {
+        refundsTotal += amt;
+        refundCount += 1;
+      } else {
+        incomeTotal += amt;
+        incomeCount += 1;
+      }
+    } else if (t.type === 'expense') {
+      grossExpenses += amt;
+      expenseCount += 1;
+    }
+  }
+
+  const count = displayedTransactions.length;
+  const unclampedNetOutflow = grossExpenses - refundsTotal;
+  const unclampedNetCashflow = incomeTotal - unclampedNetOutflow;
+
+  let formattedText = '';
+
+  if (count === 0) {
+    formattedText =
+      options.isFiltered && totalMonthCount > 0
+        ? `0 of ${totalMonthCount} shown`
+        : '0 transactions';
+  } else if (options.needsReviewOnly) {
+    formattedText = `${count} needing review · ${formatCurrency(reviewTotal)} total`;
+  } else {
+    const prefix = options.isFiltered
+      ? `${count} of ${totalMonthCount} shown`
+      : `${count} transaction${count === 1 ? '' : 's'}`;
+
+    if (
+      options.selectedType === 'transfer' ||
+      (transferCount === count && transferTotal > 0)
+    ) {
+      formattedText = `${prefix} · ⇄ ${formatCurrency(transferTotal)} transferred`;
+    } else if (options.selectedType === 'refund') {
+      formattedText = `${prefix} · +${formatCurrency(refundsTotal)} refunded`;
+    } else if (
+      options.selectedType === 'income' ||
+      options.selectedBucket === 'income' ||
+      (incomeCount > 0 && expenseCount === 0 && refundCount === 0)
+    ) {
+      formattedText = `${prefix} · +${formatCurrency(incomeTotal)} income`;
+    } else if (incomeCount === 0 && (expenseCount > 0 || refundCount > 0)) {
+      if (unclampedNetOutflow < -0.005) {
+        formattedText = `${prefix} · +${formatCurrency(Math.abs(unclampedNetOutflow))} net credit`;
+      } else if (Math.abs(unclampedNetOutflow) <= 0.005) {
+        formattedText = `${prefix} · $0.00 net`;
+      } else {
+        formattedText = `${prefix} · −${formatCurrency(unclampedNetOutflow)} ${
+          options.isFiltered ? 'net' : 'net spent'
+        }`;
+      }
+    } else {
+      if (unclampedNetCashflow > 0.005) {
+        formattedText = `${prefix} · +${formatCurrency(unclampedNetCashflow)} net`;
+      } else if (unclampedNetCashflow < -0.005) {
+        formattedText = `${prefix} · −${formatCurrency(Math.abs(unclampedNetCashflow))} net`;
+      } else {
+        formattedText = `${prefix} · $0.00 net`;
+      }
+    }
+  }
+
+  return {
+    count,
+    totalMonthCount,
+    grossExpenses,
+    refundsTotal,
+    unclampedNetOutflow,
+    incomeTotal,
+    transferTotal,
+    unclampedNetCashflow,
+    reviewTotal,
+    expenseCount,
+    refundCount,
+    incomeCount,
+    transferCount,
+    formattedText,
+  };
+}
+

@@ -93,11 +93,15 @@ export const ModalHost: React.FC<ModalHostProps> = ({
           editingTxnId={editingTxnId}
           initialData={editingTxnData}
           transactions={txnHooks.transactions}
+          availableTags={txnHooks.availableTags}
+          duplicateTxnIds={txnHooks.duplicateTxnIds}
           executeSaveTransaction={txnHooks.executeSaveTransaction}
           setPendingDuplicateTxn={setPendingDuplicateTxn}
           setShowDuplicateWarningModal={setShowDuplicateWarningModal}
           setShowCategoryManagerModal={setShowCategoryManagerModal}
+          locks={locks}
           isTxnLocked={isEditingTxnLocked}
+          onDismissReview={txnHooks.handleDismissReview}
           onDeleteTransaction={id => {
             txnHooks.handleDeleteTxn(id, () => {
               setSelectedTxnIds(prev => {
@@ -168,14 +172,29 @@ export const ModalHost: React.FC<ModalHostProps> = ({
         <DuplicateWarningModal
           showModal={showDuplicateWarningModal}
           pendingTxn={pendingDuplicateTxn}
+          isEdit={!!editingTxnId}
           onCancel={() => setShowDuplicateWarningModal(false)}
           onProceed={async () => {
             if (pendingDuplicateTxn) {
-              await txnHooks.executeSaveTransaction(
-                pendingDuplicateTxn,
+              const verifiedLabels = Array.from(
+                new Set([
+                  ...(Array.isArray(pendingDuplicateTxn.labels)
+                    ? pendingDuplicateTxn.labels
+                    : []),
+                  'duplicate-verified',
+                ])
+              );
+              const verifiedTxn: Transaction = {
+                ...pendingDuplicateTxn,
+                labels: verifiedLabels,
+              };
+              const ok = await txnHooks.executeSaveTransaction(
+                verifiedTxn,
                 !!editingTxnId
               );
-              setShowTxnModal(false);
+              if (ok) {
+                setShowTxnModal(false);
+              }
               setShowDuplicateWarningModal(false);
             }
           }}

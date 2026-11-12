@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { parseCsv, standardizeDate, parseCurrencyAmount, getLocalTodayDate } from '../utils/csv';
 import { computeTxHash } from '../utils/crypto';
 import { Transaction, MonthlyLock, Category, SpendingBucket, Project, StorageAdapter } from '../services/storage';
-import { suggestCategory, detectTransactionType, suggestSpendingBucket } from '../utils/categorizer';
+import { suggestCategory, suggestSubCategory, detectTransactionType, suggestSpendingBucket } from '../utils/categorizer';
+import { lookupHistoryClassification } from '../services/ingestion/transactionIngestService';
 import { sanitizeUserTagsInput } from '../utils/transactionTaxonomy';
 
 export interface CsvItem {
@@ -150,12 +151,33 @@ export function useCsvImport(
       const monthStr = rawDate.substring(0, 7);
       const isLockedMonth = locks.some((l: MonthlyLock) => l.locked && l.month === monthStr);
 
-      const suggestedCategory = suggestCategory(rawDesc, rawCat, categories);
-      const suggestedBucket = suggestSpendingBucket(rawDesc, suggestedCategory);
-
+      let suggestedCategory: string;
       let matchedSubCat: string | null = null;
+      let suggestedBucket: SpendingBucket;
+
+      const historyHit =
+        !rawCat && (rawType === 'expense' || rawType === 'income')
+          ? lookupHistoryClassification(rawDesc, undefined, transactions, rawType)
+          : null;
+
+      if (historyHit) {
+        suggestedCategory = historyHit.category;
+        matchedSubCat = historyHit.subCategory;
+        suggestedBucket =
+          historyHit.spendingBucket || suggestSpendingBucket(rawDesc, suggestedCategory);
+      } else {
+        suggestedCategory = suggestCategory(rawDesc, rawCat, categories);
+        matchedSubCat = suggestSubCategory(rawDesc, suggestedCategory, categories);
+        suggestedBucket = suggestSpendingBucket(rawDesc, suggestedCategory);
+      }
+
       if (rawSubCat) {
-        const directSub = categories.find(c => c.parentId === suggestedCategory && (c.id.toLowerCase() === rawSubCat.toLowerCase() || c.name.toLowerCase() === rawSubCat.toLowerCase()));
+        const directSub = categories.find(
+          c =>
+            c.parentId === suggestedCategory &&
+            (c.id.toLowerCase() === rawSubCat.toLowerCase() ||
+              c.name.toLowerCase() === rawSubCat.toLowerCase())
+        );
         if (directSub) matchedSubCat = directSub.id;
       }
 

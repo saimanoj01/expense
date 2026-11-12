@@ -6,11 +6,18 @@ import { formatTransactionAmount } from '../../utils/formatters';
 interface DuplicateWarningModalProps {
   showModal: boolean;
   pendingTxn: Transaction | null;
+  isEdit?: boolean;
   onCancel: () => void;
   onProceed: () => void;
 }
 
-export function DuplicateWarningModal({ showModal, pendingTxn, onCancel, onProceed }: DuplicateWarningModalProps) {
+export function DuplicateWarningModal({
+  showModal,
+  pendingTxn,
+  isEdit = false,
+  onCancel,
+  onProceed,
+}: DuplicateWarningModalProps) {
   if (!showModal || !pendingTxn) return null;
 
   return (
@@ -18,6 +25,7 @@ export function DuplicateWarningModal({ showModal, pendingTxn, onCancel, onProce
       isOpen={showModal}
       onClose={onCancel}
       title="Duplicate Detected"
+      dataTestId="duplicate-warning-modal"
       maxWidth="max-w-md"
       overlayClassName="z-[60]"
       className="p-6 border border-destructive/30"
@@ -28,10 +36,10 @@ export function DuplicateWarningModal({ showModal, pendingTxn, onCancel, onProce
       </div>
       
       <p className="text-muted-foreground mb-4">
-        A transaction with the exact same details already exists in your records. Are you sure you want to add it again?
+        A transaction with the exact same details already exists in your records. Are you sure you want to {isEdit ? 'save these duplicate details' : 'add it again'}?
       </p>
 
-      <div className="bg-card/50 p-4 rounded-xl border border-border/50 mb-6 font-mono text-sm space-y-2">
+      <div className="bg-surface2 p-4 rounded-xl border border-border mb-6 font-mono text-sm space-y-2">
         <div className="flex justify-between">
           <span className="text-muted-foreground">Date:</span>
           <span>{pendingTxn.date}</span>
@@ -45,7 +53,7 @@ export function DuplicateWarningModal({ showModal, pendingTxn, onCancel, onProce
           {(() => {
             const { formattedAmount, colorClass } = formatTransactionAmount(pendingTxn.amount, pendingTxn.type);
             return (
-              <span className={`font-bold ${colorClass}`}>
+              <span className={`font-bold tabular-nums num ${colorClass}`}>
                 {formattedAmount}
               </span>
             );
@@ -57,16 +65,17 @@ export function DuplicateWarningModal({ showModal, pendingTxn, onCancel, onProce
         <button
           type="button"
           onClick={onCancel}
-          className="flex-1 px-4 py-3 rounded-xl font-bold bg-card hover:bg-card/80 border border-border transition-colors flex items-center justify-center gap-2"
+          className="flex-1 px-4 py-3 rounded-xl font-bold bg-surface2 hover:bg-secondary border border-border transition-colors flex items-center justify-center gap-2 whitespace-nowrap"
         >
           <X className="w-4 h-4" /> Cancel
         </button>
         <button
           type="button"
+          data-testid="confirm-duplicate-save-btn"
           onClick={onProceed}
-          className="flex-1 px-4 py-3 rounded-xl bg-destructive hover:bg-destructive/90 text-destructive-foreground font-bold shadow-lg shadow-destructive/20 transition-all hover:scale-105 flex items-center justify-center gap-2"
+          className="flex-1 px-4 py-3 rounded-xl bg-destructive hover:bg-destructive/90 text-destructive-foreground font-bold transition-colors flex items-center justify-center gap-2 whitespace-nowrap"
         >
-          <Check className="w-4 h-4" /> Add Anyway
+          <Check className="w-4 h-4" /> {isEdit ? 'Save Anyway' : 'Add Anyway'}
         </button>
       </div>
     </Modal>
@@ -104,14 +113,14 @@ export function CsvDuplicateWarningModal({ showModal, onCancel, onProceed }: Csv
         <button
           type="button"
           onClick={onCancel}
-          className="flex-1 px-4 py-3 rounded-xl font-bold bg-card hover:bg-card/80 border border-border transition-colors flex items-center justify-center gap-2"
+          className="flex-1 px-4 py-3 rounded-xl font-bold bg-surface2 hover:bg-secondary border border-border transition-colors flex items-center justify-center gap-2 whitespace-nowrap"
         >
           <X className="w-4 h-4" /> Cancel
         </button>
         <button
           type="button"
           onClick={onProceed}
-          className="flex-1 px-4 py-3 rounded-xl bg-destructive hover:bg-destructive/90 text-destructive-foreground font-bold shadow-lg shadow-destructive/20 transition-all hover:scale-105 flex items-center justify-center gap-2"
+          className="flex-1 px-4 py-3 rounded-xl bg-destructive hover:bg-destructive/90 text-destructive-foreground font-bold transition-colors flex items-center justify-center gap-2 whitespace-nowrap"
         >
           <Check className="w-4 h-4" /> Import Anyway
         </button>

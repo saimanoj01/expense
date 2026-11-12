@@ -426,4 +426,43 @@ export function bucketSource(
   return 'fallback';
 }
 
+/**
+ * Derives the appropriate spending bucket when a user reclassifies a transaction's
+ * category/subCategory (respecting explicit category defaultBucket and category-level
+ * Fixed / Non-monthly / Variable defaults before keyword heuristics).
+ */
+export function deriveCategoryBucket(
+  description: string,
+  categoryId: string,
+  subCategoryId?: string | null,
+  categories: Category[] = []
+): SpendingBucket {
+  if (subCategoryId) {
+    const subLower = subCategoryId.toLowerCase();
+    const sub = categories.find(c => c.id.toLowerCase() === subLower);
+    if (sub?.defaultBucket) return sub.defaultBucket;
+    if (subLower.startsWith('housing-') || subLower.startsWith('utilities-') || subLower === 'entertainment-subs') {
+      return 'fixed';
+    }
+    if (subLower.startsWith('travel-')) {
+      return 'non-monthly';
+    }
+  }
+  if (categoryId) {
+    const catLower = categoryId.toLowerCase();
+    const parent = categories.find(
+      c => c.id.toLowerCase() === catLower || c.name.toLowerCase() === catLower
+    );
+    if (parent?.defaultBucket) return parent.defaultBucket;
+    if (catLower === 'travel' || catLower === 'insurance' || catLower === 'taxes') {
+      return 'non-monthly';
+    }
+    if (catLower === 'housing' || catLower === 'rent' || catLower === 'utilities' || catLower === 'child-care') {
+      return suggestSpendingBucket(description, categoryId);
+    }
+  }
+  return suggestSpendingBucket(description, categoryId);
+}
+
+
 

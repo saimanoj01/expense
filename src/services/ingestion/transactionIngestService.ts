@@ -193,6 +193,25 @@ export function recordDeletionTombstones(
 }
 
 /**
+ * Reverses previously recorded deletion tombstones when a user clicks Undo on a deleted transaction.
+ */
+export function removeDeletionTombstones(
+  tombstonesToRemove: string[],
+  state: IngestState
+): IngestState {
+  if (!tombstonesToRemove.length) return state;
+  const removeSet = new Set(tombstonesToRemove);
+  const current = normalizeTombstoneArray(state?.tombstones);
+  return {
+    ...state,
+    version: state?.version || 1,
+    tombstones: current.filter(t => !removeSet.has(t)),
+    sources: state?.sources || {},
+    recentRuns: Array.isArray(state?.recentRuns) ? state.recentRuns : [],
+  };
+}
+
+/**
  * Tracks fields manually edited by the user so future automated upserts or
  * cross-source enrichments never overwrite user overrides.
  * When `oldTx` is undefined (new manual entry), `category` (and present `subCategory` / `spendingBucket`)
@@ -201,7 +220,8 @@ export function recordDeletionTombstones(
 export function markUserEditedFields(
   oldTx: Transaction | undefined,
   newTx: Transaction,
-  nowIso: string = new Date().toISOString()
+  nowIso: string = new Date().toISOString(),
+  options?: { autoDerivedBucket?: boolean }
 ): TxMeta {
   const prevMeta: TxMeta = oldTx?.meta || newTx.meta || {};
   const edited = new Set<EditableTxField>(prevMeta.userEdited || []);
@@ -217,7 +237,10 @@ export function markUserEditedFields(
     if (Math.abs(oldTx.amount - newTx.amount) > 0.001) edited.add('amount');
     if (oldTx.category !== newTx.category) edited.add('category');
     if ((oldTx.subCategory || null) !== (newTx.subCategory || null)) edited.add('subCategory');
-    if ((oldTx.spendingBucket || null) !== (newTx.spendingBucket || null)) {
+    if (
+      !options?.autoDerivedBucket &&
+      (oldTx.spendingBucket || null) !== (newTx.spendingBucket || null)
+    ) {
       edited.add('spendingBucket');
     }
     if (oldTx.type !== newTx.type) edited.add('type');
@@ -230,7 +253,7 @@ export function markUserEditedFields(
     // so subsequent automated cross-source enrichments preserve the user's chosen classification.
     edited.add('category');
     if (newTx.subCategory) edited.add('subCategory');
-    if (newTx.spendingBucket) edited.add('spendingBucket');
+    if (newTx.spendingBucket && !options?.autoDerivedBucket) edited.add('spendingBucket');
     if (nextAccount) edited.add('account');
   }
 
@@ -242,7 +265,8 @@ export function markUserEditedFields(
     ...(Array.isArray(newTx.labels) ? newTx.labels : []),
   ].some(l => typeof l === 'string' && l.trim().toLowerCase() === 'needs-review');
 
-  let review = prevMeta.review;
+  const explicitResolvedReview = Boolean(newTx.meta?.review?.resolvedAt);
+  let review = explicitResolvedReview ? newTx.meta?.review : prevMeta.review;
   if (review && !review.resolvedAt && categoryEdited) {
     review = clearReviewReason(review, 'category', nowIso);
   } else if (!review && categoryEdited && hadLegacyNeedsReview) {
@@ -256,8 +280,12 @@ export function markUserEditedFields(
   const result: TxMeta = {
     ...prevMeta,
     userEdited: Array.from(edited),
-    categorizedBy: categoryEdited ? 'user' : prevMeta.categorizedBy || 'user',
-    confidence: categoryEdited ? 1.0 : prevMeta.confidence ?? 1.0,
+    categorizedBy:
+      categoryEdited || explicitResolvedReview
+        ? 'user'
+        : prevMeta.categorizedBy || 'user',
+    confidence:
+      categoryEdited || explicitResolvedReview ? 1.0 : prevMeta.confidence ?? 1.0,
     review,
   };
   if (nextAccount) {
@@ -421,7 +449,7 @@ function resolveModalSpendingBucket(
 /**
  * Stage 1: Looks up verified ledger history for the same merchant/family.
  */
-function lookupHistoryClassification(
+export function lookupHistoryClassification(
   targetText: string,
   merchant: string | undefined,
   existingTransactions: Transaction[],

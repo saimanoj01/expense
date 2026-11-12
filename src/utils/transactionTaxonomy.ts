@@ -1,4 +1,4 @@
-import type { Transaction } from '../services/storage';
+import type { Transaction, MonthlyLock, ReviewReason } from '../services/storage';
 
 /**
  * Reserved structural, accounting, and workflow labels that must NEVER
@@ -284,3 +284,88 @@ export function isTransactionNeedsReview(
   }
   return false;
 }
+
+/**
+ * Returns the locked `YYYY-MM` month string if `txDate` falls within a locked month, or `null`.
+ */
+export function getLockedMonthForDate(
+  txDate?: string | null,
+  locks?: MonthlyLock[]
+): string | null {
+  if (!txDate || txDate.length < 7 || !Array.isArray(locks) || locks.length === 0) {
+    return null;
+  }
+  const monthKey = txDate.slice(0, 7);
+  const found = locks.find(lk => lk.locked && lk.month === monthKey);
+  return found ? found.month : null;
+}
+
+/**
+ * True if a transaction date falls inside a locked month.
+ */
+export function isTransactionMonthLocked(
+  txDate?: string | null,
+  locks?: MonthlyLock[]
+): boolean {
+  return getLockedMonthForDate(txDate, locks) !== null;
+}
+
+export const REVIEW_REASON_LABELS: Record<ReviewReason, string> = {
+  category: 'Category',
+  'tip-drift': 'Tip adjusted',
+  'amount-mismatch': 'Amount changed',
+  voided: 'Voided',
+  duplicate: 'Duplicate?',
+};
+
+/**
+ * Formats an actionable, human-readable review badge label while preserving
+ * exact `'Duplicate?'` on unverified collisions without explicit review metadata.
+ */
+export function formatReviewBadgeLabel(
+  tx: Partial<Transaction>,
+  isDuplicate: boolean
+): string {
+  const labels = ensureStringLabels(tx.labels);
+  const hasExplicitReview =
+    labels.some(l => l.trim().toLowerCase() === 'needs-review') ||
+    Boolean(tx.meta?.review && !tx.meta.review.resolvedAt);
+  if (!hasExplicitReview && isDuplicate) {
+    return 'Duplicate?';
+  }
+  const reason = tx.meta?.review?.reason;
+  if (reason && REVIEW_REASON_LABELS[reason]) {
+    return `Needs Review · ${REVIEW_REASON_LABELS[reason]}`;
+  }
+  return 'Needs Review';
+}
+
+/**
+ * Resolves human-friendly review detail copy for inline triage and inspection sheets.
+ */
+export function getReviewDetailText(
+  tx: Partial<Transaction>,
+  isDuplicate: boolean
+): string {
+  if (tx.meta?.review?.detail) {
+    return tx.meta.review.detail;
+  }
+  if (isDuplicate) {
+    return 'Matches another transaction with the same date, merchant, and amount';
+  }
+  const reason = tx.meta?.review?.reason;
+  if (reason === 'category') {
+    return 'Low-confidence automatic category — confirm or reclassify';
+  }
+  if (reason === 'tip-drift') {
+    return 'Final settled amount differs from initial authorization';
+  }
+  if (reason === 'amount-mismatch') {
+    return 'Updated amount differs from earlier record';
+  }
+  if (reason === 'voided') {
+    return 'Authorization appears voided or reversed';
+  }
+  return 'Flagged by automated ingestion for review';
+}
+

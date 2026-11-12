@@ -82,15 +82,15 @@ export const MonthSwitcher: React.FC<MonthSwitcherProps> = ({
         onClick={handlePrev}
         title="Previous Month (ArrowLeft)"
         aria-label="Previous Month"
-        className="w-8 h-8 rounded-[8px] flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-card transition-colors focus-visible:ring-2 ring-ring/40"
+        className="w-7 sm:w-8 h-8 rounded-[8px] flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-card transition-colors focus-visible:ring-2 ring-ring/40"
       >
         <ChevronLeft className="w-4 h-4" />
       </button>
 
-      <div className="relative flex items-center justify-center min-w-0 sm:min-w-[128px] h-8 rounded-[8px] hover:bg-card transition-colors overflow-hidden">
+      <div className="relative flex items-center justify-center min-w-0 sm:min-w-[104px] lg:min-w-[128px] h-8 rounded-[8px] hover:bg-card transition-colors overflow-hidden">
         <select
           data-testid="month-selector"
-          className="appearance-none bg-transparent cursor-pointer w-full h-full px-2 sm:px-2.5 font-medium text-label sm:text-body text-foreground text-center tabular-nums num outline-none focus-visible:ring-2 ring-ring/40 rounded-[8px]"
+          className="appearance-none bg-transparent cursor-pointer w-full h-full px-1.5 sm:px-2.5 font-medium text-label lg:text-body text-foreground text-center tabular-nums num outline-none focus-visible:ring-2 ring-ring/40 rounded-[8px]"
           value={selectedMonth}
           onChange={e => onSelectMonth(e.target.value)}
           aria-label="Select Financial Period"
@@ -117,7 +117,7 @@ export const MonthSwitcher: React.FC<MonthSwitcherProps> = ({
         onClick={handleNext}
         title="Next Month (ArrowRight)"
         aria-label="Next Month"
-        className="w-8 h-8 rounded-[8px] flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-card transition-colors focus-visible:ring-2 ring-ring/40"
+        className="w-7 sm:w-8 h-8 rounded-[8px] flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-card transition-colors focus-visible:ring-2 ring-ring/40"
       >
         <ChevronRight className="w-4 h-4" />
       </button>

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { AppRoute } from '../types/navigation';
 import { parseHash, routeToHash, computeParentRoute, buildBreadcrumbs } from '../utils/navigation';
+import { preserveLedgerParamsOnMonthSwitch } from '../utils/ledgerUrlSync';
 import { Category, Transaction, DEFAULT_CATEGORIES } from '../services/storage';
 import { NavigationContext } from './NavigationContextDef';
 
@@ -91,13 +92,38 @@ export const NavigationProvider: React.FC<NavigationProviderProps> = ({
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, [syncHashState]);
 
+  const prevActiveMonthRef = useRef(activeMonth);
+
   // Synchronize when activeMonth changes from an external control (e.g. MonthSwitcher or selector)
   useEffect(() => {
-    if (activeMonth && currentRoute.month !== activeMonth) {
+    const activeMonthChanged = prevActiveMonthRef.current !== activeMonth;
+    prevActiveMonthRef.current = activeMonth;
+
+    if (!activeMonth || !activeMonthChanged) {
+      return;
+    }
+
+    const rawWindowParsed = parseHash(window.location.hash, '');
+    if (rawWindowParsed.month === activeMonth) {
+      // URL hash was already updated directly (e.g. external hashchange navigation):
+      // update local route month if needed without rewriting window.location.hash!
+      setCurrentRoute(prev => {
+        if (prev.month === activeMonth) return prev;
+        const next: AppRoute = { ...prev, month: activeMonth };
+        prevRouteRef.current = next;
+        return next;
+      });
+      return;
+    }
+
+    if (currentRoute.month !== activeMonth || rawWindowParsed.month !== activeMonth) {
       setCurrentRoute(() => {
         const parsedCurrent = parseHash(window.location.hash, activeMonth);
         const next: AppRoute = { ...parsedCurrent, month: activeMonth };
-        const newHash = routeToHash(next, activeMonth);
+        const newHash =
+          parsedCurrent.view === 'transactions' && !parsedCurrent.isCategoryTransactions
+            ? preserveLedgerParamsOnMonthSwitch(window.location.hash, activeMonth)
+            : routeToHash(next, activeMonth);
         if (window.location.hash !== newHash) {
           window.location.hash = newHash;
         }

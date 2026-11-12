@@ -6,9 +6,9 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { AppProvider, useApp } from './context/AppContext';
 import { useNavigation } from './hooks/useNavigation';
 import { getCurrentLocalMonth } from './utils/navigation';
-import { getLocalTodayDate } from './utils/metrics';
-import { bucketSource, suggestSpendingBucket } from './utils/categorizer';
-import { Transaction, SpendingBucket, Category, Project, MonthlyLock } from './services/storage';
+import { getLocalTodayDate, isRefundTransaction } from './utils/metrics';
+import { bucketSource, deriveCategoryBucket, suggestSpendingBucket } from './utils/categorizer';
+import { Transaction, SpendingBucket, Category, Project, MonthlyLock, DEFAULT_CATEGORIES } from './services/storage';
 import { NavigationProvider } from './context/NavigationContext';
 import { PageHeader } from './components/layout/PageHeader';
 import { Sidebar } from './components/layout/Sidebar';
@@ -47,9 +47,11 @@ interface MainRouterProps {
   budgetHooks: ReturnType<typeof useBudgets>;
   csvHooks: ReturnType<typeof useCsvImport>;
   isCurrentMonthLocked: boolean;
+  locks: MonthlyLock[];
   selectedTxnIds: Set<string>;
   setSelectedTxnIds: React.Dispatch<React.SetStateAction<Set<string>>>;
   toggleSelectTxn: (id: string) => void;
+  rangeSelectTxns: (ids: string[], select: boolean) => void;
   toggleSelectAllTxns: (visibleIds: string[]) => void;
   clearSelectedTxns: () => void;
   handleOpenAddTxn: () => void;
@@ -71,9 +73,11 @@ function MainRouter({
   budgetHooks,
   csvHooks,
   isCurrentMonthLocked,
+  locks,
   selectedTxnIds,
   setSelectedTxnIds,
   toggleSelectTxn,
+  rangeSelectTxns,
   toggleSelectAllTxns,
   clearSelectedTxns,
   handleOpenAddTxn,
@@ -129,6 +133,7 @@ function MainRouter({
         transactions={txnHooks.monthTransactions}
         categories={budgetHooks.categories}
         budgets={budgetHooks.budgets}
+        locks={locks}
         onOpenAddTxn={handleOpenAddTxn}
         onEditTxn={handleEditTxn}
         onDeleteTxn={(id) => txnHooks.handleDeleteTxn(id, () => setSelectedTxnIds(prev => { const n = new Set(prev); n.delete(id); return n; }))}
@@ -141,6 +146,8 @@ function MainRouter({
         <TransactionsView
           month={currentRoute.month || txnHooks.selectedMonth}
           transactions={txnHooks.monthTransactions}
+          allTransactions={txnHooks.transactions}
+          locks={locks}
           categories={budgetHooks.categories}
           categoryId={currentRoute.categoryId}
           isCategoryTransactions={currentRoute.isCategoryTransactions}
@@ -155,10 +162,15 @@ function MainRouter({
           onSelectTagFilter={txnHooks.setSelectedTagFilter}
           onSetSortBy={txnHooks.setSortBy}
           onOpenAddTxn={handleOpenAddTxn}
+          onOpenCsvWizard={() => {
+            csvHooks.setCsvStep(1);
+            csvHooks.setShowCsvWizard(true);
+          }}
           onEditTxn={handleEditTxn}
           onDeleteTxn={(id) => txnHooks.handleDeleteTxn(id, () => setSelectedTxnIds(prev => { const n = new Set(prev); n.delete(id); return n; }))}
           onCsvFileUpload={csvHooks.handleCsvFileUpload}
           onToggleSelectTxn={toggleSelectTxn}
+          onRangeSelectTxns={rangeSelectTxns}
           onToggleSelectAllTxns={toggleSelectAllTxns}
           onClearSelectedTxns={clearSelectedTxns}
           onRetainOnlyVisibleSelection={(visibleIds) => {
@@ -176,7 +188,35 @@ function MainRouter({
               return changed ? next : prev;
             });
           }}
-          onCategoryChange={(txn, newCatId, newSubCatId) => txnHooks.executeSaveTransaction({ ...txn, category: newCatId, subCategory: newSubCatId || null }, true)}
+          onCategoryChange={(txn, newCatId, newSubCatId) => {
+            const allCats = [...DEFAULT_CATEGORIES, ...budgetHooks.categories];
+            const isExpOrRef = txn.type === 'expense' || isRefundTransaction(txn);
+            const hasUserEditedBucket = Boolean(
+              txn.meta?.userEdited?.includes('spendingBucket')
+            );
+            const nextBucket =
+              isExpOrRef && !hasUserEditedBucket
+                ? deriveCategoryBucket(
+                    txn.description,
+                    newCatId,
+                    newSubCatId || null,
+                    allCats
+                  )
+                : txn.spendingBucket;
+            const autoDerivedBucket = Boolean(
+              isExpOrRef && !hasUserEditedBucket && nextBucket !== txn.spendingBucket
+            );
+            void txnHooks.executeSaveTransaction(
+              {
+                ...txn,
+                category: newCatId,
+                subCategory: newSubCatId || null,
+                ...(isExpOrRef ? { spendingBucket: nextBucket } : {}),
+              },
+              true,
+              { autoDerivedBucket }
+            );
+          }}
           onBucketChange={(txn, newBucket) => txnHooks.executeSaveTransaction({ ...txn, spendingBucket: newBucket }, true)}
           onExecuteBulkCategoryUpdate={(selectedIds, catId, subCatId) => txnHooks.handleExecuteBulkCategoryUpdate(selectedIds, catId, subCatId, () => setSelectedTxnIds(new Set()))}
           onExecuteBulkBucketUpdate={(selectedIds, bucket) => txnHooks.handleExecuteBulkBucketUpdate(selectedIds, bucket, () => setSelectedTxnIds(new Set()))}
@@ -186,6 +226,9 @@ function MainRouter({
           onExecuteBulkAddTag={(selectedIds, tags) => txnHooks.handleExecuteBulkAddTag(selectedIds, tags, () => setSelectedTxnIds(new Set()))}
           onExecuteBulkRemoveTag={(selectedIds, tag) => txnHooks.handleExecuteBulkRemoveTag(selectedIds, tag, () => setSelectedTxnIds(new Set()))}
           onDismissReview={txnHooks.handleDismissReview}
+          onBulkDismissReview={txnHooks.handleBulkDismissReview}
+          onApplyMerchantSweep={txnHooks.handleApplyMerchantSweep}
+          onBackfillBuckets={txnHooks.backfillSpendingBuckets}
         />
       </Suspense>
     );
@@ -487,11 +530,28 @@ function AppInner() {
 
   const isCurrentMonthLocked = locks.some(lk => lk.month === txnHooks.selectedMonth && lk.locked);
 
+  useEffect(() => {
+    if (isCurrentMonthLocked) {
+      setSelectedTxnIds(new Set());
+    }
+  }, [isCurrentMonthLocked]);
+
   const toggleSelectTxn = (id: string) => {
     setSelectedTxnIds(prev => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
+      return next;
+    });
+  };
+
+  const rangeSelectTxns = (ids: string[], select: boolean) => {
+    setSelectedTxnIds(prev => {
+      const next = new Set(prev);
+      for (const id of ids) {
+        if (select) next.add(id);
+        else next.delete(id);
+      }
       return next;
     });
   };
@@ -581,6 +641,7 @@ function AppInner() {
     lockActionCooldownRef.current = now;
     try {
       await storageAdapter.saveLock(activeProject.id, { month: txnHooks.selectedMonth, locked: true, lockedAt: new Date().toISOString() });
+      setSelectedTxnIds(new Set());
       showToast(`Month ${txnHooks.selectedMonth} locked.`);
       refreshProjectData();
     } catch (err: unknown) {
@@ -653,7 +714,7 @@ function AppInner() {
           />
         )}
 
-        <main ref={mainRef} className="flex-1 overflow-y-auto px-4 md:px-6 pt-0 pb-24 md:pb-4 w-full relative z-10 custom-scrollbar">
+        <main ref={mainRef} className="flex-1 overflow-y-auto px-4 md:px-6 pt-0 pb-24 md:pb-4 w-full relative custom-scrollbar">
           <div className="max-w-6xl mx-auto w-full">
             {!isAuthenticated ? (
           <div className="flex flex-col items-center justify-center h-[60vh] text-center">
@@ -683,9 +744,11 @@ function AppInner() {
             budgetHooks={budgetHooks}
             csvHooks={csvHooks}
             isCurrentMonthLocked={isCurrentMonthLocked}
+            locks={locks}
             selectedTxnIds={selectedTxnIds}
             setSelectedTxnIds={setSelectedTxnIds}
             toggleSelectTxn={toggleSelectTxn}
+            rangeSelectTxns={rangeSelectTxns}
             toggleSelectAllTxns={toggleSelectAllTxns}
             clearSelectedTxns={clearSelectedTxns}
             handleOpenAddTxn={handleOpenAddTxn}

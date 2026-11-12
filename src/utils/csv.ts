@@ -1,3 +1,13 @@
+import { type Transaction, type Category, DEFAULT_CATEGORIES } from '../services/storage';
+import { bucketOf } from './categorizer';
+import { isRefundTransaction } from './metrics';
+import {
+  resolveTransactionAccount,
+  formatAccountDisplay,
+  getVisibleUserTags,
+  getUserFacingNote,
+} from './transactionTaxonomy';
+
 export function parseCurrencyAmount(raw: string): { amount: number; isNegative: boolean; isCredit: boolean } {
   if (!raw || typeof raw !== 'string') return { amount: 0, isNegative: false, isCredit: false };
   let str = raw.trim();
@@ -188,3 +198,86 @@ export function standardizeDate(raw: string): string {
   }
   return trimmed;
 }
+
+/**
+ * Serializes a list of transactions into a spreadsheet-safe UTF-8 CSV string,
+ * escaping commas, quotes, newlines, and formula-injection prefixes (`=`, `+`, `-`, `@`).
+ */
+export function buildTransactionsCsvExport(
+  transactions: Transaction[],
+  categories: Category[] = []
+): string {
+  const catMap = new Map<string, Category>();
+  DEFAULT_CATEGORIES.forEach(c => catMap.set(c.id, c));
+  categories.forEach(c => catMap.set(c.id, c));
+  const allCats = Array.from(catMap.values());
+
+  const header = [
+    'Date',
+    'Description',
+    'Category',
+    'Subcategory',
+    'Bucket',
+    'Type',
+    'Account',
+    'Tags',
+    'Notes',
+    'Amount',
+  ].join(',');
+
+  const lines: string[] = [header];
+
+  for (const t of transactions) {
+    const parentCat =
+      allCats.find(c => c.id === t.category) ||
+      allCats.find(c => c.name.toLowerCase() === (t.category || '').toLowerCase());
+    const subCat = t.subCategory ? allCats.find(c => c.id === t.subCategory) : undefined;
+    const isRefund = isRefundTransaction(t);
+
+    let bucketStr = 'Transfer';
+    if (t.type === 'expense' || isRefund) {
+      const b = t.spendingBucket || bucketOf(t, categories);
+      bucketStr =
+        b === 'fixed' ? 'Fixed' : b === 'non-monthly' ? 'Non-monthly' : 'Variable';
+    } else if (t.type === 'income') {
+      bucketStr = 'Income';
+    }
+
+    const typeStr = isRefund
+      ? 'Refund'
+      : t.type === 'income'
+      ? 'Income'
+      : t.type === 'transfer'
+      ? 'Transfer'
+      : 'Expense';
+
+    const accountStr = formatAccountDisplay(resolveTransactionAccount(t));
+    const tagsStr = getVisibleUserTags(t).join('; ');
+    const notesStr = getUserFacingNote(t);
+    const rawNum =
+      typeof t.amount === 'number'
+        ? Number.isFinite(t.amount)
+          ? t.amount
+          : 0
+        : parseFloat(String(t.amount ?? 0)) || 0;
+    const signedAmt = t.type === 'expense' ? -Math.abs(rawNum) : Math.abs(rawNum);
+
+    const rowCells = [
+      escapeCsvCell(t.date || ''),
+      escapeCsvCell(t.description || ''),
+      escapeCsvCell(parentCat?.name || t.category || ''),
+      escapeCsvCell(subCat?.name || t.subCategory || ''),
+      escapeCsvCell(bucketStr),
+      escapeCsvCell(typeStr),
+      escapeCsvCell(accountStr),
+      escapeCsvCell(tagsStr),
+      escapeCsvCell(notesStr),
+      signedAmt.toFixed(2),
+    ];
+
+    lines.push(rowCells.join(','));
+  }
+
+  return lines.join('\r\n');
+}
+

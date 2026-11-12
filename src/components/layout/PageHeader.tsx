@@ -53,6 +53,7 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
             data-testid={isLockedMonth ? 'unlock-month-btn' : 'lock-month-btn'}
             onClick={isLockedMonth ? onUnlockMonth : onLockMonth}
             title={isLockedMonth ? 'Unlock Month' : 'Lock Month'}
+            aria-label={isLockedMonth ? 'Unlock Month' : 'Lock Month'}
             className={`inline-flex items-center gap-1.5 h-8 px-2 sm:px-2.5 rounded-[10px] text-label font-medium transition-colors focus-visible:ring-2 ring-ring/40 ${
               isLockedMonth
                 ? 'bg-warning/15 border border-warning/30 text-warning hover:bg-warning/20'
@@ -60,7 +61,10 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
             }`}
           >
             {isLockedMonth ? <Lock className="w-3 h-3" /> : <Unlock className="w-3 h-3" />}
-            <span data-testid="lock-status-indicator">
+            <span
+              data-testid="lock-status-indicator"
+              className={isLockedMonth ? '' : 'hidden lg:inline'}
+            >
               {isLockedMonth ? 'Locked' : 'Unlocked'}
             </span>
           </button>

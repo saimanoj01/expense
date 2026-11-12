@@ -1,14 +1,16 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { Transaction, MonthlyLock, Category, DEFAULT_CATEGORIES, SpendingBucket, Project, StorageAdapter } from '../services/storage';
-import { bucketOf, bucketSource } from '../utils/categorizer';
+import { bucketOf, bucketSource, deriveCategoryBucket } from '../utils/categorizer';
 import {
+  coerceAmount,
   computeMonthMetrics,
   isRefundTransaction,
   pickDefaultLandingMonth,
 } from '../utils/metrics';
-import { getCurrentLocalMonth } from '../utils/navigation';
+import { getCurrentLocalMonth, parseHash } from '../utils/navigation';
 import {
   recordDeletionTombstones,
+  removeDeletionTombstones,
   markUserEditedFields,
   resolveTransactionReview,
 } from '../services/ingestion/transactionIngestService';
@@ -16,7 +18,11 @@ import {
   getVisibleUserTags,
   sanitizeUserTagsInput,
   isDuplicateVerified,
+  getLockedMonthForDate,
+  isTransactionMonthLocked,
+  isTransactionNeedsReview,
 } from '../utils/transactionTaxonomy';
+import type { ShowToastFn } from '../utils/toast';
 
 export interface TrendPoint {
   date: string;
@@ -125,7 +131,7 @@ export function useTransactions(
   storageAdapter: StorageAdapter | null,
   activeProject: Project | null,
   locks: MonthlyLock[],
-  showToast: (msg: string, type?: 'success' | 'error' | 'info') => void,
+  showToast: ShowToastFn,
   categories: Category[] = []
 ) {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -135,26 +141,23 @@ export function useTransactions(
   const getInitialMonth = () => {
     try {
       const hash = window.location.hash;
-      if (hash) {
-        const clean = hash.replace(/^#\/?/, '');
-        if (clean.startsWith('month/')) {
-          const m = clean.split('/')[1];
-          if (m && /^\d{4}-\d{2}$/.test(m)) {
-            userExplicitlySelectedMonth.current = true;
-            return m;
-          }
-        }
-        if (clean.startsWith('dashboard')) {
+      if (hash && hash !== '#' && hash !== '#/') {
+        if (hash.startsWith('#/dashboard') || hash.startsWith('#/projects')) {
           const params = new URLSearchParams(hash.split('?')[1] || '');
           const m = params.get('month');
-          if (m && /^\d{4}-\d{2}$/.test(m)) {
+          if (m && (/^\d{4}-\d{2}$/.test(m) || m === 'all')) {
             userExplicitlySelectedMonth.current = true;
             return m;
           }
-        }
-        if (/^\d{4}-\d{2}$/.test(clean)) {
-          userExplicitlySelectedMonth.current = true;
-          return clean;
+        } else {
+          const parsed = parseHash(hash, '');
+          if (
+            parsed.month &&
+            (/^\d{4}-\d{2}$/.test(parsed.month) || parsed.month === 'all')
+          ) {
+            userExplicitlySelectedMonth.current = true;
+            return parsed.month;
+          }
         }
       }
     } catch {
@@ -199,17 +202,27 @@ export function useTransactions(
   };
 
   const [selectedMonth, setSelectedMonthState] = useState<string>(getInitialMonth);
-  const prevProjectId = useRef<string | null>(null);
+  const prevProjectId = useRef<string | null>(
+    activeProject?.id ||
+      (typeof localStorage !== 'undefined'
+        ? localStorage.getItem('expense_active_project_id')
+        : null)
+  );
 
   const setSelectedMonth = useCallback((m: string) => {
     userExplicitlySelectedMonth.current = true;
     setSelectedMonthState(m);
   }, []);
 
-  // Reset user-selected month flag on project switch
+  // Reset user-selected month flag only on an actual project switch (never on initial null -> loaded hydration)
   useEffect(() => {
-    if (activeProject?.id !== prevProjectId.current) {
-      prevProjectId.current = activeProject?.id || null;
+    if (!activeProject?.id) return;
+    if (prevProjectId.current === null) {
+      prevProjectId.current = activeProject.id;
+      return;
+    }
+    if (activeProject.id !== prevProjectId.current) {
+      prevProjectId.current = activeProject.id;
       userExplicitlySelectedMonth.current = false;
     }
   }, [activeProject?.id]);
@@ -321,16 +334,16 @@ export function useTransactions(
           return (b.id || '').localeCompare(a.id || '');
         }
         case 'amount-asc': {
-          const amtA = typeof a.amount === 'number' ? a.amount : parseFloat(String(a.amount || 0));
-          const amtB = typeof b.amount === 'number' ? b.amount : parseFloat(String(b.amount || 0));
+          const amtA = Math.abs(coerceAmount(a.amount));
+          const amtB = Math.abs(coerceAmount(b.amount));
           if (amtA !== amtB) return amtA - amtB;
           const dateDiff = (b.date || '').localeCompare(a.date || '');
           if (dateDiff !== 0) return dateDiff;
           return (b.id || '').localeCompare(a.id || '');
         }
         case 'amount-desc': {
-          const amtA = typeof a.amount === 'number' ? a.amount : parseFloat(String(a.amount || 0));
-          const amtB = typeof b.amount === 'number' ? b.amount : parseFloat(String(b.amount || 0));
+          const amtA = Math.abs(coerceAmount(a.amount));
+          const amtB = Math.abs(coerceAmount(b.amount));
           if (amtA !== amtB) return amtB - amtA;
           const dateDiff = (b.date || '').localeCompare(a.date || '');
           if (dateDiff !== 0) return dateDiff;
@@ -840,8 +853,33 @@ export function useTransactions(
   }, [activeProject, storageAdapter]);
 
   const recordDeletedTransactionsInState = useCallback(
-    async (deletedTxs: Transaction[]) => {
-      if (!activeProject || !storageAdapter || deletedTxs.length === 0) return;
+    async (deletedTxs: Transaction[]): Promise<string[]> => {
+      if (!activeProject || !storageAdapter || deletedTxs.length === 0) return [];
+      if (
+        typeof storageAdapter.getIngestState !== 'function' ||
+        typeof storageAdapter.saveIngestState !== 'function'
+      ) {
+        return [];
+      }
+      try {
+        const currentState = await storageAdapter.getIngestState(activeProject.id);
+        const prevSet = new Set(
+          Array.isArray(currentState?.tombstones) ? currentState.tombstones : []
+        );
+        const nextState = recordDeletionTombstones(deletedTxs, currentState);
+        await storageAdapter.saveIngestState(activeProject.id, nextState);
+        return nextState.tombstones.filter(tb => !prevSet.has(tb));
+      } catch (err) {
+        console.warn('Failed to persist deletion tombstones:', err);
+        return [];
+      }
+    },
+    [activeProject, storageAdapter]
+  );
+
+  const reverseDeletedTransactionsInState = useCallback(
+    async (tombstonesToRemove: string[]) => {
+      if (!activeProject || !storageAdapter || tombstonesToRemove.length === 0) return;
       if (
         typeof storageAdapter.getIngestState !== 'function' ||
         typeof storageAdapter.saveIngestState !== 'function'
@@ -850,21 +888,37 @@ export function useTransactions(
       }
       try {
         const currentState = await storageAdapter.getIngestState(activeProject.id);
-        const nextState = recordDeletionTombstones(deletedTxs, currentState);
+        const nextState = removeDeletionTombstones(tombstonesToRemove, currentState);
         await storageAdapter.saveIngestState(activeProject.id, nextState);
       } catch (err) {
-        console.warn('Failed to persist deletion tombstones:', err);
+        console.warn('Failed to reverse deletion tombstones:', err);
       }
     },
     [activeProject, storageAdapter]
   );
 
-  const executeSaveTransaction = async (txnToSave: Transaction, isEdit: boolean) => {
+  const executeSaveTransaction = async (
+    txnToSave: Transaction,
+    isEdit: boolean,
+    options?: { autoDerivedBucket?: boolean }
+  ) => {
     if (!activeProject || !storageAdapter) return false;
     const existingTx = isEdit ? transactions.find(t => t.id === txnToSave.id) : undefined;
+    const lockedExistingMonth = existingTx
+      ? getLockedMonthForDate(existingTx.date, locks)
+      : null;
+    const lockedTargetMonth = getLockedMonthForDate(txnToSave.date, locks);
+    if (lockedExistingMonth || lockedTargetMonth) {
+      showToast(
+        `Cannot modify transaction — ${lockedExistingMonth || lockedTargetMonth} is locked.`,
+        'error'
+      );
+      return false;
+    }
+
     const nextMeta =
       isEdit || !txnToSave.meta?.sources?.length
-        ? markUserEditedFields(existingTx, txnToSave)
+        ? markUserEditedFields(existingTx, txnToSave, new Date().toISOString(), options)
         : txnToSave.meta;
     const currentLabels = ensureLabelsArray(txnToSave.labels);
     const nextLabels =
@@ -890,28 +944,70 @@ export function useTransactions(
 
   const executeSaveTransactions = useCallback(async (txnsToSave: Transaction[]) => {
     if (!activeProject || !storageAdapter || txnsToSave.length === 0) return false;
+    const unlocked = txnsToSave.filter(t => !isTransactionMonthLocked(t.date, locks));
+    if (unlocked.length === 0) {
+      showToast('Cannot modify transactions in a locked month.', 'error');
+      return false;
+    }
     try {
-      await storageAdapter.saveTransactions(activeProject.id, txnsToSave);
+      await storageAdapter.saveTransactions(activeProject.id, unlocked);
       await refreshTransactions();
-      showToast(`Saved ${txnsToSave.length} transactions successfully`);
+      showToast(`Saved ${unlocked.length} transactions successfully`);
       return true;
     } catch (err: unknown) {
       showToast(err instanceof Error ? err.message : 'Failed to save transactions', 'error');
       return false;
     }
-  }, [activeProject, storageAdapter, refreshTransactions, showToast]);
+  }, [activeProject, storageAdapter, locks, refreshTransactions, showToast]);
 
   const handleDeleteTxn = async (id: string, onDeleted?: (id: string) => void) => {
     if (!activeProject || !storageAdapter) return;
     const deletedTarget = transactions.find(t => t.id === id);
+    const lockedMonth = getLockedMonthForDate(deletedTarget?.date, locks);
+    if (lockedMonth) {
+      showToast(`Cannot delete transaction — ${lockedMonth} is locked.`, 'error');
+      return;
+    }
+
     try {
       await storageAdapter.deleteTransaction(activeProject.id, id);
-      if (deletedTarget) {
-        await recordDeletedTransactionsInState([deletedTarget]);
-      }
+      const addedTombstones = deletedTarget
+        ? await recordDeletedTransactionsInState([deletedTarget])
+        : [];
       await refreshTransactions();
       if (onDeleted) onDeleted(id);
-      showToast('Transaction deleted');
+      showToast(
+        'Transaction deleted',
+        'success',
+        deletedTarget
+          ? {
+              duration: 6000,
+              action: {
+                label: 'Undo',
+                testId: 'toast-undo-btn',
+                onClick: () => {
+                  void (async () => {
+                    try {
+                      await storageAdapter.saveTransaction(activeProject.id, deletedTarget);
+                      if (addedTombstones.length > 0) {
+                        await reverseDeletedTransactionsInState(addedTombstones);
+                      }
+                      await refreshTransactions();
+                      showToast('Transaction restored');
+                    } catch (restoreErr: unknown) {
+                      showToast(
+                        restoreErr instanceof Error
+                          ? restoreErr.message
+                          : 'Failed to restore transaction',
+                        'error'
+                      );
+                    }
+                  })();
+                },
+              },
+            }
+          : undefined
+      );
     } catch (err: unknown) {
       showToast(err instanceof Error ? err.message : 'Failed to delete transaction', 'error');
     }
@@ -919,8 +1015,30 @@ export function useTransactions(
 
   const handleExecuteBulkDelete = async (selectedTxnIds: Set<string>, onComplete?: () => void) => {
     if (!activeProject || !storageAdapter || selectedTxnIds.size === 0) return;
-    const idsToDelete = Array.from(selectedTxnIds);
-    const deletedTargets = transactions.filter(t => selectedTxnIds.has(t.id));
+    const selectedTargets = transactions.filter(t => selectedTxnIds.has(t.id));
+    const unlocked: Transaction[] = [];
+    let lockedSkipped = 0;
+    for (const t of selectedTargets) {
+      if (isTransactionMonthLocked(t.date, locks)) {
+        lockedSkipped += 1;
+      } else {
+        unlocked.push(t);
+      }
+    }
+
+    if (unlocked.length === 0) {
+      if (lockedSkipped > 0) {
+        showToast(
+          `Cannot modify transactions — ${lockedSkipped} selected transaction${
+            lockedSkipped > 1 ? 's are' : ' is'
+          } in a locked month.`,
+          'error'
+        );
+      }
+      return;
+    }
+
+    const idsToDelete = unlocked.map(t => t.id);
     try {
       if (typeof storageAdapter.deleteTransactions === 'function') {
         await storageAdapter.deleteTransactions(activeProject.id, idsToDelete);
@@ -929,24 +1047,80 @@ export function useTransactions(
           await storageAdapter.deleteTransaction(activeProject.id, id);
         }
       }
-      if (deletedTargets.length > 0) {
-        await recordDeletedTransactionsInState(deletedTargets);
-      }
+      const addedTombstones = await recordDeletedTransactionsInState(unlocked);
       await refreshTransactions();
       if (onComplete) onComplete();
-      showToast(`Successfully deleted ${idsToDelete.length} transaction${idsToDelete.length > 1 ? 's' : ''}`);
+
+      const msg = `Successfully deleted ${unlocked.length} transaction${
+        unlocked.length > 1 ? 's' : ''
+      }${lockedSkipped > 0 ? ` (${lockedSkipped} skipped due to month lock)` : ''}`;
+
+      showToast(msg, 'success', {
+        duration: 6000,
+        action: {
+          label: 'Undo',
+          testId: 'toast-undo-btn',
+          onClick: () => {
+            void (async () => {
+              try {
+                await storageAdapter.saveTransactions(activeProject.id, unlocked);
+                if (addedTombstones.length > 0) {
+                  await reverseDeletedTransactionsInState(addedTombstones);
+                }
+                await refreshTransactions();
+                showToast('Transactions restored');
+              } catch (restoreErr: unknown) {
+                showToast(
+                  restoreErr instanceof Error
+                    ? restoreErr.message
+                    : 'Failed to restore transactions',
+                  'error'
+                );
+              }
+            })();
+          },
+        },
+      });
     } catch (err: unknown) {
       showToast(err instanceof Error ? err.message : 'Failed to delete selected transactions', 'error');
     }
   };
 
-  const handleExecuteBulkCategoryUpdate = async (selectedTxnIds: Set<string>, categoryId: string, subCategoryId?: string | null, onComplete?: () => void) => {
+  const handleExecuteBulkCategoryUpdate = async (
+    selectedTxnIds: Set<string>,
+    categoryId: string,
+    subCategoryId?: string | null,
+    onComplete?: () => void
+  ) => {
     if (!activeProject || !storageAdapter || selectedTxnIds.size === 0 || !categoryId) return;
+    const allCats = [...DEFAULT_CATEGORIES, ...categories];
+    const nowIso = new Date().toISOString();
     const updatedTxns: Transaction[] = [];
+    let lockedSkipped = 0;
+
     for (const t of transactions) {
       if (selectedTxnIds.has(t.id)) {
-        const candidate: Transaction = { ...t, category: categoryId, subCategory: subCategoryId || null };
-        const nextMeta = markUserEditedFields(t, candidate);
+        if (isTransactionMonthLocked(t.date, locks)) {
+          lockedSkipped += 1;
+          continue;
+        }
+        const isExpOrRef = t.type === 'expense' || isRefundTransaction(t);
+        const hasUserEditedBucket = Boolean(t.meta?.userEdited?.includes('spendingBucket'));
+        const nextBucket =
+          isExpOrRef && !hasUserEditedBucket
+            ? deriveCategoryBucket(t.description, categoryId, subCategoryId || null, allCats)
+            : t.spendingBucket;
+        const autoDerivedBucket = Boolean(
+          isExpOrRef && !hasUserEditedBucket && nextBucket !== t.spendingBucket
+        );
+
+        const candidate: Transaction = {
+          ...t,
+          category: categoryId,
+          subCategory: subCategoryId || null,
+          ...(isExpOrRef ? { spendingBucket: nextBucket } : {}),
+        };
+        const nextMeta = markUserEditedFields(t, candidate, nowIso, { autoDerivedBucket });
         const currentLabels = ensureLabelsArray(t.labels);
         const nextLabels =
           nextMeta.review?.resolvedAt &&
@@ -956,24 +1130,51 @@ export function useTransactions(
         updatedTxns.push({ ...candidate, labels: nextLabels, meta: nextMeta });
       }
     }
-    if (updatedTxns.length === 0) return;
+
+    if (updatedTxns.length === 0) {
+      if (lockedSkipped > 0) {
+        showToast(
+          `Cannot modify transactions — ${lockedSkipped} selected transaction${
+            lockedSkipped > 1 ? 's are' : ' is'
+          } in a locked month.`,
+          'error'
+        );
+      }
+      return;
+    }
+
     try {
       await storageAdapter.saveTransactions(activeProject.id, updatedTxns);
       await refreshTransactions();
       if (onComplete) onComplete();
-      showToast(`Updated category for ${updatedTxns.length} transaction${updatedTxns.length > 1 ? 's' : ''}`);
+      showToast(
+        `Updated category for ${updatedTxns.length} transaction${
+          updatedTxns.length > 1 ? 's' : ''
+        }${lockedSkipped > 0 ? ` (${lockedSkipped} skipped due to month lock)` : ''}`
+      );
     } catch (err: unknown) {
       showToast(err instanceof Error ? err.message : 'Failed to update categories', 'error');
     }
   };
 
-  const handleExecuteBulkBucketUpdate = async (selectedTxnIds: Set<string>, bucket: SpendingBucket, onComplete?: () => void) => {
+  const handleExecuteBulkBucketUpdate = async (
+    selectedTxnIds: Set<string>,
+    bucket: SpendingBucket,
+    onComplete?: () => void
+  ) => {
     if (!activeProject || !storageAdapter || selectedTxnIds.size === 0 || !bucket) return;
+    const nowIso = new Date().toISOString();
     const updatedTxns: Transaction[] = [];
+    let lockedSkipped = 0;
+
     for (const t of transactions) {
       if (selectedTxnIds.has(t.id)) {
+        if (isTransactionMonthLocked(t.date, locks)) {
+          lockedSkipped += 1;
+          continue;
+        }
         const candidate: Transaction = { ...t, spendingBucket: bucket };
-        const nextMeta = markUserEditedFields(t, candidate);
+        const nextMeta = markUserEditedFields(t, candidate, nowIso);
         const currentLabels = ensureLabelsArray(t.labels);
         const nextLabels =
           nextMeta.review?.resolvedAt &&
@@ -983,12 +1184,28 @@ export function useTransactions(
         updatedTxns.push({ ...candidate, labels: nextLabels, meta: nextMeta });
       }
     }
-    if (updatedTxns.length === 0) return;
+
+    if (updatedTxns.length === 0) {
+      if (lockedSkipped > 0) {
+        showToast(
+          `Cannot modify transactions — ${lockedSkipped} selected transaction${
+            lockedSkipped > 1 ? 's are' : ' is'
+          } in a locked month.`,
+          'error'
+        );
+      }
+      return;
+    }
+
     try {
       await storageAdapter.saveTransactions(activeProject.id, updatedTxns);
       await refreshTransactions();
       if (onComplete) onComplete();
-      showToast(`Updated spending bucket for ${updatedTxns.length} transaction${updatedTxns.length > 1 ? 's' : ''}`);
+      showToast(
+        `Updated spending bucket for ${updatedTxns.length} transaction${
+          updatedTxns.length > 1 ? 's' : ''
+        }${lockedSkipped > 0 ? ` (${lockedSkipped} skipped due to month lock)` : ''}`
+      );
     } catch (err: unknown) {
       showToast(err instanceof Error ? err.message : 'Failed to update spending buckets', 'error');
     }
@@ -1000,10 +1217,9 @@ export function useTransactions(
       const target = transactions.find(t => t.id === txnId);
       if (!target) return;
 
-      const txMonth = (target.date || '').substring(0, 7);
-      const isLocked = locks.some(l => l.month === txMonth && l.locked);
-      if (isLocked) {
-        showToast(`Cannot modify transaction. ${txMonth} is locked.`);
+      const lockedMonth = getLockedMonthForDate(target.date, locks);
+      if (lockedMonth) {
+        showToast(`Cannot modify transaction. Month ${lockedMonth} is locked.`, 'error');
         return;
       }
 
@@ -1021,15 +1237,132 @@ export function useTransactions(
     [activeProject, storageAdapter, transactions, locks, duplicateTxnIds, refreshTransactions, showToast]
   );
 
+  const handleBulkDismissReview = useCallback(
+    async (selectedIds: Set<string> | string[], onComplete?: () => void) => {
+      if (!activeProject || !storageAdapter) return;
+      const idSet = selectedIds instanceof Set ? selectedIds : new Set(selectedIds);
+      if (idSet.size === 0) return;
+
+      const nowIso = new Date().toISOString();
+      const updatedTxns: Transaction[] = [];
+      let lockedSkipped = 0;
+
+      for (const t of transactions) {
+        if (!idSet.has(t.id)) continue;
+        if (!isTransactionNeedsReview(t, duplicateTxnIds)) continue;
+        if (isTransactionMonthLocked(t.date, locks)) {
+          lockedSkipped += 1;
+          continue;
+        }
+        updatedTxns.push(
+          resolveTransactionReview(t, nowIso, {
+            clearDuplicate: duplicateTxnIds.has(t.id),
+          })
+        );
+      }
+
+      if (updatedTxns.length === 0) {
+        if (lockedSkipped > 0) {
+          showToast(
+            `Cannot modify transactions — ${lockedSkipped} selected transaction${
+              lockedSkipped > 1 ? 's are' : ' is'
+            } in a locked month.`,
+            'error'
+          );
+        }
+        return;
+      }
+
+      try {
+        await storageAdapter.saveTransactions(activeProject.id, updatedTxns);
+        await refreshTransactions();
+        if (onComplete) onComplete();
+        showToast(
+          `Marked ${updatedTxns.length} transaction${
+            updatedTxns.length > 1 ? 's' : ''
+          } reviewed${lockedSkipped > 0 ? ` (${lockedSkipped} skipped due to month lock)` : ''}`
+        );
+      } catch (err: unknown) {
+        showToast(err instanceof Error ? err.message : 'Failed to resolve reviews', 'error');
+      }
+    },
+    [activeProject, storageAdapter, transactions, locks, duplicateTxnIds, refreshTransactions, showToast]
+  );
+
+  const handleApplyMerchantSweep = useCallback(
+    async (
+      matchingIds: string[],
+      categoryId: string,
+      subCategoryId?: string | null
+    ) => {
+      if (!activeProject || !storageAdapter || matchingIds.length === 0 || !categoryId) {
+        return false;
+      }
+      const idSet = new Set(matchingIds);
+      const allCats = [...DEFAULT_CATEGORIES, ...categories];
+      const nowIso = new Date().toISOString();
+      const updatedTxns: Transaction[] = [];
+
+      for (const t of transactions) {
+        if (!idSet.has(t.id)) continue;
+        if (isTransactionMonthLocked(t.date, locks)) continue;
+
+        const isExpOrRef = t.type === 'expense' || isRefundTransaction(t);
+        const hasUserEditedBucket = Boolean(t.meta?.userEdited?.includes('spendingBucket'));
+        const nextBucket =
+          isExpOrRef && !hasUserEditedBucket
+            ? deriveCategoryBucket(t.description, categoryId, subCategoryId || null, allCats)
+            : t.spendingBucket;
+        const autoDerivedBucket = Boolean(
+          isExpOrRef && !hasUserEditedBucket && nextBucket !== t.spendingBucket
+        );
+
+        const candidate: Transaction = {
+          ...t,
+          category: categoryId,
+          subCategory: subCategoryId || null,
+          ...(isExpOrRef ? { spendingBucket: nextBucket } : {}),
+        };
+        const nextMeta = markUserEditedFields(t, candidate, nowIso, { autoDerivedBucket });
+        const currentLabels = ensureLabelsArray(t.labels);
+        const nextLabels =
+          nextMeta.review?.resolvedAt &&
+          currentLabels.some(l => l.trim().toLowerCase() === 'needs-review')
+            ? currentLabels.filter(l => l.trim().toLowerCase() !== 'needs-review')
+            : currentLabels;
+        updatedTxns.push({ ...candidate, labels: nextLabels, meta: nextMeta });
+      }
+
+      if (updatedTxns.length === 0) return false;
+
+      try {
+        await storageAdapter.saveTransactions(activeProject.id, updatedTxns);
+        await refreshTransactions();
+        showToast(
+          `Updated ${updatedTxns.length} matching transaction${
+            updatedTxns.length > 1 ? 's' : ''
+          }`
+        );
+        return true;
+      } catch (err: unknown) {
+        showToast(
+          err instanceof Error ? err.message : 'Failed to update matching transactions',
+          'error'
+        );
+        return false;
+      }
+    },
+    [activeProject, storageAdapter, transactions, locks, categories, refreshTransactions, showToast]
+  );
+
   const handleAddTagToTxn = async (txnId: string, tagsToAdd: string[]) => {
     if (!activeProject || !storageAdapter || tagsToAdd.length === 0) return;
     const target = transactions.find(t => t.id === txnId);
     if (!target) return;
 
-    const txMonth = target.date.substring(0, 7);
-    const isLocked = locks.some(l => l.month === txMonth && l.locked);
-    if (isLocked) {
-      showToast(`Cannot modify tags. ${txMonth} is locked.`);
+    const lockedMonth = getLockedMonthForDate(target.date, locks);
+    if (lockedMonth) {
+      showToast(`Cannot modify tags. Month ${lockedMonth} is locked.`, 'error');
       return;
     }
 
@@ -1057,10 +1390,9 @@ export function useTransactions(
     const target = transactions.find(t => t.id === txnId);
     if (!target) return;
 
-    const txMonth = target.date.substring(0, 7);
-    const isLocked = locks.some(l => l.month === txMonth && l.locked);
-    if (isLocked) {
-      showToast(`Cannot modify tags. ${txMonth} is locked.`);
+    const lockedMonth = getLockedMonthForDate(target.date, locks);
+    if (lockedMonth) {
+      showToast(`Cannot modify tags. Month ${lockedMonth} is locked.`, 'error');
       return;
     }
 
@@ -1090,9 +1422,7 @@ export function useTransactions(
 
     for (const t of transactions) {
       if (selectedTxnIds.has(t.id)) {
-        const txMonth = t.date.substring(0, 7);
-        const isLocked = locks.some(l => l.month === txMonth && l.locked);
-        if (isLocked) {
+        if (isTransactionMonthLocked(t.date, locks)) {
           skippedCount++;
           continue;
         }
@@ -1109,7 +1439,12 @@ export function useTransactions(
 
     if (updatedTxns.length === 0) {
       if (skippedCount > 0) {
-        showToast(`No tags updated (${skippedCount} transaction${skippedCount > 1 ? 's' : ''} locked)`);
+        showToast(
+          `Cannot modify transactions — ${skippedCount} selected transaction${
+            skippedCount > 1 ? 's are' : ' is'
+          } in a locked month.`,
+          'error'
+        );
       }
       return;
     }
@@ -1138,9 +1473,7 @@ export function useTransactions(
 
     for (const t of transactions) {
       if (selectedTxnIds.has(t.id)) {
-        const txMonth = t.date.substring(0, 7);
-        const isLocked = locks.some(l => l.month === txMonth && l.locked);
-        if (isLocked) {
+        if (isTransactionMonthLocked(t.date, locks)) {
           skippedCount++;
           continue;
         }
@@ -1156,7 +1489,12 @@ export function useTransactions(
 
     if (updatedTxns.length === 0) {
       if (skippedCount > 0) {
-        showToast(`No tags removed (${skippedCount} transaction${skippedCount > 1 ? 's' : ''} locked)`);
+        showToast(
+          `Cannot modify transactions — ${skippedCount} selected transaction${
+            skippedCount > 1 ? 's are' : ' is'
+          } in a locked month.`,
+          'error'
+        );
       }
       return;
     }
@@ -1179,7 +1517,7 @@ export function useTransactions(
   const backfillSpendingBuckets = useCallback(async (classifiedMap: Record<string, SpendingBucket>) => {
     if (!activeProject || !storageAdapter) return false;
     const updated = transactions.map(t => {
-      if (classifiedMap[t.id]) {
+      if (classifiedMap[t.id] && !isTransactionMonthLocked(t.date, locks)) {
         const bucket = classifiedMap[t.id];
         return { ...t, spendingBucket: bucket };
       }
@@ -1188,7 +1526,7 @@ export function useTransactions(
     const modified = updated.filter((t, idx) => t !== transactions[idx]);
     if (modified.length === 0) return true;
     return await executeSaveTransactions(modified);
-  }, [activeProject, storageAdapter, transactions, executeSaveTransactions]);
+  }, [activeProject, storageAdapter, transactions, locks, executeSaveTransactions]);
 
   return {
     transactions,
@@ -1233,5 +1571,7 @@ export function useTransactions(
     handleExecuteBulkAddTag,
     handleExecuteBulkRemoveTag,
     handleDismissReview,
+    handleBulkDismissReview,
+    handleApplyMerchantSweep,
   };
 }

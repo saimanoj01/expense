@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowRight, Search, Plus, Edit2, Trash2 } from 'lucide-react';
-import { Transaction, Category, Budget, SpendingBucket, DEFAULT_CATEGORIES } from '../../services/storage';
+import { Transaction, Category, Budget, SpendingBucket, MonthlyLock, DEFAULT_CATEGORIES } from '../../services/storage';
 import { useNavigation } from '../../hooks/useNavigation';
 import { formatMoney, splitMoneyParts } from '../../utils/formatters';
 import { deriveCategoryBucket, isRefundTransaction } from '../../utils/metrics';
@@ -13,6 +13,7 @@ import {
   resolveTransactionAccount,
   formatAccountDisplay,
   getVisibleUserTags,
+  isTransactionMonthLocked,
 } from '../../utils/transactionTaxonomy';
 
 export interface Level3CategoryViewProps {
@@ -21,6 +22,7 @@ export interface Level3CategoryViewProps {
   transactions: Transaction[];
   categories: Category[];
   budgets: Budget[];
+  locks?: MonthlyLock[];
   onOpenAddTxn: () => void;
   onEditTxn?: (txn: Transaction) => void;
   onDeleteTxn?: (id: string) => void;
@@ -47,6 +49,7 @@ export const Level3CategoryView: React.FC<Level3CategoryViewProps> = ({
   transactions,
   categories,
   budgets,
+  locks = [],
   onOpenAddTxn,
   onEditTxn,
   onDeleteTxn,
@@ -54,6 +57,8 @@ export const Level3CategoryView: React.FC<Level3CategoryViewProps> = ({
 }) => {
   const { navigate } = useNavigation();
   const [searchTerm, setSearchTerm] = useState('');
+  const isCategoryMonthLocked =
+    month !== 'all' && isTransactionMonthLocked(`${month}-01`, locks);
 
   const isKnownCategory = useMemo(() => {
     const lower = categoryId.toLowerCase();
@@ -368,15 +373,17 @@ export const Level3CategoryView: React.FC<Level3CategoryViewProps> = ({
                 className="h-8 pl-8 pr-3 rounded-[10px] bg-surface2 border border-border text-label text-foreground placeholder:text-muted-foreground focus-visible:ring-2 ring-ring/40 w-full sm:w-48 transition-colors"
               />
             </div>
-            <button
-              type="button"
-              data-testid="add-category-txn-btn"
-              onClick={onOpenAddTxn}
-              className="h-8 px-2.5 rounded-[10px] bg-surface2 hover:bg-secondary border border-border text-label font-medium text-foreground inline-flex items-center gap-1 transition-colors"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Add</span>
-            </button>
+            {!isCategoryMonthLocked && (
+              <button
+                type="button"
+                data-testid="add-category-txn-btn"
+                onClick={onOpenAddTxn}
+                className="h-8 px-2.5 rounded-[10px] bg-surface2 hover:bg-secondary border border-border text-label font-medium text-foreground inline-flex items-center gap-1 transition-colors"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Add</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -461,7 +468,7 @@ export const Level3CategoryView: React.FC<Level3CategoryViewProps> = ({
                             : formatMoney(-(Number(t.amount) || 0), { cents: true, sign: 'auto' })}
                         </span>
 
-                        {onEditTxn && (
+                        {onEditTxn && !isTransactionMonthLocked(t.date, locks) && (
                           <button
                             type="button"
                             onClick={e => {
@@ -474,7 +481,7 @@ export const Level3CategoryView: React.FC<Level3CategoryViewProps> = ({
                             <Edit2 className="w-3.5 h-3.5" />
                           </button>
                         )}
-                        {onDeleteTxn && (
+                        {onDeleteTxn && !isTransactionMonthLocked(t.date, locks) && (
                           <button
                             type="button"
                             onClick={e => {

@@ -426,7 +426,7 @@ export const Level2BucketView: React.FC<Level2BucketViewProps> = ({
                 data-testid={`category-row-${cat.id}`}
                 onClick={() =>
                   cat.isIncomeSource
-                    ? navigate(`#/month/${month}/transactions`)
+                    ? navigate(`#/transactions?month=${month}&bucket=income`)
                     : navigate(`#/month/${month}/category/${cat.id}`)
                 }
                 role="button"
@@ -435,7 +435,7 @@ export const Level2BucketView: React.FC<Level2BucketViewProps> = ({
                   if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
                     if (cat.isIncomeSource) {
-                      navigate(`#/month/${month}/transactions`);
+                      navigate(`#/transactions?month=${month}&bucket=income`);
                     } else {
                       navigate(`#/month/${month}/category/${cat.id}`);
                     }

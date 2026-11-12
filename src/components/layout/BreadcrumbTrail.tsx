@@ -62,7 +62,7 @@ export const BreadcrumbTrail: React.FC<BreadcrumbTrailProps> = ({ className = ''
     <nav
       aria-label="Breadcrumb"
       data-testid="breadcrumb-trail"
-      className={`flex items-center gap-1.5 text-body min-w-0 ${className}`}
+      className={`flex items-center gap-1 lg:gap-1.5 text-label lg:text-body min-w-0 ${className}`}
     >
       <AnimatePresence mode="popLayout" initial={false}>
         {canGoBack && (
@@ -75,7 +75,7 @@ export const BreadcrumbTrail: React.FC<BreadcrumbTrailProps> = ({ className = ''
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -6 }}
             transition={{ duration: 0.15 }}
-            className="w-8 h-8 -ml-1 rounded-[10px] inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-surface2 transition-colors focus-visible:ring-2 ring-ring/40 ring-offset-2 ring-offset-background shrink-0"
+            className="w-7 h-7 sm:w-8 sm:h-8 -ml-1 rounded-[10px] inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-surface2 transition-colors focus-visible:ring-2 ring-ring/40 ring-offset-2 ring-offset-background shrink-0"
             title="Go back (Escape or Alt + Left Arrow)"
             aria-label="Go back one level"
           >
@@ -84,12 +84,16 @@ export const BreadcrumbTrail: React.FC<BreadcrumbTrailProps> = ({ className = ''
         )}
       </AnimatePresence>
 
-      <ol className="flex items-center flex-nowrap gap-1.5 list-none p-0 m-0 min-w-0 overflow-hidden">
+      <ol className="flex items-center flex-nowrap gap-1 lg:gap-1.5 list-none p-0 m-0 min-w-0 overflow-hidden">
         <AnimatePresence mode="popLayout" initial={false}>
           {breadcrumbs.map((item, index) => {
             const isLast = index === breadcrumbs.length - 1;
             const isOverviewRoot = currentRoute.view === 'overview' && item.id === 'month-overview';
             const eyebrow = isOverviewRoot ? formatEyebrow(currentRoute.month) : null;
+            const hideMobileRoot =
+              breadcrumbs.length >= 2 && breadcrumbs[0]?.id === 'month-root';
+            const isMobileHiddenRoot = index === 0 && hideMobileRoot;
+            const isPostHiddenRootSlash = index === 1 && hideMobileRoot;
 
             return (
               <motion.li
@@ -100,10 +104,17 @@ export const BreadcrumbTrail: React.FC<BreadcrumbTrailProps> = ({ className = ''
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: -8 }}
                 transition={{ duration: 0.15 }}
-                className="flex items-center gap-1.5 min-w-0"
+                className={`${
+                  isMobileHiddenRoot ? 'hidden md:flex' : 'flex'
+                } items-center gap-1 lg:gap-1.5 min-w-0`}
               >
                 {index > 0 && (
-                  <span className="text-faint select-none px-0.5 shrink-0" aria-hidden="true">
+                  <span
+                    className={`${
+                      isPostHiddenRootSlash ? 'hidden md:inline ' : ''
+                    }text-faint select-none px-0.5 shrink-0`}
+                    aria-hidden="true"
+                  >
                     /
                   </span>
                 )}
@@ -124,7 +135,7 @@ export const BreadcrumbTrail: React.FC<BreadcrumbTrailProps> = ({ className = ''
                     layout="position"
                     transition={spring}
                     aria-current="page"
-                    className="font-medium text-foreground text-body truncate"
+                    className="font-medium text-foreground text-label lg:text-body truncate"
                   >
                     {item.label}
                   </motion.span>
@@ -132,7 +143,7 @@ export const BreadcrumbTrail: React.FC<BreadcrumbTrailProps> = ({ className = ''
                   <button
                     type="button"
                     onClick={() => navigate(item.route)}
-                    className="text-muted-foreground hover:text-foreground text-body transition-colors focus-visible:ring-2 ring-ring/40 ring-offset-2 ring-offset-background rounded px-1 -mx-1 truncate"
+                    className="text-muted-foreground hover:text-foreground text-label lg:text-body transition-colors focus-visible:ring-2 ring-ring/40 ring-offset-2 ring-offset-background rounded px-1 -mx-1 truncate"
                   >
                     {item.label}
                   </button>

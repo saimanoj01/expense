@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { Tag, Plus, X } from 'lucide-react';
 import { motion } from 'framer-motion';
 
@@ -9,6 +9,8 @@ interface TagInputPopoverProps {
   onClose: () => void;
   placeholder?: string;
   align?: 'left' | 'right';
+  placement?: 'auto' | 'top' | 'bottom';
+  direction?: 'down' | 'up';
 }
 
 export function TagInputPopover({
@@ -17,12 +19,47 @@ export function TagInputPopover({
   onAddTag,
   onClose,
   placeholder = 'Add tag (e.g. trip, tax)...',
-  align = 'left'
+  align = 'left',
+  placement = 'auto',
+  direction,
 }: TagInputPopoverProps) {
   const [inputValue, setInputValue] = useState('');
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [resolvedPlacement, setResolvedPlacement] = useState<'top' | 'bottom'>(
+    placement === 'top' || direction === 'up' ? 'top' : 'bottom'
+  );
+  const [horizontalShift, setHorizontalShift] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  useLayoutEffect(() => {
+    let nextPlacement: 'top' | 'bottom' = 'bottom';
+    if (placement === 'top' || direction === 'up') {
+      nextPlacement = 'top';
+    } else if (placement === 'bottom') {
+      nextPlacement = 'bottom';
+    } else {
+      const anchorEl = containerRef.current?.parentElement;
+      const rect = anchorEl?.getBoundingClientRect();
+      nextPlacement = rect && window.innerHeight - rect.bottom < 260 ? 'top' : 'bottom';
+    }
+    setResolvedPlacement(nextPlacement);
+
+    const popEl = containerRef.current;
+    if (popEl) {
+      const popRect = popEl.getBoundingClientRect();
+      const vw = window.innerWidth;
+      let delta = 0;
+      if (popRect.left < 8) {
+        delta = 8 - popRect.left;
+      } else if (popRect.right > vw - 8) {
+        delta = vw - 8 - popRect.right;
+      }
+      if (delta !== 0) {
+        setHorizontalShift(prev => prev + delta);
+      }
+    }
+  }, [placement, direction, align]);
 
   // Filter available tags that aren't already on the transaction and match current query
   const query = inputValue.trim().toLowerCase();
@@ -107,14 +144,24 @@ export function TagInputPopover({
     <motion.div
       ref={containerRef}
       data-popover="tag-input"
-      initial={{ opacity: 0, scale: 0.95, y: -5 }}
+      data-placement={resolvedPlacement}
+      initial={{ opacity: 0, scale: 0.95, y: resolvedPlacement === 'top' ? 5 : -5 }}
       animate={{ opacity: 1, scale: 1, y: 0 }}
-      exit={{ opacity: 0, scale: 0.95, y: -5 }}
+      exit={{ opacity: 0, scale: 0.95, y: resolvedPlacement === 'top' ? 5 : -5 }}
       transition={{ duration: 0.15 }}
       onClick={e => e.stopPropagation()}
-      className={`absolute z-50 top-full mt-1.5 ${
+      style={
+        horizontalShift !== 0
+          ? align === 'right'
+            ? { right: `${-horizontalShift}px` }
+            : { left: `${horizontalShift}px` }
+          : undefined
+      }
+      className={`absolute z-[46] ${
+        resolvedPlacement === 'top' ? 'bottom-full mb-2.5' : 'top-full mt-1.5'
+      } ${
         align === 'right' ? 'right-0' : 'left-0'
-      } w-64 p-3 bg-card border border-border rounded-[14px] shadow-xl space-y-2`}
+      } w-64 max-w-[calc(100vw-2rem)] p-3 bg-card border border-border rounded-[14px] shadow-xl space-y-2`}
     >
       <div className="flex items-center justify-between gap-1 border-b border-border/50 pb-2">
         <div className="flex items-center gap-1.5 text-label font-medium text-muted-foreground uppercase tracking-[0.06em]">
