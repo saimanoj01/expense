@@ -240,7 +240,7 @@ export const ModalHost: React.FC<ModalHostProps> = ({
                 setShowBulkDeleteConfirmModal(false);
               });
             }}
-            className="flex-1 px-4 py-2 bg-destructive text-destructive-foreground rounded-xl font-bold shadow-lg shadow-destructive/20"
+            className="flex-1 px-4 py-2 bg-destructive text-destructive-foreground rounded-xl font-semibold hover:opacity-90 transition-opacity"
           >
             Delete
           </button>
@@ -258,7 +258,7 @@ export const ModalHost: React.FC<ModalHostProps> = ({
         maxWidth="max-w-sm"
         className="p-6 text-center"
       >
-        <h3 className="font-bold text-base text-rose-400 mb-2">Session Expired</h3>
+        <h3 className="font-bold text-base text-negative mb-2">Session Expired</h3>
         <p className="text-xs text-muted-foreground mb-4">Please log in again.</p>
         <button
           data-testid="modal-ok-btn"

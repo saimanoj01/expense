@@ -348,7 +348,7 @@ export function CsvImportWizard({
                               {itemLabels.map((tag, tIdx) => (
                                 <span
                                   key={tIdx}
-                                  className="group/tag inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-secondary/10 text-secondary text-[10px] uppercase font-bold tracking-wider border border-secondary/20"
+                                  className="group/tag inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-surface2 text-foreground text-[10px] uppercase font-semibold tracking-wider border border-border"
                                 >
                                   <span>{tag}</span>
                                   <button
@@ -405,7 +405,7 @@ export function CsvImportWizard({
                             ) : item.isDuplicate ? (
                               <span className="text-destructive font-bold text-xs flex items-center gap-1"><X className="w-3 h-3"/> Duplicate</span>
                             ) : (
-                              <span className="text-emerald-500 font-bold text-xs flex items-center gap-1"><Check className="w-3 h-3"/> OK</span>
+                              <span className="text-bucket-saved font-bold text-xs flex items-center gap-1"><Check className="w-3 h-3"/> OK</span>
                             )}
                           </td>
                         </tr>
@@ -429,7 +429,7 @@ export function CsvImportWizard({
             <button
               onClick={handleCsvNextStep}
               data-testid="csv-next-step-btn"
-              className="px-6 py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-bold shadow-lg shadow-primary/20 transition-all hover:scale-105 active:scale-95 flex items-center gap-2"
+              className="px-6 py-2.5 rounded-xl bg-primary hover:opacity-90 text-primary-foreground font-semibold transition-opacity flex items-center gap-2"
             >
               Next Step
             </button>
@@ -438,7 +438,7 @@ export function CsvImportWizard({
               onClick={handleCommitCsvImport}
               data-testid="csv-import-btn"
               disabled={parsedCsvItems.filter(i => i.selected).length === 0}
-              className="px-6 py-2.5 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground font-bold shadow-lg shadow-primary/20 transition-all hover:scale-105 active:scale-95 flex items-center gap-2 disabled:opacity-50 disabled:pointer-events-none"
+              className="px-6 py-2.5 rounded-xl bg-primary hover:opacity-90 text-primary-foreground font-semibold transition-opacity flex items-center gap-2 disabled:opacity-50 disabled:pointer-events-none"
             >
               <Check className="w-5 h-5" /> Import Selected
             </button>

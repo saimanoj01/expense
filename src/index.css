@@ -176,3 +176,44 @@
   }
 }
 
+@media print {
+  :root,
+  .dark,
+  .light {
+    color-scheme: light !important;
+    --background: 0 0% 100% !important;
+    --card: 0 0% 100% !important;
+    --card-foreground: 228 12% 6% !important;
+    --surface-2: 240 5% 96% !important;
+    --border: 240 6% 85% !important;
+    --foreground: 228 12% 6% !important;
+    --muted-foreground: 222 6% 34% !important;
+    --faint: 222 5% 48% !important;
+    --c-fixed: 221 70% 45% !important;
+    --c-variable: 196 88% 32% !important;
+    --c-nonmonthly: 36 84% 38% !important;
+    --c-saved: 156 80% 30% !important;
+    --c-negative: 357 70% 46% !important;
+  }
+
+  html,
+  body,
+  #root {
+    height: auto !important;
+    overflow: visible !important;
+    background: #ffffff !important;
+    color: #0d0e11 !important;
+  }
+
+  .toaster-wrapper {
+    display: none !important;
+  }
+
+  tr,
+  .print-avoid-break {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+}
+
+

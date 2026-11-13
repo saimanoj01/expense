@@ -40,7 +40,7 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
   return (
     <header
       data-testid="dashboard-header"
-      className={`sticky top-0 z-20 h-12 flex items-center justify-between gap-2 bg-background/95 backdrop-blur-md transition-colors mb-2 ${
+      className={`print:hidden sticky top-0 z-20 h-12 flex items-center justify-between gap-2 bg-background/95 backdrop-blur-md transition-colors mb-2 ${
         scrolled ? 'border-b border-border' : 'border-b border-transparent'
       } ${className}`}
     >

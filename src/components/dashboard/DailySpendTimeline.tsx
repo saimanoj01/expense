@@ -1,7 +1,9 @@
-import React, { useState, useMemo } from 'react';
-import { Transaction } from '../../services/storage';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
+import type { Transaction } from '../../services/storage';
 import { formatMoney } from '../../utils/formatters';
 import { isRefundTransaction } from '../../utils/metrics';
+import { getCurrentLocalMonth } from '../../utils/navigation';
+import { buildMonthSpan, buildTrailingMonths } from '../../utils/trendsAnalytics';
 
 export interface DailySpendTimelineProps {
   month: string;
@@ -19,6 +21,14 @@ function getShortMonthName(month: string): string {
   return d.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' });
 }
 
+function getShortMonthWithYear(month: string): string {
+  if (!month || !/^\d{4}-\d{2}$/.test(month)) return month;
+  const [yStr, mStr] = month.split('-');
+  const d = new Date(Date.UTC(parseInt(yStr, 10), parseInt(mStr, 10) - 1, 1));
+  const mon = d.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' });
+  return `${mon} ${yStr}`;
+}
+
 export const DailySpendTimeline: React.FC<DailySpendTimelineProps> = ({
   month,
   transactions,
@@ -26,21 +36,47 @@ export const DailySpendTimeline: React.FC<DailySpendTimelineProps> = ({
   height = 120,
   className = '',
 }) => {
-  const [hoveredDay, setHoveredDay] = useState<{
-    day: number;
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [measuredWidth, setMeasuredWidth] = useState<number>(640);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const updateWidth = () => {
+      const w = el.getBoundingClientRect().width;
+      if (w > 0) {
+        setMeasuredWidth(Math.round(w));
+      }
+    };
+    updateWidth();
+    if (typeof ResizeObserver !== 'undefined') {
+      const ro = new ResizeObserver(() => updateWidth());
+      ro.observe(el);
+      return () => ro.disconnect();
+    }
+  }, []);
+
+  const [hoveredSlot, setHoveredSlot] = useState<{
+    label: string;
     amount: number;
-    topMerchant: string;
+    detail: string;
     xPct: number;
   } | null>(null);
 
-  const daysInMonth = useMemo(() => {
-    if (!month || month === 'all' || !/^\d{4}-\d{2}$/.test(month)) return 30;
-    const [yStr, mStr] = month.split('-');
-    return new Date(parseInt(yStr, 10), parseInt(mStr, 10), 0).getDate();
+  useEffect(() => {
+    setHoveredSlot(null);
   }, [month]);
 
-  // Determine active cutoff day for current month (future days left blank)
+  const isAllTime = month === 'all';
+
+  const daysInMonth = useMemo(() => {
+    if (!month || isAllTime || !/^\d{4}-\d{2}$/.test(month)) return 30;
+    const [yStr, mStr] = month.split('-');
+    return new Date(parseInt(yStr, 10), parseInt(mStr, 10), 0).getDate();
+  }, [month, isAllTime]);
+
   const cutoffDay = useMemo(() => {
+    if (isAllTime) return daysInMonth;
     const now = new Date();
     const currKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
     const maxTxnDay = transactions.reduce((maxD, t) => {
@@ -54,9 +90,10 @@ export const DailySpendTimeline: React.FC<DailySpendTimelineProps> = ({
       return Math.max(now.getDate(), maxTxnDay);
     }
     return daysInMonth;
-  }, [month, transactions, daysInMonth]);
+  }, [month, isAllTime, transactions, daysInMonth]);
 
   const dailyData = useMemo(() => {
+    if (isAllTime) return [];
     const map: Record<number, { amount: number; topMerchant: string; topAmt: number }> = {};
     for (let d = 1; d <= daysInMonth; d++) {
       map[d] = { amount: 0, topMerchant: '', topAmt: 0 };
@@ -81,44 +118,200 @@ export const DailySpendTimeline: React.FC<DailySpendTimelineProps> = ({
       amount: Math.max(0, val.amount),
       topMerchant: val.topMerchant,
     }));
-  }, [transactions, daysInMonth]);
+  }, [transactions, daysInMonth, isAllTime]);
 
-  const maxDaily = useMemo(() => {
-    return Math.max(...dailyData.map(d => d.amount), 10);
-  }, [dailyData]);
+  const monthlyData = useMemo(() => {
+    if (!isAllTime) return [];
+    const txMonthsSet = new Set<string>();
+    for (const t of transactions) {
+      if ((t.type === 'expense' || isRefundTransaction(t)) && t.date && t.date.length >= 7) {
+        const mk = t.date.slice(0, 7);
+        if (/^\d{4}-\d{2}$/.test(mk)) {
+          txMonthsSet.add(mk);
+        }
+      }
+    }
+    const sortedTxMonths = Array.from(txMonthsSet).sort();
+    let monthKeys: string[];
+    if (sortedTxMonths.length === 0) {
+      monthKeys = buildTrailingMonths(getCurrentLocalMonth(), 6);
+    } else if (sortedTxMonths.length === 1) {
+      monthKeys = buildTrailingMonths(sortedTxMonths[0], 6);
+    } else {
+      monthKeys = buildMonthSpan(
+        sortedTxMonths[0],
+        sortedTxMonths[sortedTxMonths.length - 1]
+      );
+    }
 
-  const totalSpend = useMemo(
-    () => dailyData.reduce((s, d) => s + d.amount, 0),
-    [dailyData]
-  );
-  const avgDaily = cutoffDay > 0 ? totalSpend / cutoffDay : 0;
+    const byMonth = new Map<string, { rawNet: number; count: number }>();
+    monthKeys.forEach(mk => byMonth.set(mk, { rawNet: 0, count: 0 }));
 
-  const width = 600;
+    for (const t of transactions) {
+      if (!t.date || t.date.length < 7) continue;
+      const mk = t.date.slice(0, 7);
+      const slot = byMonth.get(mk);
+      if (!slot) continue;
+      if (t.type === 'expense' || isRefundTransaction(t)) {
+        const amt = Number(t.amount) || 0;
+        slot.rawNet += isRefundTransaction(t) ? -amt : amt;
+        if (!isRefundTransaction(t)) slot.count += 1;
+      }
+    }
+
+    return monthKeys.map(mk => {
+      const slot = byMonth.get(mk)!;
+      return {
+        month: mk,
+        shortLabel: getShortMonthName(mk),
+        longLabel: getShortMonthWithYear(mk),
+        amount: Math.max(0, slot.rawNet),
+        count: slot.count,
+      };
+    });
+  }, [isAllTime, transactions]);
+
+  const svgWidth = Math.max(300, measuredWidth || 640);
   const padTop = 8;
   const padBottom = 22;
   const chartHeight = height - padTop - padBottom;
-  const slotWidth = width / daysInMonth;
-  const barWidth = Math.max(4, slotWidth - 3);
+
+  if (isAllTime) {
+    const slotCount = Math.max(1, monthlyData.length);
+    const slotWidth = svgWidth / slotCount;
+    const barWidth = Math.max(6, Math.min(36, slotWidth * 0.62));
+    const maxMonthly = Math.max(...monthlyData.map(m => m.amount), 10);
+    const totalMonthlySpend = monthlyData.reduce((s, m) => s + m.amount, 0);
+    const activeCount = Math.max(1, monthlyData.filter(m => m.amount > 0).length);
+    const avgMonthly = totalMonthlySpend / activeCount;
+    const avgY = padTop + chartHeight - Math.min(1, avgMonthly / maxMonthly) * chartHeight;
+    const maxLabels = Math.max(4, Math.floor(svgWidth / 44));
+    const stride = Math.max(1, Math.ceil(slotCount / maxLabels));
+
+    return (
+      <div
+        ref={containerRef}
+        data-testid="daily-spend-timeline"
+        className={`relative py-2 ${className}`}
+      >
+        <div className="relative w-full">
+          <svg
+            viewBox={`0 0 ${svgWidth} ${height}`}
+            style={{ height }}
+            className="w-full overflow-visible select-none"
+            onMouseLeave={() => setHoveredSlot(null)}
+          >
+            {totalMonthlySpend > 0 && (
+              <line
+                x1={0}
+                y1={avgY}
+                x2={svgWidth}
+                y2={avgY}
+                stroke="hsl(var(--border))"
+                strokeWidth="1"
+                strokeDasharray="3 3"
+              />
+            )}
+
+            {monthlyData.map((m, idx) => {
+              const cx = (idx + 0.5) * slotWidth;
+              const x = cx - barWidth / 2;
+              const isZero = m.amount <= 0;
+              const barH = isZero
+                ? 2
+                : Math.max(4, (m.amount / maxMonthly) * chartHeight);
+              const y = padTop + chartHeight - barH;
+              const showLabel = idx % stride === 0 || idx === slotCount - 1;
+
+              return (
+                <g
+                  key={m.month}
+                  onMouseEnter={() =>
+                    setHoveredSlot({
+                      label: m.longLabel,
+                      amount: m.amount,
+                      detail: m.count > 0 ? `${m.count} txn${m.count === 1 ? '' : 's'}` : '',
+                      xPct: ((idx + 0.5) / slotCount) * 100,
+                    })
+                  }
+                  className="cursor-pointer"
+                >
+                  <rect
+                    x={idx * slotWidth}
+                    y={padTop}
+                    width={slotWidth}
+                    height={chartHeight}
+                    fill="transparent"
+                  />
+                  <rect
+                    x={x}
+                    y={y}
+                    width={barWidth}
+                    height={barH}
+                    rx={isZero ? 1 : 3}
+                    fill={isZero ? 'hsl(var(--surface-2))' : color}
+                    fillOpacity={isZero ? 1 : 0.9}
+                  />
+                  {showLabel && (
+                    <text
+                      x={cx}
+                      y={height - 4}
+                      textAnchor="middle"
+                      className="text-label font-medium fill-muted-foreground tabular-nums num"
+                    >
+                      {m.shortLabel}
+                    </text>
+                  )}
+                </g>
+              );
+            })}
+          </svg>
+
+          {hoveredSlot && (
+            <div
+              style={{
+                left: `${Math.min(88, Math.max(12, hoveredSlot.xPct))}%`,
+                top: 0,
+              }}
+              className="absolute -translate-x-1/2 -translate-y-full pointer-events-none px-2.5 py-1 rounded-[10px] bg-popover border border-border shadow-md text-label text-foreground whitespace-nowrap z-20 tabular-nums num"
+            >
+              <span>
+                {hoveredSlot.label} · {formatMoney(hoveredSlot.amount)}
+                {hoveredSlot.detail ? ` · ${hoveredSlot.detail}` : ''}
+              </span>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  const maxDaily = Math.max(...dailyData.map(d => d.amount), 10);
+  const totalSpend = dailyData.reduce((s, d) => s + d.amount, 0);
+  const avgDaily = cutoffDay > 0 ? totalSpend / cutoffDay : 0;
+  const slotWidth = svgWidth / daysInMonth;
+  const barWidth = Math.max(3, slotWidth - 3);
   const avgY = padTop + chartHeight - Math.min(1, avgDaily / maxDaily) * chartHeight;
   const shortMonth = getShortMonthName(month);
 
   return (
     <div
+      ref={containerRef}
       data-testid="daily-spend-timeline"
       className={`relative py-2 ${className}`}
     >
       <div className="relative w-full">
         <svg
-          viewBox={`0 0 ${width} ${height}`}
-          className="w-full h-[120px] overflow-visible select-none"
-          onMouseLeave={() => setHoveredDay(null)}
+          viewBox={`0 0 ${svgWidth} ${height}`}
+          style={{ height }}
+          className="w-full overflow-visible select-none"
+          onMouseLeave={() => setHoveredSlot(null)}
         >
-          {/* Faint horizontal average daily spend line */}
           {totalSpend > 0 && (
             <line
               x1={0}
               y1={avgY}
-              x2={width}
+              x2={svgWidth}
               y2={avgY}
               stroke="hsl(var(--border))"
               strokeWidth="1"
@@ -126,7 +319,6 @@ export const DailySpendTimeline: React.FC<DailySpendTimelineProps> = ({
             />
           )}
 
-          {/* Daily bars (future days blank, zero days as 2px surface2 stubs) */}
           {dailyData.map(d => {
             if (d.day > cutoffDay) return null;
             const x = (d.day - 1) * slotWidth + 1.5;
@@ -140,10 +332,10 @@ export const DailySpendTimeline: React.FC<DailySpendTimelineProps> = ({
               <g
                 key={d.day}
                 onMouseEnter={() =>
-                  setHoveredDay({
-                    day: d.day,
+                  setHoveredSlot({
+                    label: `${shortMonth} ${d.day}`,
                     amount: d.amount,
-                    topMerchant: d.topMerchant,
+                    detail: d.topMerchant,
                     xPct: ((d.day - 0.5) / daysInMonth) * 100,
                   })
                 }
@@ -169,7 +361,6 @@ export const DailySpendTimeline: React.FC<DailySpendTimelineProps> = ({
             );
           })}
 
-          {/* Axis labels: 1st, 15th, last day at 12/500 text-muted-foreground */}
           <text
             x={slotWidth / 2}
             y={height - 4}
@@ -187,7 +378,7 @@ export const DailySpendTimeline: React.FC<DailySpendTimelineProps> = ({
             15
           </text>
           <text
-            x={width - 1.5}
+            x={svgWidth - 1.5}
             y={height - 4}
             textAnchor="end"
             className="text-label font-medium fill-muted-foreground tabular-nums num"
@@ -196,17 +387,17 @@ export const DailySpendTimeline: React.FC<DailySpendTimelineProps> = ({
           </text>
         </svg>
 
-        {hoveredDay && (
+        {hoveredSlot && (
           <div
             style={{
-              left: `${Math.min(88, Math.max(12, hoveredDay.xPct))}%`,
+              left: `${Math.min(88, Math.max(12, hoveredSlot.xPct))}%`,
               top: 0,
             }}
             className="absolute -translate-x-1/2 -translate-y-full pointer-events-none px-2.5 py-1 rounded-[10px] bg-popover border border-border shadow-md text-label text-foreground whitespace-nowrap z-20 tabular-nums num"
           >
             <span>
-              {shortMonth} {hoveredDay.day} · {formatMoney(hoveredDay.amount)}
-              {hoveredDay.topMerchant ? ` · ${hoveredDay.topMerchant}` : ''}
+              {hoveredSlot.label} · {formatMoney(hoveredSlot.amount)}
+              {hoveredSlot.detail ? ` · ${hoveredSlot.detail}` : ''}
             </span>
           </div>
         )}

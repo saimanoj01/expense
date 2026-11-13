@@ -1,22 +1,27 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  Search, 
-  LayoutDashboard, 
-  Receipt, 
-  Target, 
-  BarChart3, 
-  FileText, 
-  Settings, 
-  Plus, 
-  Upload, 
-  SunMoon, 
-  Lock, 
-  X
+import {
+  Search,
+  LayoutDashboard,
+  Receipt,
+  Target,
+  BarChart3,
+  FileText,
+  Settings,
+  Plus,
+  Upload,
+  Download,
+  FolderPlus,
+  Tags,
+  AlertCircle,
+  SunMoon,
+  Lock,
+  X,
 } from 'lucide-react';
 import { useNavigation } from '../../hooks/useNavigation';
-import { getCurrentLocalMonth } from '../../utils/navigation';
-import { Category } from '../../services/storage';
+import { formatMonthLabel, getCurrentLocalMonth } from '../../utils/navigation';
+import { isNonBudgetableCategory } from '../../utils/metrics';
+import type { Category } from '../../services/storage';
 
 export interface CommandPaletteProps {
   isOpen: boolean;
@@ -27,6 +32,10 @@ export interface CommandPaletteProps {
   onToggleTheme: () => void;
   onToggleLockMonth?: () => void;
   isMonthLocked?: boolean;
+  onOpenCategoryManager?: () => void;
+  onOpenCreateProject?: () => void;
+  onExportWorkspaceJson?: () => void;
+  onExportFullCsv?: () => void;
 }
 
 interface CommandItem {
@@ -47,7 +56,11 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   onOpenCsvImport,
   onToggleTheme,
   onToggleLockMonth,
-  isMonthLocked
+  isMonthLocked,
+  onOpenCategoryManager,
+  onOpenCreateProject,
+  onExportWorkspaceJson,
+  onExportFullCsv,
 }) => {
   const { currentRoute, navigate } = useNavigation();
   const [query, setQuery] = useState('');
@@ -56,15 +69,26 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   const listRef = useRef<HTMLDivElement>(null);
 
   const activeMonth = currentRoute.month || getCurrentLocalMonth();
+  const formattedMonth = formatMonthLabel(activeMonth);
 
-  // Focus input when opened
   useEffect(() => {
-    if (isOpen) {
-      setQuery('');
-      setSelectedIndex(0);
-      setTimeout(() => inputRef.current?.focus(), 50);
-    }
-  }, [isOpen]);
+    if (!isOpen) return;
+    setQuery('');
+    setSelectedIndex(0);
+    const raf = requestAnimationFrame(() => inputRef.current?.focus());
+    const handleWindowEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleWindowEscape, true);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener('keydown', handleWindowEscape, true);
+    };
+  }, [isOpen, onClose]);
 
   const items: CommandItem[] = useMemo(() => {
     const list: CommandItem[] = [
@@ -72,20 +96,20 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       {
         id: 'view-overview',
         title: 'Month Overview',
-        subtitle: `Jump to ${activeMonth} overview`,
+        subtitle: `Jump to ${formattedMonth} overview`,
         icon: LayoutDashboard,
         category: 'Views',
         keywords: ['home', 'dashboard', 'summary'],
-        action: () => navigate(`#/month/${activeMonth}`)
+        action: () => navigate(`#/month/${activeMonth}`),
       },
       {
         id: 'view-transactions',
         title: 'Transactions Ledger',
-        subtitle: 'View and filter all transactions',
+        subtitle: `View and filter ${formattedMonth} transactions`,
         icon: Receipt,
         category: 'Views',
         keywords: ['expenses', 'ledger', 'history', 'txns'],
-        action: () => navigate(`#/transactions?month=${activeMonth}`)
+        action: () => navigate(`#/transactions?month=${activeMonth}`),
       },
       {
         id: 'view-budgets',
@@ -94,16 +118,25 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         icon: Target,
         category: 'Views',
         keywords: ['targets', 'caps', 'allocation'],
-        action: () => navigate(`#/budgets?month=${activeMonth}`)
+        action: () => navigate(`#/budgets?month=${activeMonth}`),
       },
       {
         id: 'view-trends',
         title: 'Trends & Analytics',
-        subtitle: 'Cumulative pacing and multi-month cash flow',
+        subtitle: 'Multi-horizon cash flow, category momentum, and top merchants',
         icon: BarChart3,
         category: 'Views',
-        keywords: ['charts', 'graphs', 'visual', 'pacing'],
-        action: () => navigate(`#/trends?month=${activeMonth}`)
+        keywords: ['charts', 'graphs', 'visual', 'pacing', 'horizon'],
+        action: () => navigate(`#/trends?month=${activeMonth}`),
+      },
+      {
+        id: 'view-trends-all',
+        title: 'All-Time Cash Flow Trends',
+        subtitle: 'Inspect complete workspace history across all months',
+        icon: BarChart3,
+        category: 'Views',
+        keywords: ['all time', 'history', 'cash flow', 'lifetime'],
+        action: () => navigate('#/trends?month=all'),
       },
       {
         id: 'view-reports',
@@ -112,16 +145,16 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         icon: FileText,
         category: 'Views',
         keywords: ['pdf', 'print', 'statement', 'export'],
-        action: () => navigate(`#/reports?month=${activeMonth}`)
+        action: () => navigate(`#/reports?month=${activeMonth}`),
       },
       {
         id: 'view-settings',
         title: 'Settings & Workspace',
-        subtitle: 'Manage workspace, categories, and imports',
+        subtitle: 'Manage workspace, data store backups, and categories',
         icon: Settings,
         category: 'Views',
-        keywords: ['config', 'preferences', 'workspace'],
-        action: () => navigate(`#/settings?month=${activeMonth}`)
+        keywords: ['config', 'preferences', 'workspace', 'backup', 'json'],
+        action: () => navigate(`#/settings?month=${activeMonth}`),
       },
 
       // Drill Down Buckets
@@ -132,7 +165,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         icon: Target,
         category: 'Drill Down',
         keywords: ['fixed', 'recurring', 'bills', 'rent'],
-        action: () => navigate(`#/month/${activeMonth}/bucket/fixed`)
+        action: () => navigate(`#/month/${activeMonth}/bucket/fixed`),
       },
       {
         id: 'bucket-variable',
@@ -141,7 +174,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         icon: Target,
         category: 'Drill Down',
         keywords: ['variable', 'flexible', 'food', 'dining'],
-        action: () => navigate(`#/month/${activeMonth}/bucket/variable`)
+        action: () => navigate(`#/month/${activeMonth}/bucket/variable`),
       },
       {
         id: 'bucket-non-monthly',
@@ -150,7 +183,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         icon: Target,
         category: 'Drill Down',
         keywords: ['irregular', 'annual', 'periodic'],
-        action: () => navigate(`#/month/${activeMonth}/bucket/non-monthly`)
+        action: () => navigate(`#/month/${activeMonth}/bucket/non-monthly`),
       },
       {
         id: 'bucket-income',
@@ -159,18 +192,27 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         icon: Target,
         category: 'Drill Down',
         keywords: ['income', 'salary', 'inflow', 'revenue'],
-        action: () => navigate(`#/month/${activeMonth}/bucket/income`)
+        action: () => navigate(`#/month/${activeMonth}/bucket/income`),
       },
 
       // Actions
       {
         id: 'action-add-txn',
         title: 'Add New Transaction',
-        subtitle: 'Record an expense or income',
+        subtitle: 'Record an expense, income, or transfer',
         icon: Plus,
         category: 'Actions',
         keywords: ['new', 'create', 'spend'],
-        action: onOpenAddTxn
+        action: onOpenAddTxn,
+      },
+      {
+        id: 'action-review-queue',
+        title: 'Review Flagged Transactions',
+        subtitle: 'Open triage queue for needs-review and duplicate items',
+        icon: AlertCircle,
+        category: 'Actions',
+        keywords: ['review', 'triage', 'flagged', 'duplicates'],
+        action: () => navigate('#/transactions?month=all&review=1'),
       },
       {
         id: 'action-import-csv',
@@ -179,57 +221,133 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
         icon: Upload,
         category: 'Actions',
         keywords: ['csv', 'upload', 'bank', 'statement'],
-        action: onOpenCsvImport
+        action: onOpenCsvImport,
       },
-      {
-        id: 'action-toggle-theme',
-        title: 'Toggle Dark / Light Theme',
-        subtitle: 'Switch application color mode',
-        icon: SunMoon,
-        category: 'Actions',
-        keywords: ['theme', 'mode', 'dark', 'light'],
-        action: onToggleTheme
-      }
     ];
 
-    if (onToggleLockMonth) {
+    if (onExportWorkspaceJson) {
       list.push({
-        id: 'action-toggle-lock',
-        title: isMonthLocked ? 'Unlock Current Month' : 'Lock Current Month',
-        subtitle: isMonthLocked ? 'Re-enable editing for this month' : 'Freeze transactions for this month',
-        icon: Lock,
+        id: 'action-export-json',
+        title: 'Export Workspace Backup JSON',
+        subtitle: 'Download lossless v1 workspace snapshot (--state-file compatible)',
+        icon: Download,
         category: 'Actions',
-        keywords: ['lock', 'freeze', 'unlock', 'close'],
-        action: onToggleLockMonth
+        keywords: ['export', 'backup', 'json', 'snapshot', 'state-file'],
+        action: onExportWorkspaceJson,
       });
     }
 
-    // Categories
+    if (onExportFullCsv) {
+      list.push({
+        id: 'action-export-csv',
+        title: 'Export Full Ledger CSV',
+        subtitle: 'Download normalized 10-column CSV of all transactions',
+        icon: Download,
+        category: 'Actions',
+        keywords: ['export', 'csv', 'ledger', 'spreadsheet'],
+        action: onExportFullCsv,
+      });
+    }
+
+    if (onOpenCategoryManager) {
+      list.push({
+        id: 'action-manage-categories',
+        title: 'Manage Categories',
+        subtitle: 'Add, edit, or organize categories and sub-categories',
+        icon: Tags,
+        category: 'Actions',
+        keywords: ['categories', 'taxonomy', 'buckets'],
+        action: onOpenCategoryManager,
+      });
+    }
+
+    if (onOpenCreateProject) {
+      list.push({
+        id: 'action-create-workspace',
+        title: 'Create New Workspace',
+        subtitle: 'Start an isolated financial workspace',
+        icon: FolderPlus,
+        category: 'Actions',
+        keywords: ['workspace', 'project', 'new'],
+        action: onOpenCreateProject,
+      });
+    }
+
+    list.push({
+      id: 'action-toggle-theme',
+      title: 'Toggle Dark / Light Theme',
+      subtitle: 'Switch application color mode',
+      icon: SunMoon,
+      category: 'Actions',
+      keywords: ['theme', 'mode', 'dark', 'light'],
+      action: onToggleTheme,
+    });
+
+    if (onToggleLockMonth && activeMonth !== 'all') {
+      list.push({
+        id: 'action-toggle-lock',
+        title: isMonthLocked ? `Unlock ${formattedMonth}` : `Lock ${formattedMonth}`,
+        subtitle: isMonthLocked
+          ? 'Re-enable editing for this month'
+          : 'Freeze transactions for this month',
+        icon: Lock,
+        category: 'Actions',
+        keywords: ['lock', 'freeze', 'unlock', 'close'],
+        action: onToggleLockMonth,
+      });
+    }
+
+    // Expense Categories (exclude non-budgetable income & transfers)
+    const parentMap = new Map<string, Category>();
+    categories.forEach(c => {
+      if (!c.parentId) parentMap.set(c.id, c);
+    });
+
     categories.forEach(cat => {
+      if (isNonBudgetableCategory(cat.id) || isNonBudgetableCategory(cat.name)) {
+        return;
+      }
+      const parent = cat.parentId ? parentMap.get(cat.parentId) : undefined;
+      if (parent && (isNonBudgetableCategory(parent.id) || isNonBudgetableCategory(parent.name))) {
+        return;
+      }
+      const displayName = parent ? `${parent.name} › ${cat.name}` : cat.name;
+      const targetCatId = parent ? parent.id : cat.id;
+
       list.push({
         id: `cat-${cat.id}`,
-        title: `${cat.emoji ? cat.emoji + ' ' : ''}${cat.name}`,
-        subtitle: `Inspect ${cat.name} spending velocity & history`,
+        title: `${cat.emoji ? cat.emoji + ' ' : ''}${displayName}`,
+        subtitle: `Inspect ${displayName} spending velocity & history`,
         icon: LayoutDashboard,
         category: 'Categories',
-        keywords: [cat.name.toLowerCase(), cat.id.toLowerCase(), 'category'],
-        action: () => navigate(`#/month/${activeMonth}/category/${cat.id}`)
+        keywords: [
+          cat.name.toLowerCase(),
+          cat.id.toLowerCase(),
+          parent?.name.toLowerCase() || '',
+          'category',
+        ].filter(Boolean),
+        action: () =>
+          navigate(`#/month/${activeMonth}/category/${encodeURIComponent(targetCatId)}`),
       });
     });
 
     return list;
   }, [
-    activeMonth, 
-    navigate, 
-    onOpenAddTxn, 
-    onOpenCsvImport, 
-    onToggleTheme, 
-    onToggleLockMonth, 
-    isMonthLocked, 
-    categories
+    activeMonth,
+    formattedMonth,
+    navigate,
+    onOpenAddTxn,
+    onOpenCsvImport,
+    onExportWorkspaceJson,
+    onExportFullCsv,
+    onOpenCategoryManager,
+    onOpenCreateProject,
+    onToggleTheme,
+    onToggleLockMonth,
+    isMonthLocked,
+    categories,
   ]);
 
-  // Filter items
   const filteredItems = useMemo(() => {
     if (!query.trim()) return items;
     const q = query.toLowerCase().trim();
@@ -241,19 +359,28 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     });
   }, [items, query]);
 
-  // Keep selected index in bounds
   useEffect(() => {
     setSelectedIndex(0);
   }, [query]);
 
-  // Keyboard controls
+  // Keep active command item scrolled into view during ArrowUp / ArrowDown navigation
+  useEffect(() => {
+    if (!isOpen || !listRef.current) return;
+    const activeEl = listRef.current.querySelector<HTMLElement>(
+      `[data-cmd-idx="${selectedIndex}"]`
+    );
+    activeEl?.scrollIntoView({ block: 'nearest' });
+  }, [selectedIndex, isOpen]);
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'ArrowDown') {
       e.preventDefault();
       setSelectedIndex(prev => (prev + 1) % Math.max(1, filteredItems.length));
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
-      setSelectedIndex(prev => (prev - 1 + filteredItems.length) % Math.max(1, filteredItems.length));
+      setSelectedIndex(
+        prev => (prev - 1 + filteredItems.length) % Math.max(1, filteredItems.length)
+      );
     } else if (e.key === 'Enter') {
       e.preventDefault();
       const selected = filteredItems[selectedIndex];
@@ -270,14 +397,14 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   return (
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center pt-20 px-4">
+        <div className="print:hidden fixed inset-0 z-50 flex items-start justify-center pt-16 sm:pt-20 px-4">
           {/* Backdrop */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
-            className="fixed inset-0 bg-background/70 backdrop-blur-md"
+            className="fixed inset-0 bg-background/70 backdrop-blur-sm"
           />
 
           {/* Palette Dialog */}
@@ -286,15 +413,15 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
             role="dialog"
             aria-modal="true"
             aria-label="Command Palette"
-            initial={{ opacity: 0, scale: 0.96, y: -10 }}
+            initial={{ opacity: 0, scale: 0.97, y: -8 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.96, y: -10 }}
-            transition={{ duration: 0.15 }}
-            className="relative w-full max-w-xl bg-card border border-border/70 rounded-2xl shadow-2xl overflow-hidden flex flex-col z-10"
+            exit={{ opacity: 0, scale: 0.97, y: -8 }}
+            transition={{ duration: 0.14 }}
+            className="relative w-full max-w-xl bg-card border border-border rounded-[14px] shadow-2xl overflow-hidden flex flex-col z-10"
           >
             {/* Search Input Bar */}
-            <div className="flex items-center gap-3 px-4 py-3.5 border-b border-border/50 bg-secondary/20">
-              <Search className="w-5 h-5 text-muted-foreground shrink-0" />
+            <div className="flex items-center gap-3 px-4 py-3 border-b border-border bg-surface2/50">
+              <Search className="w-4 h-4 text-muted-foreground shrink-0" />
               <input
                 ref={inputRef}
                 type="text"
@@ -302,30 +429,31 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                 value={query}
                 onChange={e => setQuery(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Search views, drill-down buckets, categories, or actions..."
-                className="w-full bg-transparent text-foreground placeholder:text-muted-foreground text-sm font-medium outline-none"
+                placeholder="Search views, buckets, categories, or actions…"
+                className="w-full bg-transparent text-foreground placeholder:text-muted-foreground text-body font-medium outline-none"
               />
               {query && (
                 <button
                   type="button"
+                  aria-label="Clear search"
                   onClick={() => setQuery('')}
-                  className="p-1 rounded-md text-muted-foreground hover:text-foreground"
+                  className="p-1 rounded-[8px] text-muted-foreground hover:text-foreground"
                 >
                   <X className="w-4 h-4" />
                 </button>
               )}
-              <kbd className="hidden sm:inline-block px-1.5 py-0.5 text-label font-mono rounded bg-secondary text-muted-foreground border border-border/40">
+              <kbd className="hidden sm:inline-block px-1.5 py-0.5 text-label rounded bg-surface2 text-muted-foreground border border-border">
                 ESC
               </kbd>
             </div>
 
             {/* List Results */}
-            <div 
+            <div
               ref={listRef}
               className="max-h-80 overflow-y-auto custom-scrollbar p-2 space-y-1"
             >
               {filteredItems.length === 0 ? (
-                <div className="py-8 text-center text-muted-foreground text-xs">
+                <div className="py-8 text-center text-muted-foreground text-label">
                   No matching commands or categories found.
                 </div>
               ) : (
@@ -337,31 +465,40 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
                     <button
                       key={item.id}
                       type="button"
+                      data-cmd-idx={index}
                       data-testid={`command-item-${item.id}`}
                       onClick={() => {
                         onClose();
                         item.action();
                       }}
                       onMouseEnter={() => setSelectedIndex(index)}
-                      className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-left text-xs transition-colors ${
-                        isSelected 
-                          ? 'bg-primary/15 text-primary border border-primary/20' 
-                          : 'text-foreground hover:bg-secondary/60 border border-transparent'
+                      className={`w-full flex items-center justify-between gap-3 px-3 py-2.5 rounded-[10px] text-left transition-colors ${
+                        isSelected
+                          ? 'bg-surface2 text-foreground border border-border'
+                          : 'text-foreground hover:bg-surface2/60 border border-transparent'
                       }`}
                     >
                       <div className="flex items-center gap-3 min-w-0">
-                        <div className={`p-1.5 rounded-lg shrink-0 ${isSelected ? 'bg-primary text-primary-foreground' : 'bg-secondary text-muted-foreground'}`}>
+                        <div
+                          className={`p-1.5 rounded-[8px] shrink-0 ${
+                            isSelected
+                              ? 'bg-primary text-primary-foreground'
+                              : 'bg-surface2 text-muted-foreground'
+                          }`}
+                        >
                           <Icon className="w-4 h-4" />
                         </div>
                         <div className="min-w-0 truncate">
-                          <p className="font-semibold truncate">{item.title}</p>
+                          <p className="text-body font-medium truncate">{item.title}</p>
                           {item.subtitle && (
-                            <p className="text-label text-muted-foreground truncate">{item.subtitle}</p>
+                            <p className="text-label text-muted-foreground truncate">
+                              {item.subtitle}
+                            </p>
                           )}
                         </div>
                       </div>
 
-                      <span className="text-label font-mono px-1.5 py-0.5 rounded bg-secondary/80 text-muted-foreground shrink-0 border border-border/30">
+                      <span className="text-label px-1.5 py-0.5 rounded bg-surface2 text-muted-foreground shrink-0 border border-border/60">
                         {item.category}
                       </span>
                     </button>
@@ -371,15 +508,21 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
             </div>
 
             {/* Footer Navigation Hints */}
-            <div className="px-4 py-2 border-t border-border/40 bg-secondary/30 flex items-center justify-between text-label text-muted-foreground">
+            <div className="px-4 py-2 border-t border-border bg-surface2/40 flex items-center justify-between text-label text-muted-foreground">
               <div className="flex items-center gap-3">
                 <span className="flex items-center gap-1">
-                  <kbd className="px-1 py-0.5 rounded bg-secondary text-label font-mono border border-border/50">↑</kbd>
-                  <kbd className="px-1 py-0.5 rounded bg-secondary text-label font-mono border border-border/50">↓</kbd>
+                  <kbd className="px-1 py-0.5 rounded bg-surface2 text-label border border-border">
+                    ↑
+                  </kbd>
+                  <kbd className="px-1 py-0.5 rounded bg-surface2 text-label border border-border">
+                    ↓
+                  </kbd>
                   <span>Navigate</span>
                 </span>
                 <span className="flex items-center gap-1">
-                  <kbd className="px-1.5 py-0.5 rounded bg-secondary text-label font-mono border border-border/50">↵</kbd>
+                  <kbd className="px-1.5 py-0.5 rounded bg-surface2 text-label border border-border">
+                    ↵
+                  </kbd>
                   <span>Select</span>
                 </span>
               </div>

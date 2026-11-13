@@ -1,7 +1,13 @@
 import React, { useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowRight, ChevronRight } from 'lucide-react';
-import { Transaction, Category, Budget, SpendingBucket } from '../../services/storage';
+import {
+  DEFAULT_CATEGORIES,
+  type Transaction,
+  type Category,
+  type Budget,
+  type SpendingBucket,
+} from '../../services/storage';
 import { useNavigation } from '../../hooks/useNavigation';
 import { formatMoney, splitMoneyParts } from '../../utils/formatters';
 import { delta, deltaToneClass } from '../../utils/delta';
@@ -9,9 +15,13 @@ import { bucketOf } from '../../utils/categorizer';
 import {
   computeMonthMetrics,
   computePriorComparisonWindow,
+  deriveCategoryBucket,
+  doesBudgetMatchCategory,
+  getCategoryAliasOptions,
+  isNonBudgetableCategory,
   isRefundTransaction,
+  resolveEffectiveCategoryBudget,
 } from '../../utils/metrics';
-import { deriveCategoryBucket } from '../../hooks/useBudgets';
 import { BUCKETS, bucketColor, negativeColor } from '../../theme/buckets';
 import { spring } from '../../theme/motion';
 import { RollingNumber } from '../motion/RollingNumber';
@@ -23,6 +33,7 @@ export interface Level2BucketViewProps {
   transactions: Transaction[];
   categories: Category[];
   budgets: Budget[];
+  activeMonthsCount?: number;
   onOpenAddTxn: () => void;
   className?: string;
 }
@@ -34,6 +45,7 @@ export const Level2BucketView: React.FC<Level2BucketViewProps> = ({
   transactions,
   categories,
   budgets,
+  activeMonthsCount = 1,
   onOpenAddTxn,
   className = '',
 }) => {
@@ -41,6 +53,7 @@ export const Level2BucketView: React.FC<Level2BucketViewProps> = ({
   const bucketId: SpendingBucket | 'income' =
     (rawBucketId as string) === 'variable' ? 'flexible' : rawBucketId;
   const routeSlug = bucketId === 'flexible' ? 'variable' : bucketId;
+  const periodMultiplier = month === 'all' ? Math.max(1, activeMonthsCount || 1) : 1;
 
   const bucketMeta = useMemo(() => {
     switch (bucketId) {
@@ -72,6 +85,13 @@ export const Level2BucketView: React.FC<Level2BucketViewProps> = ({
     }
   }, [bucketId]);
 
+  const allKnownCats = useMemo(() => {
+    const map = new Map<string, Category>();
+    DEFAULT_CATEGORIES.forEach(c => map.set(c.id, c));
+    categories.forEach(c => map.set(c.id, c));
+    return Array.from(map.values());
+  }, [categories]);
+
   const bucketTransactions = useMemo(() => {
     return transactions.filter(t => {
       const matchMonth = month === 'all' || (t.date && t.date.startsWith(month));
@@ -81,10 +101,10 @@ export const Level2BucketView: React.FC<Level2BucketViewProps> = ({
       }
       return (
         (t.type === 'expense' || isRefundTransaction(t)) &&
-        bucketOf(t, categories) === bucketId
+        bucketOf(t, allKnownCats) === bucketId
       );
     });
-  }, [transactions, month, bucketId, categories]);
+  }, [transactions, month, bucketId, allKnownCats]);
 
   const monthTransfersTotal = useMemo(() => {
     return transactions
@@ -100,19 +120,24 @@ export const Level2BucketView: React.FC<Level2BucketViewProps> = ({
     return Math.max(
       0,
       bucketTransactions.reduce(
-        (sum, t) => sum + (isRefundTransaction(t) ? -(Number(t.amount) || 0) : (Number(t.amount) || 0)),
+        (sum, t) =>
+          sum + (isRefundTransaction(t) ? -(Number(t.amount) || 0) : Number(t.amount) || 0),
         0
       )
     );
   }, [bucketTransactions]);
 
-  const monthExpensesTotal = useMemo(() => {
-    return computeMonthMetrics(transactions, month, categories).expenses;
-  }, [transactions, month, categories]);
+  // Guardrail G5: Compute monthMetrics directly so direct #/month/all/bucket/* loads never show stale income
+  const monthMetrics = useMemo(
+    () => computeMonthMetrics(transactions, month, allKnownCats),
+    [transactions, month, allKnownCats]
+  );
+  const effectiveIncome = month === 'all' ? monthMetrics.income : totalIncome;
+  const monthExpensesTotal = monthMetrics.expenses;
 
-  const savedAmount = totalIncome - monthExpensesTotal;
-  const savedPct = totalIncome > 0 ? Math.round((savedAmount / totalIncome) * 100) : 0;
-  const pctOfIncome = totalIncome > 0 ? (totalSpent / totalIncome) * 100 : 0;
+  const savedAmount = effectiveIncome - monthExpensesTotal;
+  const savedPct = effectiveIncome > 0 ? Math.round((savedAmount / effectiveIncome) * 100) : 0;
+  const pctOfIncome = effectiveIncome > 0 ? (totalSpent / effectiveIncome) * 100 : 0;
 
   const priorMonthKey = useMemo(() => {
     if (!month || month === 'all' || !/^\d{4}-\d{2}$/.test(month)) return null;
@@ -138,7 +163,7 @@ export const Level2BucketView: React.FC<Level2BucketViewProps> = ({
       if (bucketId === 'income') return t.type === 'income' && !isRefundTransaction(t);
       return (
         (t.type === 'expense' || isRefundTransaction(t)) &&
-        bucketOf(t, categories) === bucketId
+        bucketOf(t, allKnownCats) === bucketId
       );
     });
     return Math.max(
@@ -149,7 +174,7 @@ export const Level2BucketView: React.FC<Level2BucketViewProps> = ({
         0
       )
     );
-  }, [transactions, priorMonthKey, compWindow, bucketId, categories]);
+  }, [transactions, priorMonthKey, compWindow, bucketId, allKnownCats]);
 
   const momDeltaInfo = useMemo(() => {
     if (!compWindow.hasSelectedActivity) {
@@ -164,7 +189,7 @@ export const Level2BucketView: React.FC<Level2BucketViewProps> = ({
     );
   }, [totalSpent, priorSpent, bucketId, compWindow, priorMonthKey]);
 
-  // Category or Income Source rows
+  // Category or Income Source rows (rolled up to parent categories + resolveEffectiveCategoryBudget)
   const categoryBreakdown = useMemo(() => {
     const map: Record<
       string,
@@ -198,30 +223,63 @@ export const Level2BucketView: React.FC<Level2BucketViewProps> = ({
         map[id].txnCount += 1;
       });
     } else {
-      bucketTransactions.forEach(t => {
-        const rawCat = t.category || 'misc';
-        const catObj = categories.find(
-          c =>
-            c.id.toLowerCase() === rawCat.toLowerCase() ||
-            c.name.toLowerCase() === rawCat.toLowerCase()
-        );
-        const key = catObj?.id || rawCat;
-        const catName = catObj?.name || rawCat;
-        const catEmoji = catObj?.emoji || '🏷️';
+      const parentCats = allKnownCats.filter(
+        c => !c.parentId && !isNonBudgetableCategory(c.id) && !isNonBudgetableCategory(c.name)
+      );
+      const subCats = allKnownCats.filter(c => Boolean(c.parentId));
+      const aliasOpts = getCategoryAliasOptions(allKnownCats);
 
+      const resolveCanonicalParent = (t: Transaction): Category => {
+        const rawCat = (t.category || 'misc').trim();
+        const matchedSub =
+          (t.subCategory
+            ? subCats.find(s => doesBudgetMatchCategory(t.subCategory, s, aliasOpts))
+            : undefined) || subCats.find(s => doesBudgetMatchCategory(rawCat, s, aliasOpts));
+
+        if (matchedSub?.parentId) {
+          const parent = parentCats.find(p => p.id === matchedSub.parentId);
+          if (parent) return parent;
+        }
+        const matchedParent = parentCats.find(p => doesBudgetMatchCategory(rawCat, p, aliasOpts));
+        if (matchedParent) return matchedParent;
+
+        return {
+          id: rawCat || 'misc',
+          name: rawCat || 'Miscellaneous',
+          emoji: '🏷️',
+          color: '#38BDF8',
+        };
+      };
+
+      // Track parent categories that recorded spend in OTHER buckets this period
+      const parentIdsWithOtherBucketSpend = new Set<string>();
+      for (const t of transactions) {
+        const matchMonth = month === 'all' || (t.date && t.date.startsWith(month));
+        if (!matchMonth) continue;
+        if (t.type !== 'expense' && !isRefundTransaction(t)) continue;
+        const tBucket = bucketOf(t, allKnownCats);
+        if (tBucket !== bucketId) {
+          const p = resolveCanonicalParent(t);
+          parentIdsWithOtherBucketSpend.add(p.id);
+        }
+      }
+
+      bucketTransactions.forEach(t => {
+        const parentCat = resolveCanonicalParent(t);
+        const key = parentCat.id;
         if (!map[key]) {
-          const bObj = budgets.find(
-            b =>
-              b.category.toLowerCase() === key.toLowerCase() ||
-              b.category.toLowerCase() === catName.toLowerCase()
-          );
+          // Guardrail G5: Only attach effectiveBudget when this bucket is the category's home bucket
+          const isHomeBucket = deriveCategoryBucket(parentCat.id, parentCat) === bucketId;
+          const monthlyTarget = isHomeBucket
+            ? resolveEffectiveCategoryBudget(parentCat.id, budgets, allKnownCats).effectiveBudget
+            : 0;
           map[key] = {
             id: key,
-            name: catName,
-            emoji: catEmoji,
+            name: parentCat.name,
+            emoji: parentCat.emoji || '🏷️',
             spent: 0,
             txnCount: 0,
-            budget: Number(bObj?.amount) || 0,
+            budget: monthlyTarget * periodMultiplier,
           };
         }
         const amt = Number(t.amount) || 0;
@@ -229,21 +287,26 @@ export const Level2BucketView: React.FC<Level2BucketViewProps> = ({
         map[key].txnCount += 1;
       });
 
-      categories.forEach(c => {
-        if (deriveCategoryBucket(c.id, c) === bucketId && !map[c.id]) {
-          const bObj = budgets.find(
-            b =>
-              b.category.toLowerCase() === c.id.toLowerCase() ||
-              b.category.toLowerCase() === c.name.toLowerCase()
-          );
-          if (bObj && bObj.amount > 0) {
-            map[c.id] = {
-              id: c.id,
-              name: c.name,
-              emoji: c.emoji || '🏷️',
+      // Append $0-spend budgeted categories belonging to this home bucket (unless they only spent in another bucket)
+      parentCats.forEach(pCat => {
+        if (
+          deriveCategoryBucket(pCat.id, pCat) === bucketId &&
+          !map[pCat.id] &&
+          !parentIdsWithOtherBucketSpend.has(pCat.id)
+        ) {
+          const monthlyTarget = resolveEffectiveCategoryBudget(
+            pCat.id,
+            budgets,
+            allKnownCats
+          ).effectiveBudget;
+          if (monthlyTarget > 0) {
+            map[pCat.id] = {
+              id: pCat.id,
+              name: pCat.name,
+              emoji: pCat.emoji || '🏷️',
               spent: 0,
               txnCount: 0,
-              budget: bObj.amount,
+              budget: monthlyTarget * periodMultiplier,
             };
           }
         }
@@ -266,11 +329,20 @@ export const Level2BucketView: React.FC<Level2BucketViewProps> = ({
     items.sort((a, b) => {
       if (a.spent === 0 && b.spent > 0) return 1;
       if (b.spent === 0 && a.spent > 0) return -1;
-      return b.spent - a.spent;
+      return b.spent - a.spent || b.budget - a.budget;
     });
 
     return items;
-  }, [bucketTransactions, categories, budgets, totalSpent, bucketId]);
+  }, [
+    bucketTransactions,
+    transactions,
+    month,
+    allKnownCats,
+    budgets,
+    totalSpent,
+    bucketId,
+    periodMultiplier,
+  ]);
 
   const totalBucketBudget = useMemo(() => {
     return categoryBreakdown.reduce((sum, c) => sum + c.budget, 0);
@@ -292,6 +364,10 @@ export const Level2BucketView: React.FC<Level2BucketViewProps> = ({
 
   const heroParts = splitMoneyParts(totalSpent);
   const isOverBucketBudget = totalBucketBudget > 0 && totalSpent > totalBucketBudget;
+  const allTimeSuffix =
+    month === 'all'
+      ? ` across ${periodMultiplier} active mo${periodMultiplier === 1 ? '' : 's'}`
+      : '';
 
   return (
     <div
@@ -342,13 +418,13 @@ export const Level2BucketView: React.FC<Level2BucketViewProps> = ({
 
         {bucketId === 'income' ? (
           <div className="flex flex-wrap items-center gap-2 text-body text-muted-foreground tabular-nums num">
-            <span>Income {formatMoney(totalIncome)}</span>
+            <span>Income {formatMoney(effectiveIncome)}</span>
             <span className="text-faint">·</span>
-            {totalIncome > 0 && savedAmount < 0 ? (
+            {effectiveIncome > 0 && savedAmount < 0 ? (
               <span className="text-negative font-medium">
                 Overspent {formatMoney(Math.abs(savedAmount))} ({Math.abs(savedPct)}% over)
               </span>
-            ) : totalIncome === 0 && monthExpensesTotal > 0 ? (
+            ) : effectiveIncome === 0 && monthExpensesTotal > 0 ? (
               <span className="text-muted-foreground font-medium">
                 Net outflow {formatMoney(monthExpensesTotal)} (no income)
               </span>
@@ -398,8 +474,8 @@ export const Level2BucketView: React.FC<Level2BucketViewProps> = ({
               }`}
             >
               {isOverBucketBudget
-                ? `${formatMoney(totalSpent - totalBucketBudget)} over ${formatMoney(totalBucketBudget)}`
-                : `${formatMoney(totalBucketBudget - totalSpent)} left of ${formatMoney(totalBucketBudget)}`}
+                ? `${formatMoney(totalSpent - totalBucketBudget)} over ${formatMoney(totalBucketBudget)}${allTimeSuffix}`
+                : `${formatMoney(totalBucketBudget - totalSpent)} left of ${formatMoney(totalBucketBudget)}${allTimeSuffix}`}
             </span>
           )}
         </div>
@@ -408,7 +484,7 @@ export const Level2BucketView: React.FC<Level2BucketViewProps> = ({
       {/* Category / Source Rows (56px rows, hairline dividers) */}
       {categoryBreakdown.length === 0 ? (
         <div className="py-8 border-t border-b border-border text-body text-muted-foreground">
-          Nothing recorded in {bucketMeta.title} for this month yet.
+          Nothing recorded in {bucketMeta.title} for this {month === 'all' ? 'period' : 'month'} yet.
         </div>
       ) : (
         <div className="divide-y divide-border border-t border-b border-border">
@@ -420,38 +496,28 @@ export const Level2BucketView: React.FC<Level2BucketViewProps> = ({
                 ? Math.round(cat.budgetUtilization)
                 : Math.round(cat.pctOfBucket);
 
+            const targetHref = cat.isIncomeSource
+              ? `#/transactions?month=${month}&bucket=income`
+              : `#/month/${month}/category/${encodeURIComponent(cat.id)}?fromBucket=${routeSlug}`;
+
             return (
-              <motion.div
+              <div
                 key={cat.id}
                 data-testid={`category-row-${cat.id}`}
-                onClick={() =>
-                  cat.isIncomeSource
-                    ? navigate(`#/transactions?month=${month}&bucket=income`)
-                    : navigate(`#/month/${month}/category/${cat.id}`)
-                }
+                onClick={() => navigate(targetHref)}
                 role="button"
                 tabIndex={0}
                 onKeyDown={e => {
                   if (e.key === 'Enter' || e.key === ' ') {
                     e.preventDefault();
-                    if (cat.isIncomeSource) {
-                      navigate(`#/transactions?month=${month}&bucket=income`);
-                    } else {
-                      navigate(`#/month/${month}/category/${cat.id}`);
-                    }
+                    navigate(targetHref);
                   }
                 }}
                 className="min-h-[56px] py-2.5 px-2 -mx-2 rounded-[10px] hover:bg-surface2 transition-colors flex items-center justify-between gap-3 cursor-pointer focus-visible:ring-2 ring-ring/40"
               >
                 <div className="flex items-center gap-3 min-w-0 flex-1">
                   <div className="w-8 h-8 rounded-full bg-surface2 flex items-center justify-center shrink-0 text-base">
-                    <motion.span
-                      layoutId={`cat-emoji-${cat.id}`}
-                      layout="position"
-                      transition={spring}
-                    >
-                      {cat.emoji}
-                    </motion.span>
+                    <span>{cat.emoji}</span>
                   </div>
                   <h4
                     className={`text-body font-medium truncate ${
@@ -486,16 +552,13 @@ export const Level2BucketView: React.FC<Level2BucketViewProps> = ({
                   </span>
 
                   <div className="text-right">
-                    <motion.div
-                      layoutId={`cat-amount-${cat.id}`}
-                      layout="position"
-                      transition={spring}
+                    <div
                       className={`text-heading font-semibold tabular-nums num ${
                         isZeroSpend ? 'text-muted-foreground' : 'text-foreground'
                       }`}
                     >
                       {formatMoney(cat.spent)}
-                    </motion.div>
+                    </div>
                     <span className="sm:hidden block text-label text-muted-foreground tabular-nums num">
                       {pctValue}%
                     </span>
@@ -503,7 +566,7 @@ export const Level2BucketView: React.FC<Level2BucketViewProps> = ({
 
                   <ChevronRight className="w-4 h-4 text-faint shrink-0" />
                 </div>
-              </motion.div>
+              </div>
             );
           })}
         </div>

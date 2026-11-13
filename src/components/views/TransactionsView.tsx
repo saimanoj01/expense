@@ -358,18 +358,26 @@ export function TransactionsView({
 
   const availableAccounts = useMemo<AccountFilterOption[]>(() => {
     const map = new Map<string, string>();
+    let hasUnassigned = false;
     for (const t of transactions) {
       const rawAcct = resolveTransactionAccount(t);
-      if (!rawAcct) continue;
+      if (!rawAcct) {
+        hasUnassigned = true;
+        continue;
+      }
       const key = getCanonicalAccountKey(rawAcct);
       if (key && !map.has(key)) {
         map.set(key, formatAccountDisplay(rawAcct));
       }
     }
-    return Array.from(map.entries())
+    const sorted = Array.from(map.entries())
       .map(([key, label]) => ({ key, label }))
       .sort((a, b) => a.label.localeCompare(b.label));
-  }, [transactions]);
+    if (hasUnassigned || selectedAccount === 'unassigned') {
+      sorted.push({ key: 'unassigned', label: 'Unassigned' });
+    }
+    return sorted;
+  }, [transactions, selectedAccount]);
 
   // Month-scoped filter tags for Filter popover (never leaks out-of-month dead-end tags!)
   const filterTags = useMemo(() => {
@@ -495,19 +503,43 @@ export function TransactionsView({
     let list = [...transactions];
 
     if (activeCategoryFilter) {
-      const f = activeCategoryFilter.toLowerCase();
-      const fId = targetCategory?.id.toLowerCase();
-      const fName = targetCategory?.name.toLowerCase();
-      list = list.filter(t => {
-        const c = (t.category || '').toLowerCase();
-        const s = (t.subCategory || '').toLowerCase();
-        return (
-          c === f ||
-          s === f ||
-          (Boolean(fId) && (c === fId || s === fId)) ||
-          (Boolean(fName) && (c === fName || s === fName))
+      const f = activeCategoryFilter.trim().toLowerCase();
+      if (f === 'uncategorized') {
+        list = list.filter(
+          t =>
+            t.type !== 'transfer' &&
+            (!t.category || !t.category.trim() || t.category.trim().toLowerCase() === 'uncategorized')
         );
-      });
+      } else {
+        const fId = targetCategory?.id.toLowerCase();
+        const fName = targetCategory?.name.toLowerCase();
+        const childSubSet =
+          targetCategory && !targetCategory.parentId
+            ? new Set(
+                allCategories
+                  .filter(c => c.parentId === targetCategory.id)
+                  .flatMap(c => [c.id.toLowerCase(), c.name.toLowerCase()])
+              )
+            : null;
+        list = list.filter(t => {
+          const c = (t.category || '').trim().toLowerCase();
+          const s = (t.subCategory || '').trim().toLowerCase();
+          if (
+            c === f ||
+            s === f ||
+            (Boolean(fId) && (c === fId || s === fId)) ||
+            (Boolean(fName) && (c === fName || s === fName))
+          ) {
+            return true;
+          }
+          if (childSubSet && ((c && childSubSet.has(c)) || (s && childSubSet.has(s)))) {
+            return true;
+          }
+          if (fId === 'housing' && c === 'rent') return true;
+          if (fId === 'food' && c === 'food & dining') return true;
+          return false;
+        });
+      }
     }
 
     if (selectedDay !== null) {
@@ -526,9 +558,13 @@ export function TransactionsView({
     }
 
     if (selectedAccount) {
-      list = list.filter(
-        t => getCanonicalAccountKey(resolveTransactionAccount(t)) === selectedAccount
-      );
+      if (selectedAccount === 'unassigned') {
+        list = list.filter(t => !resolveTransactionAccount(t));
+      } else {
+        list = list.filter(
+          t => getCanonicalAccountKey(resolveTransactionAccount(t)) === selectedAccount
+        );
+      }
     }
 
     if (effectiveSelectedTagFilter) {
@@ -899,14 +935,19 @@ export function TransactionsView({
     ]
   );
 
-  const activeCategoryChipLabel = targetCategory
-    ? `${targetCategory.emoji ? `${targetCategory.emoji} ` : ''}${
-        targetCategory.name === 'Electricity' ? 'Electric Power' : targetCategory.name
-      }`
-    : activeCategoryFilter;
+  const activeCategoryChipLabel =
+    activeCategoryFilter && activeCategoryFilter.trim().toLowerCase() === 'uncategorized'
+      ? '🏷️ Uncategorized'
+      : targetCategory
+      ? `${targetCategory.emoji ? `${targetCategory.emoji} ` : ''}${
+          targetCategory.name === 'Electricity' ? 'Electric Power' : targetCategory.name
+        }`
+      : activeCategoryFilter;
 
   const selectedAccountLabel =
-    availableAccounts.find(a => a.key === selectedAccount)?.label || selectedAccount;
+    selectedAccount === 'unassigned'
+      ? 'Unassigned'
+      : availableAccounts.find(a => a.key === selectedAccount)?.label || selectedAccount;
 
   const handleInlineCategoryChange = useCallback(
     (txn: Transaction, newCatId: string, newSubCatId?: string | null) => {

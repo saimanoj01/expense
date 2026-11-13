@@ -15,6 +15,14 @@ import { Sidebar } from './components/layout/Sidebar';
 import { BottomNav } from './components/layout/BottomNav';
 import { CommandPalette } from './components/common/CommandPalette';
 import { generateSampleData } from './utils/sampleDataGenerator';
+import { buildTransactionsCsvExport } from './utils/csv';
+import {
+  buildWorkspaceSnapshot,
+  clearWorkspaceData,
+  downloadWorkspaceSnapshotJson,
+  slugifyWorkspaceName,
+  triggerFileDownload,
+} from './utils/workspacePortability';
 
 // Layout & UI
 import { AppLayout } from './components/layout/AppLayout';
@@ -43,6 +51,13 @@ import { showToast } from './utils/toast';
 
 interface MainRouterProps {
   activeProject: Project;
+  projects: Project[];
+  storageAdapter: ReturnType<typeof useApp>['storageAdapter'];
+  selectProject: (projectId: string | null) => void;
+  renameProject: (projectId: string, newName: string) => Promise<Project>;
+  deleteProjectById: (projectId: string) => Promise<void>;
+  refreshProjectData: () => Promise<void>;
+  setShowCreateModal: (v: boolean) => void;
   txnHooks: ReturnType<typeof useTransactions>;
   budgetHooks: ReturnType<typeof useBudgets>;
   csvHooks: ReturnType<typeof useCsvImport>;
@@ -64,11 +79,20 @@ interface MainRouterProps {
   theme?: 'light' | 'dark';
   setTheme?: React.Dispatch<React.SetStateAction<'light' | 'dark'>>;
   isMockMode?: boolean;
+  user?: ReturnType<typeof useAuth>['user'];
+  logout?: () => Promise<void> | void;
   onLoadSampleData?: () => void;
 }
 
 function MainRouter({
   activeProject,
+  projects,
+  storageAdapter,
+  selectProject,
+  renameProject,
+  deleteProjectById,
+  refreshProjectData,
+  setShowCreateModal,
   txnHooks,
   budgetHooks,
   csvHooks,
@@ -90,6 +114,8 @@ function MainRouter({
   theme,
   setTheme,
   isMockMode,
+  user,
+  logout,
   onLoadSampleData
 }: MainRouterProps) {
   const { currentRoute, direction } = useNavigation();
@@ -121,6 +147,7 @@ function MainRouter({
         transactions={txnHooks.transactions}
         categories={budgetHooks.categories}
         budgets={budgetHooks.budgets}
+        activeMonthsCount={budgetHooks.activeMonthsCount}
         onOpenAddTxn={handleOpenAddTxn}
       />
     );
@@ -130,10 +157,11 @@ function MainRouter({
       <Level3CategoryView
         categoryId={currentRoute.categoryId || 'misc'}
         month={currentRoute.month || txnHooks.selectedMonth}
-        transactions={txnHooks.monthTransactions}
+        transactions={txnHooks.transactions}
         categories={budgetHooks.categories}
         budgets={budgetHooks.budgets}
         locks={locks}
+        activeMonthsCount={budgetHooks.activeMonthsCount}
         onOpenAddTxn={handleOpenAddTxn}
         onEditTxn={handleEditTxn}
         onDeleteTxn={(id) => txnHooks.handleDeleteTxn(id, () => setSelectedTxnIds(prev => { const n = new Set(prev); n.delete(id); return n; }))}
@@ -303,7 +331,9 @@ function MainRouter({
             totalBudget: budgetHooks.savedTotalBudget
           }}
           categories={budgetHooks.savedCategorySummary}
+          rawCategories={budgetHooks.categories}
           transactions={txnHooks.transactions}
+          activeMonthsCount={budgetHooks.activeMonthsCount}
           isLocked={isCurrentMonthLocked}
         />
       </Suspense>
@@ -314,7 +344,23 @@ function MainRouter({
       <Suspense fallback={<div className="h-64 flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>}>
         <SettingsView
           activeProject={activeProject}
+          projects={projects}
           categories={budgetHooks.categories}
+          transactions={txnHooks.transactions}
+          locks={locks}
+          duplicateTxnIds={txnHooks.duplicateTxnIds}
+          storageAdapter={storageAdapter}
+          isMockMode={isMockMode}
+          user={user}
+          onLogout={logout}
+          onSelectProject={pId => selectProject(pId)}
+          onOpenCreateProject={() => setShowCreateModal(true)}
+          onRenameProject={renameProject}
+          onDeleteProject={deleteProjectById}
+          onWorkspaceDataMutated={() => {
+            setSelectedTxnIds(new Set());
+            void refreshProjectData();
+          }}
           onShareProjectClick={() => setShowShareModal(true)}
           onOpenCategoryManager={() => setShowCategoryManagerModal(true)}
           onOpenCsvWizard={() => {
@@ -418,7 +464,18 @@ function AppInner() {
     setShowSessionExpiredModal,
     authErrorToast
   } = useAuth();
-  const { projects, activeProject, isLoading, isProjectsLoaded, storageAdapter, selectProject, createNewProject, loadProjects } = useApp();
+  const {
+    projects,
+    activeProject,
+    isLoading,
+    isProjectsLoaded,
+    storageAdapter,
+    selectProject,
+    createNewProject,
+    renameProject,
+    deleteProjectById,
+    loadProjects,
+  } = useApp();
 
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
     const saved = localStorage.getItem('expense_theme');
@@ -681,13 +738,47 @@ function AppInner() {
     if (!activeProject || !storageAdapter) return;
     try {
       const sample = await generateSampleData();
-      await storageAdapter.saveTransactions(activeProject.id, sample.transactions);
+      if (txnHooks.transactions.length > 0) {
+        await clearWorkspaceData(storageAdapter, activeProject.id);
+      }
+      await storageAdapter.saveTransactions(activeProject.id, sample.transactions, {
+        ignoreLocks: true,
+      });
       await storageAdapter.saveBudgets(activeProject.id, sample.budgets);
+      setSelectedTxnIds(new Set());
       await refreshProjectData();
       showToast('Sample data loaded for the past 4 months!');
     } catch (e: unknown) {
       showToast(`Failed to load sample data: ${e instanceof Error ? e.message : String(e)}`, 'error');
     }
+  };
+
+  const handleQuickExportJson = async () => {
+    if (!activeProject || !storageAdapter) return;
+    try {
+      const snapshot = await buildWorkspaceSnapshot({
+        project: activeProject,
+        storageAdapter,
+      });
+      const filename = downloadWorkspaceSnapshotJson(snapshot);
+      showToast(`Exported ${filename}`);
+    } catch (e: unknown) {
+      showToast(e instanceof Error ? e.message : 'Failed to export JSON backup', 'error');
+    }
+  };
+
+  const handleQuickExportCsv = () => {
+    if (!activeProject || txnHooks.transactions.length === 0) {
+      showToast('No transactions to export', 'error');
+      return;
+    }
+    const sorted = [...txnHooks.transactions].sort(
+      (a, b) => (a.date || '').localeCompare(b.date || '') || (a.id || '').localeCompare(b.id || '')
+    );
+    const csvContent = buildTransactionsCsvExport(sorted, budgetHooks.categories);
+    const filename = `nebula-transactions-${slugifyWorkspaceName(activeProject.name)}-${getLocalTodayDate()}.csv`;
+    triggerFileDownload(csvContent, filename, 'text/csv;charset=utf-8;');
+    showToast(`Exported ${sorted.length} transactions to CSV`);
   };
 
   const mainRef = useRef<HTMLElement>(null);
@@ -713,10 +804,13 @@ function AppInner() {
         onOpenCommandPalette={isAuthenticated && activeProject ? () => setShowCommandPalette(true) : undefined}
       />
 
-      <div className="flex-1 flex overflow-hidden min-h-0">
+      <div className="flex-1 flex print:block overflow-hidden print:overflow-visible min-h-0">
         {isAuthenticated && (
           <Sidebar
             activeProject={activeProject}
+            projects={projects}
+            onSelectProject={pId => selectProject(pId)}
+            onOpenCreateProject={() => setShowCreateModal(true)}
             user={user}
             isMockMode={isMockMode}
             theme={theme}
@@ -728,7 +822,7 @@ function AppInner() {
           />
         )}
 
-        <main ref={mainRef} className="flex-1 overflow-y-auto px-4 md:px-6 pt-0 pb-24 md:pb-4 w-full relative custom-scrollbar">
+        <main ref={mainRef} className="flex-1 overflow-y-auto print:overflow-visible px-4 md:px-6 print:px-0 pt-0 pb-24 md:pb-4 print:pb-0 w-full relative custom-scrollbar">
           <div className="max-w-6xl mx-auto w-full">
             {!isAuthenticated ? (
           <div className="flex flex-col items-center justify-center h-[60vh] text-center">
@@ -754,6 +848,13 @@ function AppInner() {
         ) : activeProject ? (
           <MainRouter
             activeProject={activeProject}
+            projects={projects}
+            storageAdapter={storageAdapter}
+            selectProject={selectProject}
+            renameProject={renameProject}
+            deleteProjectById={deleteProjectById}
+            refreshProjectData={refreshProjectData}
+            setShowCreateModal={setShowCreateModal}
             txnHooks={txnHooks}
             budgetHooks={budgetHooks}
             csvHooks={csvHooks}
@@ -775,6 +876,8 @@ function AppInner() {
             theme={theme}
             setTheme={setTheme}
             isMockMode={isMockMode}
+            user={user}
+            logout={logout}
             onLoadSampleData={isMockMode ? handleLoadSampleData : undefined}
           />
         ) : !isProjectsLoaded || isLoading ? (
@@ -818,6 +921,10 @@ function AppInner() {
           onToggleTheme={() => setTheme(prev => prev === 'dark' ? 'light' : 'dark')}
           onToggleLockMonth={isCurrentMonthLocked ? handleUnlockCurrentMonth : handleLockCurrentMonth}
           isMonthLocked={isCurrentMonthLocked}
+          onOpenCategoryManager={() => setShowCategoryManagerModal(true)}
+          onOpenCreateProject={() => setShowCreateModal(true)}
+          onExportWorkspaceJson={handleQuickExportJson}
+          onExportFullCsv={handleQuickExportCsv}
         />
       )}
 

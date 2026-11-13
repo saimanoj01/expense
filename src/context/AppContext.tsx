@@ -16,6 +16,8 @@ export interface AppContextType {
   loadProjects: () => Promise<void>;
   selectProject: (projectId: string | null) => void;
   createNewProject: (name: string) => Promise<Project>;
+  renameProject: (projectId: string, newName: string) => Promise<Project>;
+  deleteProjectById: (projectId: string) => Promise<void>;
   setCurrentView: (view: ViewType) => void;
 }
 
@@ -23,7 +25,7 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated, isMockMode, isLoading: authIsLoading, setShowSessionExpiredModal } = useAuth();
-  
+
   const [projects, setProjects] = useState<Project[]>([]);
   const [activeProject, setActiveProject] = useState<Project | null>(null);
   const [currentView, setCurrentView] = useState<ViewType>('project-selector');
@@ -38,7 +40,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } else {
       return new GoogleSheetsAdapter(
         () => localStorage.getItem('expense_google_token'),
-        (status) => {
+        status => {
           if (status === 401) {
             setShowSessionExpiredModal(true);
           }
@@ -66,7 +68,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       const list = await storageAdapter.getProjects();
       setProjects(list);
-      
+
       // Determine target project ID to select on initialization (prefer query param from hash if present)
       const parsedInitial = parseHash(window.location.hash);
       const targetProjectId = parsedInitial.projectId || localStorage.getItem('expense_active_project_id');
@@ -174,20 +176,61 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  const renameProject = async (projectId: string, newName: string): Promise<Project> => {
+    const trimmed = newName.trim();
+    if (!trimmed) {
+      throw new Error('Workspace name cannot be empty');
+    }
+    const existing = projects.find(p => p.id === projectId);
+    const saved = await storageAdapter.saveProject({
+      ...(existing || { id: projectId, name: trimmed }),
+      name: trimmed,
+    });
+    const updatedList = await storageAdapter.getProjects();
+    setProjects(updatedList);
+    if (activeProject?.id === projectId) {
+      setActiveProject(saved);
+    }
+    return saved;
+  };
+
+  const deleteProjectById = async (projectId: string): Promise<void> => {
+    await storageAdapter.deleteProject(projectId);
+    const remaining = await storageAdapter.getProjects();
+    setProjects(remaining);
+
+    if (activeProject?.id === projectId) {
+      if (remaining.length > 0) {
+        const next = remaining[0];
+        setActiveProject(next);
+        setCurrentView('dashboard');
+        localStorage.setItem('expense_active_project_id', next.id);
+      } else {
+        setActiveProject(null);
+        setCurrentView('project-selector');
+        localStorage.removeItem('expense_active_project_id');
+      }
+    }
+  };
+
   return (
-    <AppContext.Provider value={{
-      projects,
-      activeProject,
-      currentView,
-      isLoading,
-      isProjectsLoaded,
-      error,
-      storageAdapter,
-      loadProjects,
-      selectProject,
-      createNewProject,
-      setCurrentView
-    }}>
+    <AppContext.Provider
+      value={{
+        projects,
+        activeProject,
+        currentView,
+        isLoading,
+        isProjectsLoaded,
+        error,
+        storageAdapter,
+        loadProjects,
+        selectProject,
+        createNewProject,
+        renameProject,
+        deleteProjectById,
+        setCurrentView,
+      }}
+    >
       {children}
     </AppContext.Provider>
   );

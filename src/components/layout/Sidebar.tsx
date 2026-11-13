@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import {
   LayoutDashboard,
@@ -9,6 +9,9 @@ import {
   Settings,
   ChevronLeft,
   ChevronRight,
+  ChevronsUpDown,
+  Check,
+  FolderPlus,
   Plus,
   Search,
   Sun,
@@ -17,7 +20,7 @@ import {
 } from 'lucide-react';
 import { useNavigation } from '../../hooks/useNavigation';
 import { getCurrentLocalMonth } from '../../utils/navigation';
-import { Project } from '../../services/storage';
+import type { Project } from '../../services/storage';
 
 interface UserProfile {
   name?: string;
@@ -29,6 +32,9 @@ export interface SidebarProps {
   user?: UserProfile | null;
   isMockMode?: boolean;
   activeProject: Project | null;
+  projects?: Project[];
+  onSelectProject?: (projectId: string) => void;
+  onOpenCreateProject?: () => void;
   theme?: 'light' | 'dark';
   toggleTheme?: () => void;
   onOpenCommandPalette?: () => void;
@@ -42,6 +48,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   user,
   isMockMode = false,
   activeProject,
+  projects = [],
+  onSelectProject,
+  onOpenCreateProject,
   theme = 'dark',
   toggleTheme,
   onOpenCommandPalette,
@@ -60,13 +69,45 @@ export const Sidebar: React.FC<SidebarProps> = ({
     }
   });
 
+  const [showWorkspaceMenu, setShowWorkspaceMenu] = useState(false);
+  const workspaceMenuRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     try {
       localStorage.setItem('expense_sidebar_collapsed', String(collapsed));
     } catch {
       // Ignore localStorage failure
     }
+    if (collapsed) {
+      setShowWorkspaceMenu(false);
+    }
   }, [collapsed]);
+
+  // Guardrail G2: Close workspace popover on outside click or Escape (with stopPropagation so goBack doesn't fire)
+  useEffect(() => {
+    if (!showWorkspaceMenu) return;
+    const handlePointerDown = (e: MouseEvent) => {
+      if (
+        workspaceMenuRef.current &&
+        !workspaceMenuRef.current.contains(e.target as Node)
+      ) {
+        setShowWorkspaceMenu(false);
+      }
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        setShowWorkspaceMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handlePointerDown);
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      window.removeEventListener('keydown', handleKeyDown, true);
+    };
+  }, [showWorkspaceMenu]);
 
   const activeMonth = currentRoute.month || getCurrentLocalMonth();
 
@@ -111,27 +152,51 @@ export const Sidebar: React.FC<SidebarProps> = ({
     },
   ];
 
+  const canOpenWorkspaceMenu = Boolean(onSelectProject || onOpenCreateProject);
+
   return (
     <motion.aside
       data-testid="sidebar"
       initial={false}
       animate={{ width: collapsed ? 64 : 244 }}
       transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
-      className={`hidden md:flex flex-col shrink-0 border-r border-border bg-background z-30 select-none ${className}`}
+      className={`print:hidden hidden md:flex flex-col shrink-0 border-r border-border bg-background z-30 select-none ${className}`}
     >
       {/* Top Workspace Header + Quick Add '+' + Collapse Toggle */}
-      <div className="h-14 flex items-center justify-between gap-1.5 px-2.5 border-b border-border">
+      <div
+        ref={workspaceMenuRef}
+        className="relative h-14 flex items-center justify-between gap-1 px-2 border-b border-border"
+      >
         <div
           className={`flex items-center gap-1 min-w-0 flex-1 ${
             collapsed ? 'hidden' : ''
           }`}
         >
-          <span
-            data-testid="project-selector"
-            className="text-body font-semibold text-foreground truncate px-1.5"
-          >
-            {activeProject?.name || 'Workspace'}
-          </span>
+          {canOpenWorkspaceMenu ? (
+            <button
+              type="button"
+              data-testid="sidebar-workspace-trigger"
+              aria-expanded={showWorkspaceMenu}
+              aria-haspopup="menu"
+              onClick={() => setShowWorkspaceMenu(prev => !prev)}
+              className="group w-full h-9 px-0.5 rounded-[10px] hover:bg-surface2 transition-colors flex items-center justify-between gap-0.5 min-w-0 text-left focus-visible:ring-2 ring-ring/40"
+            >
+              <span
+                data-testid="project-selector"
+                className="text-body font-semibold text-foreground truncate"
+              >
+                {activeProject?.name || 'Workspace'}
+              </span>
+              <ChevronsUpDown className="hidden group-hover:block group-focus-visible:block group-aria-expanded:block w-3.5 h-3.5 text-muted-foreground shrink-0" />
+            </button>
+          ) : (
+            <span
+              data-testid="project-selector"
+              className="text-body font-semibold text-foreground truncate px-1.5"
+            >
+              {activeProject?.name || 'Workspace'}
+            </span>
+          )}
         </div>
 
         <div className="flex items-center gap-1 shrink-0">
@@ -168,6 +233,65 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <ChevronLeft className="w-4 h-4" />
           </button>
         </div>
+
+        {/* Workspace Switcher Floating Popover (Guardrail G2: data-popover="true") */}
+        {showWorkspaceMenu && !collapsed && (
+          <div
+            data-testid="workspace-switcher-popover"
+            data-popover="true"
+            role="menu"
+            className="absolute left-2.5 right-2.5 top-[52px] z-50 rounded-[12px] bg-popover border border-border shadow-xl p-1.5 space-y-1"
+          >
+            <div className="px-2 py-1 text-eyebrow uppercase text-muted-foreground">
+              Workspaces
+            </div>
+            <div className="max-h-48 overflow-y-auto custom-scrollbar space-y-0.5">
+              {projects.map(p => {
+                const isSelected = p.id === activeProject?.id;
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    role="menuitem"
+                    data-testid={`workspace-option-${p.id}`}
+                    onClick={() => {
+                      setShowWorkspaceMenu(false);
+                      if (!isSelected) {
+                        onSelectProject?.(p.id);
+                      }
+                    }}
+                    className={`w-full h-9 px-2.5 rounded-[8px] flex items-center justify-between gap-2 text-body transition-colors ${
+                      isSelected
+                        ? 'bg-surface2 text-foreground font-medium'
+                        : 'text-muted-foreground hover:text-foreground hover:bg-surface2/60'
+                    }`}
+                  >
+                    <span className="truncate">{p.name}</span>
+                    {isSelected && <Check className="w-3.5 h-3.5 text-foreground shrink-0" />}
+                  </button>
+                );
+              })}
+            </div>
+
+            {onOpenCreateProject && (
+              <div className="pt-1 border-t border-border/60">
+                <button
+                  type="button"
+                  role="menuitem"
+                  data-testid="sidebar-new-workspace-btn"
+                  onClick={() => {
+                    setShowWorkspaceMenu(false);
+                    onOpenCreateProject();
+                  }}
+                  className="w-full h-9 px-2.5 rounded-[8px] flex items-center gap-2 text-label font-medium text-foreground hover:bg-surface2 transition-colors"
+                >
+                  <FolderPlus className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                  <span>New Workspace…</span>
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Primary Navigation Items (36px rows) */}

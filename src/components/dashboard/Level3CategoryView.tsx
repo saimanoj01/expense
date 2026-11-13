@@ -1,7 +1,13 @@
 import React, { useState, useMemo } from 'react';
-import { motion } from 'framer-motion';
-import { ArrowRight, Search, Plus, Edit2, Trash2 } from 'lucide-react';
-import { Transaction, Category, Budget, SpendingBucket, MonthlyLock, DEFAULT_CATEGORIES } from '../../services/storage';
+import { ArrowRight, ChevronRight, Search, Plus, Edit2, Trash2 } from 'lucide-react';
+import {
+  DEFAULT_CATEGORIES,
+  type Transaction,
+  type Category,
+  type Budget,
+  type SpendingBucket,
+  type MonthlyLock,
+} from '../../services/storage';
 import { useNavigation } from '../../hooks/useNavigation';
 import { formatMoney, splitMoneyParts } from '../../utils/formatters';
 import {
@@ -11,9 +17,9 @@ import {
   getCategoryAliasOptions,
   resolveEffectiveCategoryBudget,
 } from '../../utils/metrics';
+import { normalizeMerchantPayee } from '../../utils/trendsAnalytics';
 import { DailySpendTimeline } from './DailySpendTimeline';
 import { BUCKETS, bucketColor, negativeColor } from '../../theme/buckets';
-import { spring } from '../../theme/motion';
 import { RollingNumber } from '../motion/RollingNumber';
 import {
   resolveTransactionAccount,
@@ -29,6 +35,7 @@ export interface Level3CategoryViewProps {
   categories: Category[];
   budgets: Budget[];
   locks?: MonthlyLock[];
+  activeMonthsCount?: number;
   onOpenAddTxn: () => void;
   onEditTxn?: (txn: Transaction) => void;
   onDeleteTxn?: (id: string) => void;
@@ -56,20 +63,25 @@ export const Level3CategoryView: React.FC<Level3CategoryViewProps> = ({
   categories,
   budgets,
   locks = [],
+  activeMonthsCount = 1,
   onOpenAddTxn,
   onEditTxn,
   onDeleteTxn,
   className = '',
 }) => {
-  const { navigate } = useNavigation();
+  const { currentRoute, navigate } = useNavigation();
   const [searchTerm, setSearchTerm] = useState('');
   const isCategoryMonthLocked =
     month !== 'all' && isTransactionMonthLocked(`${month}-01`, locks);
+  const periodMultiplier = month === 'all' ? Math.max(1, activeMonthsCount || 1) : 1;
 
-  const effectiveCategories = useMemo(
-    () => (categories.length > 0 ? categories : DEFAULT_CATEGORIES),
-    [categories]
-  );
+  const effectiveCategories = useMemo(() => {
+    const map = new Map<string, Category>();
+    DEFAULT_CATEGORIES.forEach(c => map.set(c.id, c));
+    categories.forEach(c => map.set(c.id, c));
+    return Array.from(map.values());
+  }, [categories]);
+
   const aliasOpts = useMemo(
     () => getCategoryAliasOptions(effectiveCategories),
     [effectiveCategories]
@@ -97,19 +109,55 @@ export const Level3CategoryView: React.FC<Level3CategoryViewProps> = ({
     };
   }, [categories, categoryId, aliasOpts, defaultAliasOpts]);
 
-  const bucketId: SpendingBucket = useMemo(
+  const derivedBucketId: SpendingBucket = useMemo(
     () => deriveCategoryBucket(category.id || category.name, category),
     [category]
   );
 
-  const bucketRouteSlug = bucketId === 'flexible' ? 'variable' : bucketId;
-  const bucketLabel = BUCKETS[bucketId]?.label || 'Variable';
-  const accentColor = bucketColor(bucketId);
+  // Respect source bucket (?fromBucket=) when drilled in from Level2BucketView
+  const { bucketRouteSlug, bucketLabel, accentColor } = useMemo(() => {
+    const rawFrom = currentRoute.bucketId?.toLowerCase();
+    if (rawFrom === 'fixed') {
+      return {
+        bucketRouteSlug: 'fixed',
+        bucketLabel: BUCKETS.fixed.label,
+        accentColor: bucketColor('fixed'),
+      };
+    }
+    if (rawFrom === 'variable' || rawFrom === 'flexible') {
+      return {
+        bucketRouteSlug: 'variable',
+        bucketLabel: BUCKETS.flexible.label,
+        accentColor: bucketColor('flexible'),
+      };
+    }
+    if (rawFrom === 'non-monthly' || rawFrom === 'nonmonthly' || rawFrom === 'irregular') {
+      return {
+        bucketRouteSlug: 'non-monthly',
+        bucketLabel: BUCKETS['non-monthly'].label,
+        accentColor: bucketColor('non-monthly'),
+      };
+    }
+    if (rawFrom === 'income' || rawFrom === 'inflow') {
+      return {
+        bucketRouteSlug: 'income',
+        bucketLabel: 'Income & saved',
+        accentColor: bucketColor('saved'),
+      };
+    }
+    return {
+      bucketRouteSlug: derivedBucketId === 'flexible' ? 'variable' : derivedBucketId,
+      bucketLabel: BUCKETS[derivedBucketId]?.label || 'Variable',
+      accentColor: bucketColor(derivedBucketId),
+    };
+  }, [currentRoute.bucketId, derivedBucketId]);
 
-  const budget = useMemo(() => {
+  const monthlyBudget = useMemo(() => {
     return resolveEffectiveCategoryBudget(category.id, budgets, effectiveCategories)
       .effectiveBudget;
   }, [budgets, category.id, effectiveCategories]);
+
+  const budget = monthlyBudget * periodMultiplier;
 
   const childSubCats = useMemo(
     () => effectiveCategories.filter(c => c.parentId === category.id),
@@ -138,15 +186,22 @@ export const Level3CategoryView: React.FC<Level3CategoryViewProps> = ({
     });
   }, [transactions, month, category, aliasOpts, childSubCats]);
 
-  const totalSpent = useMemo(() => {
-    return Math.max(
-      0,
-      categoryTransactions.reduce(
-        (sum, t) =>
-          sum + (isRefundTransaction(t) ? -(Number(t.amount) || 0) : Number(t.amount) || 0),
-        0
-      )
-    );
+  const { totalSpent, categoryRefundTotal } = useMemo(() => {
+    let rawNet = 0;
+    let refunds = 0;
+    for (const t of categoryTransactions) {
+      const amt = Number(t.amount) || 0;
+      if (isRefundTransaction(t)) {
+        rawNet -= amt;
+        refunds += amt;
+      } else {
+        rawNet += amt;
+      }
+    }
+    return {
+      totalSpent: Math.max(0, rawNet),
+      categoryRefundTotal: refunds,
+    };
   }, [categoryTransactions]);
 
   const remainingBudget = Math.max(0, budget - totalSpent);
@@ -169,20 +224,25 @@ export const Level3CategoryView: React.FC<Level3CategoryViewProps> = ({
 
   // Top 5 merchants (net of refunds)
   const merchantBreakdown = useMemo(() => {
-    const map: Record<string, { name: string; amount: number; count: number }> = {};
+    const map: Record<string, { name: string; hasMixedCase: boolean; amount: number; count: number }> = {};
 
     categoryTransactions.forEach(t => {
-      let payee = (t.description || 'Other').trim();
-      payee = payee.replace(/\s+#\d+$/, '').replace(/\s+\d{2}\/\d{2}$/, '');
-      if (!payee) payee = 'Unspecified Payee';
+      const cleaned = normalizeMerchantPayee(t.description || 'Other');
+      const payee = cleaned === 'Unspecified' ? 'Unspecified Payee' : cleaned;
+      const key = payee.toLowerCase();
+      const isMixed = payee !== payee.toLowerCase() && payee !== payee.toUpperCase();
 
-      if (!map[payee]) {
-        map[payee] = { name: payee, amount: 0, count: 0 };
+      if (!map[key]) {
+        map[key] = { name: payee, hasMixedCase: isMixed, amount: 0, count: 0 };
+      } else if (!map[key].hasMixedCase && isMixed) {
+        map[key].name = payee;
+        map[key].hasMixedCase = true;
       }
+
       const amt = Number(t.amount) || 0;
-      map[payee].amount += isRefundTransaction(t) ? -amt : amt;
+      map[key].amount += isRefundTransaction(t) ? -amt : amt;
       if (!isRefundTransaction(t)) {
-        map[payee].count += 1;
+        map[key].count += 1;
       }
     });
 
@@ -224,6 +284,10 @@ export const Level3CategoryView: React.FC<Level3CategoryViewProps> = ({
   }, [filteredTxns]);
 
   const heroParts = splitMoneyParts(totalSpent);
+  const allTimeSuffix =
+    month === 'all'
+      ? ` across ${periodMultiplier} active mo${periodMultiplier === 1 ? '' : 's'}`
+      : '';
 
   if (categories.length > 0 && !isKnownCategory && categoryTransactions.length === 0 && budget === 0) {
     return (
@@ -252,17 +316,11 @@ export const Level3CategoryView: React.FC<Level3CategoryViewProps> = ({
       data-testid="level3-category-view"
       className={`max-w-[1120px] mx-auto space-y-6 pb-6 ${className}`}
     >
-      {/* Bare Category Hero */}
+      {/* Bare Category Hero (DRL-01: clean layout with zero cross-route layoutId collision) */}
       <div className="space-y-3 pt-1">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-full bg-surface2 flex items-center justify-center text-xl shrink-0">
-            <motion.span
-              layoutId={`cat-emoji-${category.id}`}
-              layout="position"
-              transition={spring}
-            >
-              {category.emoji}
-            </motion.span>
+            <span>{category.emoji}</span>
           </div>
           <div className="min-w-0">
             <div className="flex items-center gap-2 text-label text-muted-foreground">
@@ -285,15 +343,12 @@ export const Level3CategoryView: React.FC<Level3CategoryViewProps> = ({
           </div>
         </div>
 
-        <motion.div
-          layoutId={`cat-amount-${category.id}`}
-          layout="position"
-          transition={spring}
+        <div
           data-testid="category-total-spent"
           className="text-[36px] leading-[40px] sm:text-display-l font-semibold tracking-tight tabular-nums num text-foreground"
         >
           <RollingNumber value={heroParts.whole} srSuffix={heroParts.cents} />
-        </motion.div>
+        </div>
 
         {budget > 0 ? (
           <div className="space-y-2">
@@ -303,8 +358,8 @@ export const Level3CategoryView: React.FC<Level3CategoryViewProps> = ({
               }`}
             >
               {isOverBudget
-                ? `${formatMoney(totalSpent - budget)} over ${formatMoney(budget)} budget`
-                : `${formatMoney(remainingBudget)} left of ${formatMoney(budget)}${
+                ? `${formatMoney(totalSpent - budget)} over ${formatMoney(budget)} budget${allTimeSuffix}`
+                : `${formatMoney(remainingBudget)} left of ${formatMoney(budget)}${allTimeSuffix}${
                     daysToGo !== null ? ` · ${daysToGo} day${daysToGo === 1 ? '' : 's'} to go` : ''
                   }`}
             </p>
@@ -328,12 +383,13 @@ export const Level3CategoryView: React.FC<Level3CategoryViewProps> = ({
         ) : (
           <p className="text-body text-muted-foreground">
             {categoryTransactions.length} transaction
-            {categoryTransactions.length !== 1 ? 's' : ''} this month
+            {categoryTransactions.length !== 1 ? 's' : ''}{' '}
+            {month === 'all' ? 'recorded' : 'this month'}
           </p>
         )}
       </div>
 
-      {/* Daily Bars Chart */}
+      {/* Daily / Monthly Bars Chart */}
       <div className="pt-4 border-t border-border">
         <DailySpendTimeline
           month={month}
@@ -348,29 +404,54 @@ export const Level3CategoryView: React.FC<Level3CategoryViewProps> = ({
         data-testid="top-merchants-breakdown"
         className="pt-4 border-t border-border space-y-2"
       >
-        <h3 className="text-heading text-foreground">Where</h3>
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="text-heading text-foreground">Where</h3>
+          {categoryRefundTotal > 0 && (
+            <span className="text-label text-bucket-saved tabular-nums num">
+              Refunds credited: −{formatMoney(categoryRefundTotal)}
+            </span>
+          )}
+        </div>
         {merchantBreakdown.length === 0 ? (
           <p className="text-body text-muted-foreground py-2">
-            No merchants recorded this month.
+            No merchants recorded {month === 'all' ? 'in this period' : 'this month'}.
           </p>
         ) : (
           <div className="divide-y divide-border/60">
-            {merchantBreakdown.map(m => (
-              <div
-                key={m.name}
-                className="min-h-[44px] py-2 flex items-center justify-between gap-3 text-body"
-              >
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="font-medium text-foreground truncate">{m.name}</span>
-                  <span className="text-label text-muted-foreground tabular-nums num shrink-0">
-                    {m.count} {m.count === 1 ? 'time' : 'times'}
-                  </span>
-                </div>
-                <span className="font-semibold text-foreground tabular-nums num shrink-0">
-                  {formatMoney(m.amount)}
-                </span>
-              </div>
-            ))}
+            {merchantBreakdown.map((m, idx) => {
+              const qParam =
+                m.name === 'Unspecified Payee'
+                  ? ''
+                  : `&q=${encodeURIComponent(m.name)}`;
+              return (
+                <button
+                  key={m.name}
+                  type="button"
+                  data-testid={`category-merchant-btn-${idx}`}
+                  onClick={() =>
+                    navigate(
+                      `#/transactions?month=${month}&cat=${encodeURIComponent(
+                        category.id
+                      )}${qParam}`
+                    )
+                  }
+                  className="w-full min-h-[44px] py-2 px-2 -mx-2 rounded-[10px] hover:bg-surface2 transition-colors flex items-center justify-between gap-3 text-body text-left focus-visible:ring-2 ring-ring/40"
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="font-medium text-foreground truncate">{m.name}</span>
+                    <span className="text-label text-muted-foreground tabular-nums num shrink-0">
+                      {m.count} {m.count === 1 ? 'time' : 'times'}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="font-semibold text-foreground tabular-nums num">
+                      {formatMoney(m.amount)}
+                    </span>
+                    <ChevronRight className="w-4 h-4 text-faint" />
+                  </div>
+                </button>
+              );
+            })}
           </div>
         )}
       </div>
@@ -525,7 +606,11 @@ export const Level3CategoryView: React.FC<Level3CategoryViewProps> = ({
           <button
             type="button"
             data-testid="view-category-ledger-btn"
-            onClick={() => navigate(`#/month/${month}/category/${category.id}/transactions`)}
+            onClick={() =>
+              navigate(
+                `#/month/${month}/category/${encodeURIComponent(category.id)}/transactions`
+              )
+            }
             className="inline-flex items-center gap-1.5 text-body font-medium text-muted-foreground hover:text-foreground transition-colors focus-visible:ring-2 ring-ring/40 rounded px-1 -mx-1"
           >
             <span>Open in Transactions</span>

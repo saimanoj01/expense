@@ -78,7 +78,7 @@ export function CreateProjectModal({ showModal, onClose, onCreate }: CreateProje
             type="submit"
             disabled={loading}
             data-testid="project-submit-btn"
-            className="px-4 py-2 rounded-xl bg-primary text-primary-foreground font-bold hover:bg-primary/90 shadow-lg shadow-primary/20"
+            className="px-4 py-2 rounded-xl bg-primary text-primary-foreground font-semibold hover:opacity-90 transition-opacity"
           >
             {loading ? 'Creating...' : 'Create'}
           </button>

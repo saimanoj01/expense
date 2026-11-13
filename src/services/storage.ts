@@ -510,6 +510,7 @@ export class LocalStorageAdapter implements StorageAdapter {
     localStorage.removeItem(`expense_budget_notes_${projectId}`);
     localStorage.removeItem(`expense_deleted_categories_${projectId}`);
     localStorage.removeItem(`expense_category_defaults_${projectId}`);
+    localStorage.removeItem(`expense_ingest_state_${projectId}`);
   }
 
   async getTransactions(projectId: string): Promise<Transaction[]> {

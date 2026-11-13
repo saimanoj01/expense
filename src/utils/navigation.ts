@@ -1,6 +1,19 @@
-import { AppRoute, BreadcrumbItem } from '../types/navigation';
-import { Category, SpendingBucket, DEFAULT_CATEGORIES } from '../services/storage';
+import type { AppRoute, BreadcrumbItem } from '../types/navigation';
+import { DEFAULT_CATEGORIES, type Category, type SpendingBucket } from '../services/storage';
 import { suggestSpendingBucket } from './categorizer';
+import { doesBudgetMatchCategory, getCategoryAliasOptions } from './metrics';
+
+function findCategoryCaseInsensitive(
+  categoryId: string,
+  categories: Category[] = []
+): Category | undefined {
+  const allCats = [...categories, ...DEFAULT_CATEGORIES];
+  const aliasOpts = getCategoryAliasOptions(allCats);
+  return (
+    categories.find(c => doesBudgetMatchCategory(categoryId, c, aliasOpts)) ||
+    DEFAULT_CATEGORIES.find(c => doesBudgetMatchCategory(categoryId, c, aliasOpts))
+  );
+}
 
 export function getCurrentLocalMonth(): string {
   const now = new Date();
@@ -144,10 +157,26 @@ export function parseHash(hashString: string, fallbackMonth: string = getCurrent
     } catch {
       categoryId = rest[1];
     }
+    const rawFromBucket = queryParams.get('fromBucket')?.toLowerCase();
+    const validFromBucket =
+      rawFromBucket && VALID_BUCKETS.has(rawFromBucket) ? rawFromBucket : undefined;
     if (rest[2] === 'transactions') {
-      return { view: 'transactions', level: 4, month, categoryId, isCategoryTransactions: true };
+      return {
+        view: 'transactions',
+        level: 4,
+        month,
+        categoryId,
+        isCategoryTransactions: true,
+        ...(validFromBucket ? { bucketId: validFromBucket } : {}),
+      };
     }
-    return { view: 'category', level: 3, month, categoryId };
+    return {
+      view: 'category',
+      level: 3,
+      month,
+      categoryId,
+      ...(validFromBucket ? { bucketId: validFromBucket } : {}),
+    };
   }
 
   return { view: 'overview', level: 1, month };
@@ -167,11 +196,17 @@ export function routeToHash(route: AppRoute, defaultMonth: string = getCurrentLo
       return `#/settings?month=${month}`;
     case 'transactions':
       if (route.categoryId && route.isCategoryTransactions) {
-        return `#/month/${month}/category/${route.categoryId}/transactions`;
+        return `#/month/${month}/category/${encodeURIComponent(route.categoryId)}/transactions`;
       }
       return `#/transactions?month=${month}`;
-    case 'category':
-      return `#/month/${month}/category/${route.categoryId || 'misc'}`;
+    case 'category': {
+      const encodedCat = encodeURIComponent(route.categoryId || 'misc');
+      const bucketQuery =
+        route.bucketId && VALID_BUCKETS.has(route.bucketId.toLowerCase())
+          ? `?fromBucket=${route.bucketId.toLowerCase()}`
+          : '';
+      return `#/month/${month}/category/${encodedCat}${bucketQuery}`;
+    }
     case 'bucket':
       return `#/month/${month}/bucket/${route.bucketId || 'variable'}`;
     case 'overview':
@@ -190,7 +225,13 @@ export function computeParentRoute(route: AppRoute, categories: Category[] = [])
 
   // Level 4: category transactions -> Level 3 category
   if (route.view === 'transactions' && route.categoryId) {
-    return { view: 'category', level: 3, month, categoryId: route.categoryId };
+    return {
+      view: 'category',
+      level: 3,
+      month,
+      categoryId: route.categoryId,
+      ...(route.bucketId ? { bucketId: route.bucketId } : {}),
+    };
   }
 
   // Level 4: month transactions -> Level 1 overview
@@ -200,8 +241,12 @@ export function computeParentRoute(route: AppRoute, categories: Category[] = [])
 
   // Level 3: category -> Level 2 bucket
   if (route.view === 'category' && route.categoryId) {
-    const cat = categories.find(c => c.id === route.categoryId) || DEFAULT_CATEGORIES.find(c => c.id === route.categoryId);
-    const bucketId: SpendingBucket = cat?.defaultBucket || suggestSpendingBucket('', route.categoryId);
+    if (route.bucketId && VALID_BUCKETS.has(route.bucketId.toLowerCase())) {
+      return { view: 'bucket', level: 2, month, bucketId: route.bucketId.toLowerCase() };
+    }
+    const cat = findCategoryCaseInsensitive(route.categoryId, categories);
+    const bucketId: SpendingBucket =
+      cat?.defaultBucket || suggestSpendingBucket('', cat?.id || route.categoryId);
     return { view: 'bucket', level: 2, month, bucketId };
   }
 
@@ -273,9 +318,10 @@ export function buildBreadcrumbs(
   let bucketId = route.bucketId;
   let category: Category | undefined;
   if (route.categoryId) {
-    category = categories.find(c => c.id === route.categoryId) || DEFAULT_CATEGORIES.find(c => c.id === route.categoryId);
+    category = findCategoryCaseInsensitive(route.categoryId, categories);
     if (!bucketId) {
-      bucketId = category?.defaultBucket || suggestSpendingBucket('', route.categoryId);
+      bucketId =
+        category?.defaultBucket || suggestSpendingBucket('', category?.id || route.categoryId);
     }
   }
 
@@ -297,7 +343,13 @@ export function buildBreadcrumbs(
 
   // Level 3 Category
   if (route.categoryId) {
-    const categoryRoute: AppRoute = { view: 'category', level: 3, month, categoryId: route.categoryId, bucketId };
+    const categoryRoute: AppRoute = {
+      view: 'category',
+      level: 3,
+      month,
+      categoryId: route.categoryId,
+      ...(route.bucketId ? { bucketId: route.bucketId } : {}),
+    };
     const catName = category ? `${category.emoji ? category.emoji + ' ' : ''}${category.name}` : route.categoryId;
     const isCurrent = route.view === 'category';
 

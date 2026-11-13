@@ -1,6 +1,7 @@
 import { Sun, Moon, Search } from 'lucide-react';
 import { Project } from '../../services/storage';
 import { useNavigation } from '../../hooks/useNavigation';
+import { getCurrentLocalMonth } from '../../utils/navigation';
 
 interface UserProfile {
   name?: string;
@@ -25,21 +26,24 @@ export function Navbar({
   toggleTheme,
   onOpenCommandPalette,
 }: NavbarProps) {
-  const { navigate } = useNavigation();
+  const { currentRoute, navigate } = useNavigation();
   const isAuthenticated = !!user;
+  const activeMonth = currentRoute.month || getCurrentLocalMonth();
 
   // On desktop (>=768px), Sidebar is the sole chrome when authenticated.
   // On mobile (<768px), render a clean 52px top bar with zero overflow.
   return (
     <header
-      className={`shrink-0 sticky top-0 z-30 h-[52px] border-b border-border bg-background/85 backdrop-blur-md px-4 flex items-center justify-between gap-2 ${
+      className={`print:hidden shrink-0 sticky top-0 z-30 h-[52px] border-b border-border bg-background/85 backdrop-blur-md px-4 flex items-center justify-between gap-2 ${
         isAuthenticated ? 'md:hidden' : ''
       }`}
     >
       {/* Left: Workspace initial + name */}
       <button
         type="button"
-        onClick={() => isAuthenticated && activeProject && navigate('#/settings')}
+        onClick={() =>
+          isAuthenticated && activeProject && navigate(`#/settings?month=${activeMonth}`)
+        }
         className="flex items-center gap-2 min-w-0 text-left focus-visible:ring-2 ring-ring/40 rounded-[10px]"
       >
         <div className="w-7 h-7 rounded-[8px] bg-surface2 border border-border text-foreground flex items-center justify-center font-semibold text-label shrink-0">
