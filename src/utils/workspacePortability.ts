@@ -594,9 +594,19 @@ export async function restoreWorkspaceSnapshot(
   const originalLocks: MonthlyLock[] = currentLocks.map(l => ({ ...l }));
 
   // 1. Temporarily unlock all currently locked months so note deletions/saves never fail
-  for (const lk of originalLocks) {
-    if (lk.locked) {
-      await storageAdapter.saveLock(projectId, { month: lk.month, locked: false });
+  const hasLockedMonths = originalLocks.some(lk => lk.locked);
+  if (hasLockedMonths) {
+    if (storageAdapter.saveLocks) {
+      await storageAdapter.saveLocks(
+        projectId,
+        originalLocks.map(lk => ({ month: lk.month, locked: false }))
+      );
+    } else {
+      for (const lk of originalLocks) {
+        if (lk.locked) {
+          await storageAdapter.saveLock(projectId, { month: lk.month, locked: false });
+        }
+      }
     }
   }
 
@@ -611,27 +621,40 @@ export async function restoreWorkspaceSnapshot(
 
   // 3. Sync notes when included in snapshot
   if (includedSections.notes) {
-    for (const key of Object.keys(currentNotes || {})) {
-      if (key.startsWith('__meta_')) continue;
-      if (!Object.prototype.hasOwnProperty.call(snapshot.notes, key)) {
-        await storageAdapter.deleteBudgetNote(projectId, key);
-      }
-    }
+    const cleanSnapshotNotes: Record<string, BudgetNote> = {};
     for (const [key, note] of Object.entries(snapshot.notes)) {
       if (key.startsWith('__meta_')) continue;
-      await storageAdapter.saveBudgetNote(projectId, key, note);
+      cleanSnapshotNotes[key] = note;
+    }
+    if (storageAdapter.saveBudgetNotes) {
+      await storageAdapter.saveBudgetNotes(projectId, cleanSnapshotNotes, { ignoreLocks: true });
+    } else {
+      for (const key of Object.keys(currentNotes || {})) {
+        if (key.startsWith('__meta_')) continue;
+        if (!Object.prototype.hasOwnProperty.call(cleanSnapshotNotes, key)) {
+          await storageAdapter.deleteBudgetNote(projectId, key);
+        }
+      }
+      for (const [key, note] of Object.entries(cleanSnapshotNotes)) {
+        await storageAdapter.saveBudgetNote(projectId, key, note);
+      }
     }
   }
 
   // 4. Sync categories when included and non-empty
   if (includedSections.categories && snapshot.categories.length > 0) {
-    const snapCatIds = new Set(snapshot.categories.map(c => c.id));
-    for (const cat of snapshot.categories) {
-      await storageAdapter.saveCategory(projectId, normalizeCategoryRecord(cat));
-    }
-    for (const existing of currentCats) {
-      if (!snapCatIds.has(existing.id)) {
-        await storageAdapter.deleteCategory(projectId, existing.id);
+    const normalizedCategories = snapshot.categories.map(normalizeCategoryRecord);
+    if (storageAdapter.saveCategories) {
+      await storageAdapter.saveCategories(projectId, normalizedCategories);
+    } else {
+      const snapCatIds = new Set(normalizedCategories.map(c => c.id));
+      for (const cat of normalizedCategories) {
+        await storageAdapter.saveCategory(projectId, cat);
+      }
+      for (const existing of currentCats) {
+        if (!snapCatIds.has(existing.id)) {
+          await storageAdapter.deleteCategory(projectId, existing.id);
+        }
       }
     }
   }
@@ -657,17 +680,34 @@ export async function restoreWorkspaceSnapshot(
   const targetLocks = includedSections.locks ? snapshot.locks : originalLocks;
   const targetLockMap = new Map(targetLocks.map(l => [l.month, l]));
 
-  for (const orig of originalLocks) {
-    if (!targetLockMap.has(orig.month)) {
-      await storageAdapter.saveLock(projectId, { month: orig.month, locked: false });
+  if (storageAdapter.saveLocks) {
+    const finalLocks: MonthlyLock[] = [];
+    for (const orig of originalLocks) {
+      if (!targetLockMap.has(orig.month)) {
+        finalLocks.push({ month: orig.month, locked: false });
+      }
     }
-  }
-  for (const tl of targetLocks) {
-    await storageAdapter.saveLock(projectId, {
-      month: tl.month,
-      locked: Boolean(tl.locked),
-      ...(tl.lockedAt ? { lockedAt: tl.lockedAt } : {}),
-    });
+    for (const tl of targetLocks) {
+      finalLocks.push({
+        month: tl.month,
+        locked: Boolean(tl.locked),
+        ...(tl.lockedAt ? { lockedAt: tl.lockedAt } : {}),
+      });
+    }
+    await storageAdapter.saveLocks(projectId, finalLocks);
+  } else {
+    for (const orig of originalLocks) {
+      if (!targetLockMap.has(orig.month)) {
+        await storageAdapter.saveLock(projectId, { month: orig.month, locked: false });
+      }
+    }
+    for (const tl of targetLocks) {
+      await storageAdapter.saveLock(projectId, {
+        month: tl.month,
+        locked: Boolean(tl.locked),
+        ...(tl.lockedAt ? { lockedAt: tl.lockedAt } : {}),
+      });
+    }
   }
 
   storageAdapter.invalidateCache?.(projectId);
@@ -685,9 +725,18 @@ export async function clearWorkspaceData(
 
   const originalLocks: MonthlyLock[] = currentLocks.map(l => ({ ...l }));
 
-  for (const lk of originalLocks) {
-    if (lk.locked) {
-      await storageAdapter.saveLock(projectId, { month: lk.month, locked: false });
+  if (originalLocks.some(lk => lk.locked)) {
+    if (storageAdapter.saveLocks) {
+      await storageAdapter.saveLocks(
+        projectId,
+        originalLocks.map(lk => ({ month: lk.month, locked: false }))
+      );
+    } else {
+      for (const lk of originalLocks) {
+        if (lk.locked) {
+          await storageAdapter.saveLock(projectId, { month: lk.month, locked: false });
+        }
+      }
     }
   }
 
@@ -699,9 +748,13 @@ export async function clearWorkspaceData(
     );
   }
 
-  for (const key of Object.keys(currentNotes || {})) {
-    if (key.startsWith('__meta_')) continue;
-    await storageAdapter.deleteBudgetNote(projectId, key);
+  if (storageAdapter.saveBudgetNotes) {
+    await storageAdapter.saveBudgetNotes(projectId, {}, { ignoreLocks: true });
+  } else {
+    for (const key of Object.keys(currentNotes || {})) {
+      if (key.startsWith('__meta_')) continue;
+      await storageAdapter.deleteBudgetNote(projectId, key);
+    }
   }
 
   await storageAdapter.saveBudgets(projectId, []);

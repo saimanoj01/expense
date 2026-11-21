@@ -48,6 +48,7 @@ import { useTransactions } from './hooks/useTransactions';
 import { useBudgets } from './hooks/useBudgets';
 import { useCsvImport } from './hooks/useCsvImport';
 import { showToast } from './utils/toast';
+import { isTransactionNeedsReview, isTransactionPending } from './utils/transactionTaxonomy';
 
 interface MainRouterProps {
   activeProject: Project;
@@ -56,7 +57,10 @@ interface MainRouterProps {
   selectProject: (projectId: string | null) => void;
   renameProject: (projectId: string, newName: string) => Promise<Project>;
   deleteProjectById: (projectId: string) => Promise<void>;
-  refreshProjectData: () => Promise<void>;
+  refreshProjectData: (options?: { forceRemote?: boolean; silent?: boolean }) => Promise<void>;
+  isRefreshing?: boolean;
+  lastSyncAt?: string | null;
+  isSyncStale?: boolean;
   setShowCreateModal: (v: boolean) => void;
   txnHooks: ReturnType<typeof useTransactions>;
   budgetHooks: ReturnType<typeof useBudgets>;
@@ -92,6 +96,9 @@ function MainRouter({
   renameProject,
   deleteProjectById,
   refreshProjectData,
+  isRefreshing = false,
+  lastSyncAt = null,
+  isSyncStale = false,
   setShowCreateModal,
   txnHooks,
   budgetHooks,
@@ -129,6 +136,16 @@ function MainRouter({
       isLockedMonth={isCurrentMonthLocked}
       onLockMonth={handleLockCurrentMonth}
       onUnlockMonth={handleUnlockCurrentMonth}
+      onRefresh={
+        isMockMode
+          ? undefined
+          : () => {
+              void refreshProjectData({ forceRemote: true });
+            }
+      }
+      isRefreshing={isRefreshing}
+      lastSyncAt={lastSyncAt}
+      isSyncStale={isSyncStale}
     />
   );
 
@@ -148,6 +165,7 @@ function MainRouter({
         categories={budgetHooks.categories}
         budgets={budgetHooks.budgets}
         activeMonthsCount={budgetHooks.activeMonthsCount}
+        isLockedMonth={isCurrentMonthLocked}
         onOpenAddTxn={handleOpenAddTxn}
       />
     );
@@ -555,6 +573,16 @@ function AppInner() {
   }, [activeProject?.id]);
 
   const [categories, setCategories] = useState<Category[]>([]);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
+  const refreshSeqRef = useRef(0);
+  const hiddenSinceRef = useRef<number | null>(null);
+
+  // Reset shadow categories & sync metadata immediately on workspace switch
+  useEffect(() => {
+    setCategories([]);
+    setLastSyncAt(null);
+  }, [activeProject?.id]);
 
   // Hooks
   const txnHooks = useTransactions(storageAdapter, activeProject, locks, showToast, categories);
@@ -571,19 +599,85 @@ function AppInner() {
   );
 
   useEffect(() => {
-    if (budgetHooks.categories && budgetHooks.categories.length > 0) {
-      setCategories(budgetHooks.categories);
-    }
+    setCategories(budgetHooks.categories || []);
   }, [budgetHooks.categories]);
 
-  const refreshProjectData = async () => {
+  const refreshProjectData = async (options?: { forceRemote?: boolean; silent?: boolean }) => {
     if (!isAuthenticated || !activeProject || !storageAdapter) return;
-    await Promise.all([
-      txnHooks.refreshTransactions(),
-      budgetHooks.refreshBudgetsAndCategories(),
-      storageAdapter.getLocks(activeProject.id).then(setLocks).catch(console.error)
-    ]);
+    const seq = ++refreshSeqRef.current;
+    const projectId = activeProject.id;
+    if (options?.forceRemote) {
+      storageAdapter.invalidateCache?.(projectId);
+    }
+    setIsRefreshing(true);
+    try {
+      const throwOnError = Boolean(options?.forceRemote);
+      const ingestPromise =
+        typeof storageAdapter.getIngestState === 'function'
+          ? storageAdapter.getIngestState(projectId).catch(() => null)
+          : Promise.resolve(null);
+      const locksPromise = storageAdapter.getLocks(projectId).catch(err => {
+        console.error(err);
+        if (throwOnError) throw err;
+        return null;
+      });
+      const [, , fetchedLocks, fetchedIngest] = await Promise.all([
+        txnHooks.refreshTransactions({ throwOnError }),
+        budgetHooks.refreshBudgetsAndCategories({ throwOnError }),
+        locksPromise,
+        ingestPromise,
+      ]);
+      if (refreshSeqRef.current !== seq) return;
+      if (fetchedLocks) setLocks(fetchedLocks);
+      if (fetchedIngest) {
+        const sourceTimes = Object.values(fetchedIngest.sources || {})
+          .map(s => s?.lastSyncAt)
+          .filter((v): v is string => typeof v === 'string' && v.length > 0);
+        const runTimes = (fetchedIngest.recentRuns || [])
+          .map(r => r?.timestamp)
+          .filter((v): v is string => typeof v === 'string' && v.length > 0);
+        const allTimes = [...sourceTimes, ...runTimes].sort();
+        setLastSyncAt(allTimes.length > 0 ? allTimes[allTimes.length - 1] : null);
+      }
+      if (options?.forceRemote && !options?.silent) {
+        showToast('Workspace synced');
+      }
+    } catch (err: unknown) {
+      if (refreshSeqRef.current !== seq) return;
+      if (options?.forceRemote && !options?.silent) {
+        showToast(err instanceof Error ? err.message : 'Failed to refresh workspace', 'error');
+      }
+    } finally {
+      if (refreshSeqRef.current === seq) {
+        setIsRefreshing(false);
+      }
+    }
   };
+
+  const isSyncStale = Boolean(
+    lastSyncAt &&
+      Number.isFinite(Date.parse(lastSyncAt)) &&
+      Date.now() - Date.parse(lastSyncAt) > 36 * 60 * 60 * 1000
+  );
+
+  // Auto-refresh from Google Sheets when returning to a tab hidden for >60s
+  useEffect(() => {
+    if (!isAuthenticated || !activeProject || isMockMode) return;
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        hiddenSinceRef.current = Date.now();
+      } else if (document.visibilityState === 'visible') {
+        const hiddenAt = hiddenSinceRef.current;
+        hiddenSinceRef.current = null;
+        if (hiddenAt && Date.now() - hiddenAt > 60_000) {
+          void refreshProjectData({ forceRemote: true, silent: true });
+        }
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated, activeProject?.id, isMockMode, storageAdapter]);
 
   const csvHooks = useCsvImport(
     txnHooks.transactions,
@@ -707,13 +801,28 @@ function AppInner() {
 
   const handleLockCurrentMonth = async () => {
     if (!activeProject || !storageAdapter) return;
+    if (!txnHooks.selectedMonth || txnHooks.selectedMonth === 'all') {
+      showToast('Select a specific month before locking.', 'error');
+      return;
+    }
     const now = Date.now();
     if (now - lockActionCooldownRef.current < 300) return;
     lockActionCooldownRef.current = now;
     try {
+      const pendingInMonth = txnHooks.monthTransactions.filter(t => isTransactionPending(t)).length;
+      const reviewInMonth = txnHooks.monthTransactions.filter(t =>
+        isTransactionNeedsReview(t, txnHooks.duplicateTxnIds)
+      ).length;
       await storageAdapter.saveLock(activeProject.id, { month: txnHooks.selectedMonth, locked: true, lockedAt: new Date().toISOString() });
       setSelectedTxnIds(new Set());
-      showToast(`Month ${txnHooks.selectedMonth} locked.`);
+      const cautions: string[] = [];
+      if (pendingInMonth > 0) cautions.push(`${pendingInMonth} pending`);
+      if (reviewInMonth > 0) cautions.push(`${reviewInMonth} needs review`);
+      showToast(
+        cautions.length > 0
+          ? `Month ${txnHooks.selectedMonth} locked (note: ${cautions.join(', ')} remaining).`
+          : `Month ${txnHooks.selectedMonth} locked.`
+      );
       refreshProjectData();
     } catch (err: unknown) {
       showToast(err instanceof Error ? err.message : 'Failed to lock month', 'error');
@@ -722,6 +831,7 @@ function AppInner() {
 
   const handleUnlockCurrentMonth = async () => {
     if (!activeProject || !storageAdapter) return;
+    if (!txnHooks.selectedMonth || txnHooks.selectedMonth === 'all') return;
     const now = Date.now();
     if (now - lockActionCooldownRef.current < 300) return;
     lockActionCooldownRef.current = now;
@@ -854,6 +964,9 @@ function AppInner() {
             renameProject={renameProject}
             deleteProjectById={deleteProjectById}
             refreshProjectData={refreshProjectData}
+            isRefreshing={isRefreshing}
+            lastSyncAt={lastSyncAt}
+            isSyncStale={isSyncStale}
             setShowCreateModal={setShowCreateModal}
             txnHooks={txnHooks}
             budgetHooks={budgetHooks}
@@ -905,7 +1018,7 @@ function AppInner() {
       </div>
 
       {isAuthenticated && activeProject && (
-        <BottomNav onOpenAddTxn={handleOpenAddTxn} />
+        <BottomNav onOpenAddTxn={handleOpenAddTxn} isLockedMonth={isCurrentMonthLocked} />
       )}
 
       {isAuthenticated && activeProject && (

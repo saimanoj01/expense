@@ -88,8 +88,8 @@ def _parse_row_dict(r):
 def load_tsv_transactions(tsv_path):
     """Load transactions from an exported Google Sheets TSV (`Transactions!A:L` or `A:K`)."""
     transactions = []
-    with open(tsv_path, "r", encoding="utf-8") as f:
-        reader = csv.reader(f, delimiter="\t")
+    with open(tsv_path, "r", encoding="utf-8-sig") as f:
+        reader = csv.reader(f, delimiter="\t", quoting=csv.QUOTE_NONE)
         header = None
         for row_idx, raw_cells in enumerate(reader, start=1):
             if row_idx == 1:
@@ -108,7 +108,7 @@ def load_tsv_transactions(tsv_path):
 
 
 def load_json_grid_transactions(json_grid_path):
-    """Load transactions from a 2D JSON grid returned by `gsheets readonly read <ID> 'Transactions!A1:L2000' --json`."""
+    """Load transactions from a 2D JSON grid returned by `gsheets readonly read <ID> 'Transactions!A:L' --json`."""
     transactions = []
     with open(json_grid_path, "r", encoding="utf-8") as f:
         payload = json.load(f)
@@ -129,7 +129,158 @@ def load_json_grid_transactions(json_grid_path):
     return transactions
 
 
-def load_storage_module(tsv_path=None, json_grid_path=None, state_file=None):
+def _load_json_grid(path):
+    with open(path, "r", encoding="utf-8") as f:
+        payload = json.load(f)
+    grid = payload.get("values", payload) if isinstance(payload, dict) else payload
+    return grid if isinstance(grid, list) else []
+
+
+def load_budgets_json(path):
+    """Load Budgets from `Budgets!A:B` JSON grid."""
+    grid = _load_json_grid(path)
+    budgets = []
+    for idx, row in enumerate(grid):
+        if not isinstance(row, list) or len(row) < 2:
+            continue
+        cat = str(row[0]).strip()
+        if idx == 0 and cat.lower() == "category":
+            continue
+        if not cat:
+            continue
+        try:
+            amt = float(str(row[1]).replace("$", "").replace(",", "").strip() or 0.0)
+        except Exception:
+            amt = 0.0
+        budgets.append({"category": cat, "amount": amt})
+    return budgets
+
+
+def load_categories_json(path, fallback_categories, deleted_ids=None):
+    """Load Categories from `Categories!A:F` JSON grid, overlaying live rows onto defaults."""
+    deleted_set = set(deleted_ids or ())
+    merged = {}
+    for fc in fallback_categories:
+        cid = fc.get("id")
+        if cid and cid not in deleted_set:
+            merged[cid] = dict(fc)
+
+    grid = _load_json_grid(path)
+    for idx, row in enumerate(grid):
+        if not isinstance(row, list) or len(row) < 2:
+            continue
+        cid = str(row[0]).strip()
+        if idx == 0 and cid.lower() == "id":
+            continue
+        if not cid:
+            continue
+        name = str(row[1]).strip() if len(row) > 1 else cid
+        color = str(row[2]).strip() if len(row) > 2 else "#ADB5BD"
+        emoji = str(row[3]).strip() if len(row) > 3 else "📦"
+        parent_id = str(row[4]).strip() or None if len(row) > 4 else None
+        default_bucket = str(row[5]).strip() or None if len(row) > 5 else None
+        if default_bucket not in ("fixed", "flexible", "non-monthly"):
+            default_bucket = None
+        cat_obj = {
+            "id": cid,
+            "name": name,
+            "color": color,
+            "emoji": emoji,
+            "parentId": parent_id,
+        }
+        if default_bucket:
+            cat_obj["defaultBucket"] = default_bucket
+        merged[cid] = cat_obj
+
+    return list(merged.values()) if merged else list(fallback_categories)
+
+
+def load_deleted_categories_from_notes_json(path):
+    """Extract `__meta_deleted_categories__` IDs from `Notes!A:B` JSON grid if present."""
+    grid = _load_json_grid(path)
+    deleted = set()
+    for row in grid:
+        if not isinstance(row, list) or len(row) < 2:
+            continue
+        if str(row[0]).strip() != "__meta_deleted_categories__":
+            continue
+        val_str = str(row[1]).strip()
+        if not val_str:
+            continue
+        try:
+            wrapper = json.loads(val_str)
+            inner = (
+                json.loads(wrapper["text"])
+                if isinstance(wrapper, dict) and "text" in wrapper
+                else wrapper
+            )
+            if isinstance(inner, list):
+                for cid in inner:
+                    if isinstance(cid, str) and cid.strip():
+                        deleted.add(cid.strip())
+        except Exception:
+            pass
+    return deleted
+
+
+def load_notes_json(path):
+    """Load user-facing Budget Notes from `Notes!A:B` JSON grid (excluding `__meta_` entries)."""
+    grid = _load_json_grid(path)
+    notes = {}
+    for idx, row in enumerate(grid):
+        if not isinstance(row, list) or len(row) < 2:
+            continue
+        key = str(row[0]).strip()
+        if idx == 0 and key.lower() == "key":
+            continue
+        if not key or key.startswith("__meta_"):
+            continue
+        val_str = str(row[1]).strip()
+        if not val_str:
+            continue
+        try:
+            parsed = json.loads(val_str)
+            if isinstance(parsed, dict):
+                notes[key] = {
+                    "text": str(parsed.get("text") or ""),
+                    "mood": parsed.get("mood"),
+                    "updatedAt": str(parsed.get("updatedAt") or ""),
+                }
+            else:
+                notes[key] = {"text": val_str, "updatedAt": ""}
+        except Exception:
+            notes[key] = {"text": val_str, "updatedAt": ""}
+    return notes
+
+
+def load_locks_json(path):
+    """Load Monthly Locks from `Locks!A:C` JSON grid."""
+    grid = _load_json_grid(path)
+    locks = []
+    for idx, row in enumerate(grid):
+        if not isinstance(row, list) or len(row) < 2:
+            continue
+        month_val = str(row[0]).strip()
+        if idx == 0 and month_val.lower() == "month":
+            continue
+        if not month_val:
+            continue
+        locked_raw = row[1]
+        is_locked = locked_raw is True or str(locked_raw).strip().lower() == "true"
+        locked_at = str(row[2]).strip() if len(row) > 2 and row[2] is not None else ""
+        locks.append({"month": month_val, "locked": is_locked, "lockedAt": locked_at})
+    return locks
+
+
+def load_storage_module(
+    tsv_path=None,
+    json_grid_path=None,
+    state_file=None,
+    budgets_json_path=None,
+    categories_json_path=None,
+    notes_json_path=None,
+    locks_json_path=None,
+):
     """Load expense data from --tsv, --json-grid, --state-file, or fallback to storage.ts seed data."""
     storage_file = os.path.join(os.getcwd(), "src", "services", "storage.ts")
     categories = list(EMBEDDED_DEFAULT_CATEGORIES)
@@ -147,14 +298,45 @@ def load_storage_module(tsv_path=None, json_grid_path=None, state_file=None):
                 if ec["id"] not in cat_ids:
                     parsed_cats.append(ec)
             categories = parsed_cats
-        budgets = extract_seed_budgets(content)
     else:
         content = ""
+
+    def _apply_live_sheet_overrides(cats_in, budgets_in, notes_in, locks_in):
+        out_cats = cats_in
+        out_budgets = budgets_in
+        out_notes = notes_in
+        out_locks = locks_in
+        deleted_cat_ids = set()
+        if notes_json_path:
+            if not os.path.exists(notes_json_path):
+                print(f"❌ Could not find Notes JSON file: {notes_json_path}", file=sys.stderr)
+                sys.exit(1)
+            out_notes = load_notes_json(notes_json_path)
+            deleted_cat_ids = load_deleted_categories_from_notes_json(notes_json_path)
+        if categories_json_path:
+            if not os.path.exists(categories_json_path):
+                print(f"❌ Could not find Categories JSON file: {categories_json_path}", file=sys.stderr)
+                sys.exit(1)
+            out_cats = load_categories_json(categories_json_path, out_cats, deleted_cat_ids)
+        elif deleted_cat_ids:
+            out_cats = [c for c in out_cats if c.get("id") not in deleted_cat_ids]
+        if budgets_json_path:
+            if not os.path.exists(budgets_json_path):
+                print(f"❌ Could not find Budgets JSON file: {budgets_json_path}", file=sys.stderr)
+                sys.exit(1)
+            out_budgets = load_budgets_json(budgets_json_path)
+        if locks_json_path:
+            if not os.path.exists(locks_json_path):
+                print(f"❌ Could not find Locks JSON file: {locks_json_path}", file=sys.stderr)
+                sys.exit(1)
+            out_locks = load_locks_json(locks_json_path)
+        return out_cats, out_budgets, out_notes, out_locks
 
     if json_grid_path:
         if not os.path.exists(json_grid_path):
             print(f"❌ Could not find JSON grid file: {json_grid_path}", file=sys.stderr)
             sys.exit(1)
+        categories, budgets, notes, locks = _apply_live_sheet_overrides(categories, [], notes, locks)
         return {
             "transactions": load_json_grid_transactions(json_grid_path),
             "categories": categories,
@@ -167,6 +349,7 @@ def load_storage_module(tsv_path=None, json_grid_path=None, state_file=None):
         if not os.path.exists(tsv_path):
             print(f"❌ Could not find TSV file: {tsv_path}", file=sys.stderr)
             sys.exit(1)
+        categories, budgets, notes, locks = _apply_live_sheet_overrides(categories, [], notes, locks)
         return {
             "transactions": load_tsv_transactions(tsv_path),
             "categories": categories,
@@ -181,18 +364,26 @@ def load_storage_module(tsv_path=None, json_grid_path=None, state_file=None):
             sys.exit(1)
         with open(state_file, "r", encoding="utf-8") as sf:
             state = json.load(sf)
+        categories, budgets, notes, locks = _apply_live_sheet_overrides(
+            state.get("categories") or categories,
+            state.get("budgets") if state.get("budgets") is not None else [],
+            state.get("notes") or notes,
+            state.get("locks") or locks,
+        )
         return {
             "transactions": state.get("transactions") or [],
-            "categories": state.get("categories") or categories,
-            "budgets": state.get("budgets") or budgets,
-            "notes": state.get("notes") or notes,
-            "locks": state.get("locks") or locks,
+            "categories": categories,
+            "budgets": budgets,
+            "notes": notes,
+            "locks": locks,
         }
 
     if not content:
         print("❌ Could not find src/services/storage.ts and no --tsv, --json-grid, or --state-file provided.", file=sys.stderr)
         sys.exit(1)
 
+    seed_budgets = extract_seed_budgets(content)
+    categories, budgets, notes, locks = _apply_live_sheet_overrides(categories, seed_budgets, notes, locks)
     return {
         "transactions": extract_seed_transactions(content),
         "categories": categories,
@@ -317,16 +508,40 @@ def get_months_in_scope(current_month, scope):
     return months
 
 
-def resolve_bucket(t):
+def resolve_bucket(t, cat_map=None):
     bucket = t.get("spendingBucket")
     if bucket in ("fixed", "flexible", "non-monthly"):
         return bucket
-    labels = t.get("labels") or []
+    labels = [str(l).strip().lower() for l in (t.get("labels") or [])]
     for b in ("fixed", "non-monthly", "flexible"):
         if b in labels:
             return b
-    if t.get("category") in ("housing", "utilities", "child-care"):
+    if cat_map:
+        sub_id = t.get("subCategory")
+        if sub_id and sub_id in cat_map:
+            sub_def = cat_map[sub_id].get("defaultBucket")
+            if sub_def in ("fixed", "flexible", "non-monthly"):
+                return sub_def
+        cat_id = t.get("category")
+        if cat_id and cat_id in cat_map:
+            cat_def = cat_map[cat_id].get("defaultBucket")
+            if cat_def in ("fixed", "flexible", "non-monthly"):
+                return cat_def
+    cat_lower = str(t.get("category") or "").strip().lower()
+    sub_lower = str(t.get("subCategory") or "").strip().lower()
+    if (
+        sub_lower == "entertainment-subs"
+        or sub_lower.startswith("housing-")
+        or sub_lower.startswith("utilities-")
+        or cat_lower in ("housing", "rent", "utilities", "child-care")
+    ):
         return "fixed"
+    if (
+        sub_lower == "transport-maint"
+        or sub_lower.startswith("travel-")
+        or cat_lower in ("travel", "insurance", "taxes")
+    ):
+        return "non-monthly"
     return "flexible"
 
 
@@ -358,7 +573,7 @@ def aggregate_by_month(transactions, categories, months, redact):
             is_refund = t["type"] == "income" and (
                 "refund" in labels
                 or "reimbursement" in labels
-                or cat_id_lower == "refund"
+                or cat_id_lower in ("refund", "reimbursement")
             )
             cat = cat_map.get(t["category"])
             cat_name = f'{cat["emoji"]} {cat["name"]}' if cat else t["category"]
@@ -380,12 +595,12 @@ def aggregate_by_month(transactions, categories, months, redact):
             if t["type"] == "expense":
                 gross_expenses += t["amount"]
                 category_breakdown[cat_name] += t["amount"]
-                b = resolve_bucket(t)
+                b = resolve_bucket(t, cat_map)
                 bucket_breakdown[b] += t["amount"]
             elif is_refund:
                 total_refunds += t["amount"]
                 category_breakdown[cat_name] -= t["amount"]
-                b = resolve_bucket(t)
+                b = resolve_bucket(t, cat_map)
                 bucket_breakdown[b] -= t["amount"]
             elif t["type"] == "income":
                 total_income += t["amount"]
@@ -478,20 +693,18 @@ def format_markdown(summaries, categories, budgets, notes, locks, options):
     # Budget vs Actual
     if budgets and focus:
         parent_cats = [c for c in categories if not c.get("parentId")]
+        cat_by_id = {c["id"]: c for c in categories}
         L.append("## Budget vs Actual")
         L.append("")
         L.append("| Category | Budget | Spent | Remaining | Status |")
         L.append("|----------|--------|-------|-----------|--------|")
 
+        rendered_budget_cats = set()
         total_budget = sum(b["amount"] for b in budgets)
-        for pc in parent_cats:
-            b = next((bg for bg in budgets if bg["category"] == pc["id"]), None)
-            if not b:
-                continue
-            cat_label = f'{pc["emoji"]} {pc["name"]}'
-            spent = focus["categoryBreakdown"].get(cat_label, 0)
-            remaining = b["amount"] - spent
-            pct = round((spent / b["amount"]) * 100) if b["amount"] > 0 else 0
+
+        def _append_budget_row(cat_label, budget_amt, spent_amt):
+            remaining = budget_amt - spent_amt
+            pct = round((spent_amt / budget_amt) * 100) if budget_amt > 0 else 0
             if pct > 100:
                 status = f"🔴 Over by {fmt(abs(remaining))}"
             elif pct >= 80:
@@ -499,8 +712,25 @@ def format_markdown(summaries, categories, budgets, notes, locks, options):
             else:
                 status = f"✅ {pct}% used"
             L.append(
-                f"| {cat_label} | {fmt(b['amount'])} | {fmt(spent)} | {fmt(remaining)} | {status} |"
+                f"| {cat_label} | {fmt(budget_amt)} | {fmt(spent_amt)} | {fmt(remaining)} | {status} |"
             )
+
+        for pc in parent_cats:
+            b = next((bg for bg in budgets if bg["category"] == pc["id"]), None)
+            if not b:
+                continue
+            rendered_budget_cats.add(b["category"])
+            cat_label = f'{pc["emoji"]} {pc["name"]}'
+            spent = focus["categoryBreakdown"].get(cat_label, 0)
+            _append_budget_row(cat_label, b["amount"], spent)
+
+        for b in budgets:
+            if b["category"] in rendered_budget_cats:
+                continue
+            cat_meta = cat_by_id.get(b["category"])
+            cat_label = f'{cat_meta["emoji"]} {cat_meta["name"]}' if cat_meta else b["category"]
+            spent = focus["categoryBreakdown"].get(cat_label, 0)
+            _append_budget_row(cat_label, b["amount"], spent)
 
         L.append(
             f'| **Total** | **{fmt(total_budget)}** | **{fmt(focus["totalExpenses"])}** | **{fmt(total_budget - focus["totalExpenses"])}** | |'
@@ -609,18 +839,46 @@ def format_markdown(summaries, categories, budgets, notes, locks, options):
 
 # ─── Main ─────────────────────────────────────────────────────────────────────
 
+def _default_local_month(tz_name="America/Los_Angeles"):
+    try:
+        from zoneinfo import ZoneInfo
+        now = datetime.now(ZoneInfo(tz_name))
+    except Exception:
+        now = datetime.now()
+    return f"{now.year}-{now.month:02d}"
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Export expense data as AI-ready Markdown or JSON context."
     )
-    now = datetime.now()
-    default_month = f"{now.year}-{now.month:02d}"
+    default_month = _default_local_month()
 
     parser.add_argument("--tsv", default=None, help="Path to exported Google Sheets Transactions.tsv")
     parser.add_argument(
         "--json-grid",
         default=None,
-        help="Path to 2D JSON grid from `gsheets readonly read <ID> 'Transactions!A1:L2000' --json`",
+        help="Path to 2D JSON grid from `gsheets readonly read <ID> 'Transactions!A:L' --json`",
+    )
+    parser.add_argument(
+        "--budgets-json",
+        default=None,
+        help="Path to 2D JSON grid from `gsheets readonly read <ID> 'Budgets!A:B' --json`",
+    )
+    parser.add_argument(
+        "--categories-json",
+        default=None,
+        help="Path to 2D JSON grid from `gsheets readonly read <ID> 'Categories!A:F' --json`",
+    )
+    parser.add_argument(
+        "--notes-json",
+        default=None,
+        help="Path to 2D JSON grid from `gsheets readonly read <ID> 'Notes!A:B' --json`",
+    )
+    parser.add_argument(
+        "--locks-json",
+        default=None,
+        help="Path to 2D JSON grid from `gsheets readonly read <ID> 'Locks!A:C' --json`",
     )
     parser.add_argument("--state-file", default=None, help="Path to JSON ledger state file")
     parser.add_argument("--project", default=None, help="Project ID to export")
@@ -652,6 +910,10 @@ def main():
         tsv_path=options.tsv,
         json_grid_path=options.json_grid,
         state_file=options.state_file,
+        budgets_json_path=options.budgets_json,
+        categories_json_path=options.categories_json,
+        notes_json_path=options.notes_json,
+        locks_json_path=options.locks_json,
     )
     txns = data["transactions"]
     cats = data["categories"]

@@ -38,7 +38,7 @@ Google Wallet's transaction feed does not expose persistent Plaid `transaction_i
 
 #### 7-Day Rolling Lookback (`T-7` to `Today`) & Pending → Settled Lifecycle
 Always pull the **last 7 days (`T-7` to `Today`)** from Google Wallet and compare against the **last 14 days** of sheet rows (plus full sheet history for Stage 1 History Memory and exact hash deduplication):
-1. **Tombstone Check**: Check `Notes!A:B` (`__meta_ingest_state__` and `__meta_ingest_tombstones_1__..5__`). Skip any row whose `externalId` or 16-char hash prefix (`hash[:16]`) is tombstoned (`skipped_tombstoned`) so user-deleted rows are never resurrected during a 7-day lookback.
+1. **Tombstone Check**: Check `Notes!A:B` (`__meta_ingest_state__` and `__meta_ingest_tombstones_1__..4__`). Skip any row whose `externalId` or 16-char hash prefix (`hash[:16]`) is tombstoned (`skipped_tombstoned`) so user-deleted rows are never resurrected during a 7-day lookback.
 2. **Exact Hash Match (Occurrence-Aware)**:
    - Each existing sheet row can be claimed at most **once** per batch (`claimed_existing_ids`).
    - If the unclaimed existing sheet row is `Pending` (`meta.provisional == true` or `"pending"` in `notes`/`description`) and the incoming Google Wallet row is now `Purchase` (settled), **upgrade in place** (`updated_pending_to_settled`): strip `Pending` from `notes`, update `"Pending..."` descriptions, and set `meta.provisional = false`.
@@ -69,27 +69,28 @@ Use [`scripts/wallet_reconcile.py`](scripts/wallet_reconcile.py) (100% Python 3 
 
 2. **Export Sheet & Run the Reconciler**:
 ```bash
-# 1. Export current Transactions (A:L or A:K) and Notes from Nebula Expense - PriyMan
-gsheets readonly export 1Whmjhktu_sgdw9WYFYx9JydpB61JU2RGuCm7AT_USLY /tmp/nebula_transactions.tsv --format tsv --sheet Transactions
-# (Or read as a 2D JSON grid: gsheets readonly read 1Whmjhktu_sgdw9WYFYx9JydpB61JU2RGuCm7AT_USLY 'Transactions!A1:L2000' --json > /tmp/nebula_transactions.json)
-gsheets readonly read 1Whmjhktu_sgdw9WYFYx9JydpB61JU2RGuCm7AT_USLY 'Notes!A1:B50' --json > /tmp/nebula_notes.json
+# 1. Read unbounded Transactions (A:L), Notes (A:B), and Locks (A:C) as 2D JSON grids
+gsheets readonly read 1Whmjhktu_sgdw9WYFYx9JydpB61JU2RGuCm7AT_USLY 'Transactions!A:L' --json > /tmp/nebula_transactions.json
+gsheets readonly read 1Whmjhktu_sgdw9WYFYx9JydpB61JU2RGuCm7AT_USLY 'Notes!A:B' --json > /tmp/nebula_notes.json
+gsheets readonly read 1Whmjhktu_sgdw9WYFYx9JydpB61JU2RGuCm7AT_USLY 'Locks!A:C' --json > /tmp/nebula_locks.json
 
-# 2. Run the pure-Python 7-day rolling reconciler to produce a gsheets batch file + Morning Digest
+# 2. Run the pure-Python 7-day rolling reconciler to produce a RAW gsheets batch file + Morning Digest
 python3 .agents/skills/expense-ingest/scripts/wallet_reconcile.py \
   --input /tmp/wallet_7d.json \
-  --transactions-tsv /tmp/nebula_transactions.tsv \
+  --transactions-json /tmp/nebula_transactions.json \
   --notes-json /tmp/nebula_notes.json \
+  --locks-json /tmp/nebula_locks.json \
   --lookback-days 7 \
   --batch-out /tmp/gsheets_batch.json \
   --format summary
 
-# 3. Apply the in-place updates, appended rows (A:L), and updated __meta_ingest_state__ note in one batch
-gsheets mutate batch 1Whmjhktu_sgdw9WYFYx9JydpB61JU2RGuCm7AT_USLY -f /tmp/gsheets_batch.json
+# 3. Apply the in-place updates, appended rows (A:L), and updated __meta_ingest_state__ note in one RAW batch
+gsheets mutate batch 1Whmjhktu_sgdw9WYFYx9JydpB61JU2RGuCm7AT_USLY -f /tmp/gsheets_batch.json --value-input RAW
 ```
 
 ### Option B: Local Repo Python → Node Bridge (`scripts/ingest_transactions.py`)
 
-When running inside `/home/antigravity/saimanoj01/expense` with **Python 3** and **Node.js ≥ 24**:
+When running inside `/home/antigravity/saimanoj01/expense` with **Python 3** and **Node.js ≥ 22.18**:
 
 ```bash
 # Sync to Google Sheets (OAuth token or Service Account JSON)

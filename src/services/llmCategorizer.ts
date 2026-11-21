@@ -1,6 +1,6 @@
 import { DEFAULT_CATEGORIES, type Category, type SpendingBucket } from './storage';
 import { suggestCategory, suggestSpendingBucket } from '../utils/categorizer';
-import { callGemini, hasGeminiApiKey } from './ai/geminiClient';
+import { callGemini, DEFAULT_GEMINI_MODEL, hasGeminiApiKey } from './ai/geminiClient';
 
 export interface ClassifiedResultItem {
   categoryId: string;
@@ -15,7 +15,7 @@ export type ClassificationResultMap = Record<string, ClassifiedResultItem>;
 /**
  * Service interface for Gemini LLM Auto-Classification.
  * Formats categories and transactions into a structured JSON prompt,
- * calls gemini-3.5-flash-lite via callGemini(), and maps the returned
+ * calls DEFAULT_GEMINI_MODEL via callGemini(), and maps the returned
  * parent, sub-category, spending bucket, and confidence selections.
  */
 export async function classifyTransactionsWithLLM(
@@ -86,6 +86,7 @@ CRITICAL RULES:
   const BATCH_SIZE = 50;
   const resultMap: ClassificationResultMap = {};
   const batchErrors: Error[] = [];
+  let succeededBatches = 0;
 
   for (let i = 0; i < items.length; i += BATCH_SIZE) {
     const batch = items.slice(i, i + BATCH_SIZE);
@@ -104,10 +105,12 @@ CRITICAL RULES:
       const response = (await callGemini({
         prompt,
         systemInstruction,
-        model: 'gemini-3.5-flash-lite',
+        model: DEFAULT_GEMINI_MODEL,
         jsonSchema,
         temperature: 0.1
       })) as { classifications?: { id: string; categoryId: string; subCategoryId?: string; spendingBucket?: SpendingBucket; confidence?: number }[] };
+
+      succeededBatches += 1;
 
       if (response && Array.isArray(response.classifications)) {
         for (const res of response.classifications) {
@@ -176,9 +179,9 @@ CRITICAL RULES:
     }
   }
 
-  // If any batches failed, surface the first error so the caller can show a warning
-  // (but still return partial results from successful batches + fallbacks)
-  if (batchErrors.length > 0) {
+  // Only throw when every batch failed; when at least one batch succeeded, preserve
+  // the successful LLM classifications + local fallbacks instead of discarding them.
+  if (batchErrors.length > 0 && succeededBatches === 0) {
     throw batchErrors[0];
   }
 

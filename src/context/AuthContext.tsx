@@ -62,6 +62,24 @@ function isExpiredSessionToken(token: string): boolean {
  * Checks if a token is null/empty, explicitly flagged expired in mock OAuth simulator,
  * or has an invalid/expired JWT structure.
  */
+function getTrackedTokenExpiresAt(token: string): number | null {
+  try {
+    const raw = localStorage.getItem('expense_google_token_expires_at');
+    if (!raw) return null;
+    if (raw.startsWith('{')) {
+      const parsed = JSON.parse(raw) as { token?: string; expiresAt?: number };
+      if (parsed.token && parsed.token !== token) return null;
+      return typeof parsed.expiresAt === 'number' && Number.isFinite(parsed.expiresAt)
+        ? parsed.expiresAt
+        : null;
+    }
+    const legacy = Number(raw);
+    return Number.isFinite(legacy) && legacy > 0 ? legacy : null;
+  } catch {
+    return null;
+  }
+}
+
 // eslint-disable-next-line react-refresh/only-export-components
 export function isInvalidOrExpiredToken(token: string | null): boolean {
   if (!token || token.trim() === '') {
@@ -70,7 +88,13 @@ export function isInvalidOrExpiredToken(token: string | null): boolean {
   if (token === 'EXPIRED_TOKEN') {
     return true;
   }
-  
+
+  // Check tracked OAuth expires_in timestamp bound to this token (opaque Google access tokens ya29.*)
+  const trackedExpiresAt = getTrackedTokenExpiresAt(token);
+  if (trackedExpiresAt !== null && Date.now() >= trackedExpiresAt) {
+    return true;
+  }
+
   // JWT tokens start with 'eyJ' (base64 for {"alg":...) or explicitly contain 'jwt'
   if (token.startsWith('eyJ') || token.toLowerCase().includes('jwt')) {
     const parts = token.split('.');
@@ -82,7 +106,7 @@ export function isInvalidOrExpiredToken(token: string | null): boolean {
       return exp <= Date.now();
     }
   }
-  
+
   // Opaque Google OAuth access tokens (e.g. ya29.a0AX...) are valid
   return false;
 }
@@ -152,13 +176,43 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [authErrorToast]);
 
+  // Proactively warn 5 minutes before opaque Google OAuth token expires and expire cleanly once
+  useEffect(() => {
+    if (!isAuthenticated || isMockMode) return;
+    let warned = false;
+    let expiredHandled = false;
+    const checkExpiry = () => {
+      if (expiredHandled) return;
+      const currentToken = localStorage.getItem('expense_google_token');
+      if (!currentToken) return;
+      const expiresAt = getTrackedTokenExpiresAt(currentToken);
+      if (expiresAt === null) return;
+      const remainingMs = expiresAt - Date.now();
+      if (remainingMs <= 0) {
+        expiredHandled = true;
+        localStorage.removeItem('expense_google_token');
+        localStorage.removeItem('expense_google_token_expires_at');
+        localStorage.removeItem('expense_google_user');
+        setShowSessionExpiredModal(true);
+      } else if (remainingMs <= 5 * 60 * 1000 && !warned) {
+        warned = true;
+        showToast('Google session expires in under 5 minutes — save changes or sign in again soon.', 'error');
+      }
+    };
+    const interval = window.setInterval(checkExpiry, 60_000);
+    return () => window.clearInterval(interval);
+  }, [isAuthenticated, isMockMode]);
+
   useEffect(() => {
     const googleToken = localStorage.getItem('expense_google_token');
 
     if (googleToken && isInvalidOrExpiredToken(googleToken)) {
+      const trackedExpiresAt = getTrackedTokenExpiresAt(googleToken);
+      const wasTrackedExpired = trackedExpiresAt !== null && Date.now() >= trackedExpiresAt;
       localStorage.removeItem('expense_google_token');
+      localStorage.removeItem('expense_google_token_expires_at');
       localStorage.removeItem('expense_google_user');
-      if (isExpiredSessionToken(googleToken)) {
+      if (isExpiredSessionToken(googleToken) || wasTrackedExpired) {
         setShowSessionExpiredModal(true);
         setUser(null);
         setIsAuthenticated(false);
@@ -175,43 +229,62 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return;
     }
 
+    let handlingHash = false;
     const handleHashAuth = async () => {
+      if (handlingHash) return;
       const hash = window.location.hash;
       if (hash.includes('access_token=')) {
-        const cleanHash = hash.substring(hash.indexOf('access_token='));
-        const params = new URLSearchParams(cleanHash);
-        const token = params.get('access_token');
-        const returnedState = params.get('state');
-        const storedState = sessionStorage.getItem('oauth_csrf_state');
+        handlingHash = true;
+        try {
+          const cleanHash = hash.substring(hash.indexOf('access_token='));
+          const params = new URLSearchParams(cleanHash);
+          const token = params.get('access_token');
+          const expiresInRaw = params.get('expires_in');
+          const returnedState = params.get('state');
+          const storedState = sessionStorage.getItem('oauth_csrf_state');
 
-        if (storedState && returnedState && storedState !== returnedState) {
-          console.error("OAuth state mismatch: potential CSRF attack");
-          setAuthErrorToast("Authentication error: Invalid CSRF state");
-          setIsLoading(false);
-          return;
-        }
-        sessionStorage.removeItem('oauth_csrf_state');
-
-        if (token) {
-          localStorage.setItem('expense_google_token', token);
-          localStorage.setItem('pref_mock_mode', 'false');
-          setIsMockMode(false);
-          let userProfile: User = { email: 'cloud@example.com', name: 'Google User' };
-          try {
-            const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-              headers: { Authorization: `Bearer ${token}` }
-            });
-            if (res.ok) {
-              const info = await res.json();
-              userProfile = { email: info.email || 'cloud@example.com', name: info.name || 'Google User', picture: info.picture };
-            }
-          } catch {
-            // Network fallback
+          if (!storedState || !returnedState || storedState !== returnedState) {
+            console.error("OAuth state mismatch or missing state: potential CSRF attack");
+            setAuthErrorToast("Authentication error: Invalid CSRF state");
+            setIsLoading(false);
+            return;
           }
-          localStorage.setItem('expense_google_user', JSON.stringify(userProfile));
-          setUser(userProfile);
-          setIsAuthenticated(true);
-          window.location.hash = '';
+          sessionStorage.removeItem('oauth_csrf_state');
+          // Scrub access_token from URL/history immediately before async userinfo fetch
+          try {
+            window.history.replaceState(null, '', window.location.pathname + window.location.search);
+          } catch {
+            window.location.hash = '';
+          }
+
+          if (token) {
+            localStorage.setItem('expense_google_token', token);
+            const expiresInSec = expiresInRaw ? parseInt(expiresInRaw, 10) : 3600;
+            const safeExpiresSec = Number.isFinite(expiresInSec) && expiresInSec > 60 ? expiresInSec : 3600;
+            localStorage.setItem(
+              'expense_google_token_expires_at',
+              JSON.stringify({ token, expiresAt: Date.now() + safeExpiresSec * 1000 })
+            );
+            localStorage.setItem('pref_mock_mode', 'false');
+            setIsMockMode(false);
+            let userProfile: User = { email: 'cloud@example.com', name: 'Google User' };
+            try {
+              const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+                headers: { Authorization: `Bearer ${token}` }
+              });
+              if (res.ok) {
+                const info = await res.json();
+                userProfile = { email: info.email || 'cloud@example.com', name: info.name || 'Google User', picture: info.picture };
+              }
+            } catch {
+              // Network fallback
+            }
+            localStorage.setItem('expense_google_user', JSON.stringify(userProfile));
+            setUser(userProfile);
+            setIsAuthenticated(true);
+          }
+        } finally {
+          handlingHash = false;
         }
       } else if (hash.includes('error=access_denied')) {
         setAuthErrorToast('Access Denied');
@@ -333,8 +406,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const win = typeof window !== 'undefined' ? (window as unknown as CustomWindow) : undefined;
       const isPlaywrightTest = !!win && (
         win.__PLAYWRIGHT__ === true ||
-        (typeof navigator !== 'undefined' && navigator.userAgent.includes('Playwright')) ||
-        win.VITE_GOOGLE_CLIENT_ID !== undefined
+        (typeof navigator !== 'undefined' &&
+          (navigator.userAgent.includes('Playwright') || navigator.webdriver === true))
       );
 
       if (isPlaywrightTest) {
@@ -371,6 +444,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(mockUser);
     setIsAuthenticated(true);
     setIsMockMode(true);
+    localStorage.removeItem('expense_google_token_expires_at');
     localStorage.setItem('expense_mock_session', JSON.stringify(mockUser));
     localStorage.setItem('pref_mock_mode', 'true');
   };
@@ -380,15 +454,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const googleToken = localStorage.getItem('expense_google_token');
     if (googleToken) {
       try {
-        fetch(`https://oauth2.googleapis.com/revoke?token=${encodeURIComponent(googleToken)}`, {
+        fetch('https://oauth2.googleapis.com/revoke', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({ token: googleToken }).toString(),
         }).catch(() => {});
       } catch {
         // Ignore revocation network errors
       }
     }
     localStorage.removeItem('expense_google_token');
+    localStorage.removeItem('expense_google_token_expires_at');
     localStorage.removeItem('expense_google_user');
     localStorage.removeItem('expense_mock_session');
     localStorage.removeItem('expense_google_projects');

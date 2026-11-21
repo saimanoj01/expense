@@ -1,5 +1,7 @@
 export async function computeTxHash(date: string, description: string, amount: number, type: string): Promise<string> {
-  const payload = `${date}|${(description || '').trim().toLowerCase()}|${amount.toFixed(2)}|${(type || '').trim().toLowerCase()}`;
+  const cleanDate = (date || '').trim().slice(0, 10);
+  const cleanAmt = Math.abs(Number(amount) || 0).toFixed(2);
+  const payload = `${cleanDate}|${(description || '').trim().toLowerCase()}|${cleanAmt}|${(type || '').trim().toLowerCase()}`;
   if (typeof crypto !== 'undefined' && crypto.subtle) {
     const encoder = new TextEncoder();
     const data = encoder.encode(payload);

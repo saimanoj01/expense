@@ -16,11 +16,13 @@ import { getCurrentLocalMonth } from '../../utils/navigation';
 
 interface BottomNavProps {
   onOpenAddTxn: () => void;
+  isLockedMonth?: boolean;
   className?: string;
 }
 
 export const BottomNav: React.FC<BottomNavProps> = ({
   onOpenAddTxn,
+  isLockedMonth = false,
   className = '',
 }) => {
   const { currentRoute, navigate } = useNavigation();
@@ -97,10 +99,17 @@ export const BottomNav: React.FC<BottomNavProps> = ({
             <button
               type="button"
               data-testid="bottom-nav-add"
-              onClick={onOpenAddTxn}
-              className="w-11 h-11 rounded-full bg-primary text-primary-foreground border border-border flex items-center justify-center shadow-sm hover:opacity-90 active:scale-95 transition-all"
-              aria-label="Add Transaction"
-              title="Add Transaction"
+              disabled={isLockedMonth}
+              onClick={() => {
+                if (!isLockedMonth) onOpenAddTxn();
+              }}
+              className={`w-11 h-11 rounded-full bg-primary text-primary-foreground border border-border flex items-center justify-center shadow-sm transition-all ${
+                isLockedMonth
+                  ? 'opacity-50 cursor-not-allowed'
+                  : 'hover:opacity-90 active:scale-95'
+              }`}
+              aria-label={isLockedMonth ? 'Month is locked' : 'Add Transaction'}
+              title={isLockedMonth ? 'Month is locked' : 'Add Transaction'}
             >
               <Plus className="w-5 h-5 stroke-[2.2]" />
             </button>

@@ -350,6 +350,16 @@ export function TransactionModal({
       editingTxnId ||
       (crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2));
 
+    const existingAliasHashes = Array.isArray(initialData?.meta?.aliasHashes)
+      ? initialData.meta.aliasHashes
+      : [];
+    const nextAliasHashes =
+      editingTxnId && initialData?.hash && initialData.hash !== hash
+        ? Array.from(new Set([...existingAliasHashes, initialData.hash.slice(0, 16)]))
+        : existingAliasHashes.length > 0
+        ? existingAliasHashes
+        : undefined;
+
     let newTxn: Transaction = {
       id: targetId,
       date: txnDate,
@@ -364,6 +374,7 @@ export function TransactionModal({
       hash,
       meta: {
         ...(initialData?.meta || {}),
+        ...(nextAliasHashes ? { aliasHashes: nextAliasHashes } : {}),
         account: finalAccount,
       },
     };

@@ -258,6 +258,7 @@ const { request, config } = payload;
 const projectId = request.projectId;
 
 let releaseStateLock = null;
+let existingStateData = null;
 let adapter;
 if (config.spreadsheetId) {
   const token = await resolveGoogleAccessToken(config);
@@ -301,21 +302,43 @@ if (config.stateFile && !config.spreadsheetId) {
   }
 }
 
-  adapter = new LocalStorageAdapter();
   if (config.stateFile) {
     const stateFilePath = path.resolve(config.stateFile);
+    // Pre-populate expense_projects before constructing LocalStorageAdapter so seedMockDatabase() never leaks demo data
+    globalThis.localStorage.setItem(
+      'expense_projects',
+      JSON.stringify([{ id: projectId, name: projectId }])
+    );
     if (fs.existsSync(stateFilePath)) {
       const stateData = JSON.parse(fs.readFileSync(stateFilePath, 'utf8'));
-      if (Array.isArray(stateData.transactions)) {
+      if (!stateData || typeof stateData !== 'object' || Array.isArray(stateData)) {
+        throw new Error(`State file must contain a JSON object: ${stateFilePath}`);
+      }
+      existingStateData = stateData;
+      globalThis.localStorage.setItem(
+        `expense_txs_${projectId}`,
+        JSON.stringify(Array.isArray(stateData.transactions) ? stateData.transactions : [])
+      );
+      globalThis.localStorage.setItem(
+        `expense_categories_${projectId}`,
+        JSON.stringify(Array.isArray(stateData.categories) ? stateData.categories : DEFAULT_CATEGORIES)
+      );
+      if (Array.isArray(stateData.budgets)) {
         globalThis.localStorage.setItem(
-          `expense_txs_${projectId}`,
-          JSON.stringify(stateData.transactions)
+          `expense_budgets_${projectId}`,
+          JSON.stringify(stateData.budgets)
         );
       }
-      if (Array.isArray(stateData.categories)) {
+      if (Array.isArray(stateData.locks)) {
         globalThis.localStorage.setItem(
-          `expense_categories_${projectId}`,
-          JSON.stringify(stateData.categories)
+          `expense_locks_${projectId}`,
+          JSON.stringify(stateData.locks)
+        );
+      }
+      if (stateData.notes && typeof stateData.notes === 'object' && !Array.isArray(stateData.notes)) {
+        globalThis.localStorage.setItem(
+          `expense_budget_notes_${projectId}`,
+          JSON.stringify(stateData.notes)
         );
       }
       if (stateData.ingestState) {
@@ -332,6 +355,7 @@ if (config.stateFile && !config.spreadsheetId) {
       );
     }
   }
+  adapter = new LocalStorageAdapter();
 }
 
 let response;
@@ -344,19 +368,19 @@ try {
     const updatedCategories = await adapter.getCategories(projectId);
     const updatedIngestState = await adapter.getIngestState(projectId);
     const tmpPath = `${stateFilePath}.${process.pid}.tmp`;
+    const nextStatePayload = {
+      ...(existingStateData && typeof existingStateData === 'object' && !Array.isArray(existingStateData)
+        ? existingStateData
+        : {}),
+      projectId,
+      updatedAt: new Date().toISOString(),
+      transactions: updatedTransactions,
+      categories: updatedCategories,
+      ingestState: updatedIngestState,
+    };
     fs.writeFileSync(
       tmpPath,
-      JSON.stringify(
-        {
-          projectId,
-          updatedAt: new Date().toISOString(),
-          transactions: updatedTransactions,
-          categories: updatedCategories,
-          ingestState: updatedIngestState,
-        },
-        null,
-        2
-      ),
+      JSON.stringify(nextStatePayload, null, 2),
       'utf8'
     );
     fs.renameSync(tmpPath, stateFilePath);
@@ -369,23 +393,26 @@ process.stdout.write(JSON.stringify(response));
 """
 
 
-def check_node(minimum_major=24):
+def check_node(minimum_version=(22, 18)):
     """Fail early with a clear message if Node is missing or too old."""
     node = shutil.which("node")
+    min_label = f"{minimum_version[0]}.{minimum_version[1]}"
     if not node:
         raise RuntimeError(
-            f"Node.js >= {minimum_major} is required to run the TypeScript ingestion engine, "
+            f"Node.js >= {min_label} is required to run the TypeScript ingestion engine, "
             "but `node` was not found on PATH."
         )
     try:
         out = subprocess.run([node, "--version"], capture_output=True, text=True, timeout=15)
-        major = int(out.stdout.strip().lstrip("v").split(".")[0])
+        version_parts = out.stdout.strip().lstrip("v").split(".")
+        major = int(version_parts[0])
+        minor = int(version_parts[1]) if len(version_parts) > 1 else 0
     except (ValueError, subprocess.SubprocessError, OSError) as exc:
         raise RuntimeError(f"Could not determine the Node.js version: {exc}") from exc
-    if major < minimum_major:
+    if (major, minor) < minimum_version:
         raise RuntimeError(
-            f"Node.js >= {minimum_major} is required (found {out.stdout.strip()}); "
-            "it needs native TypeScript stripping."
+            f"Node.js >= {min_label} is required (found {out.stdout.strip()}); "
+            "it needs native TypeScript stripping and module.registerHooks."
         )
 
 
@@ -578,13 +605,14 @@ def main():
                 "or `--dry-run` to preview only."
             )
 
-        if options.spreadsheet_id and not (options.access_token or options.service_account):
+        has_sa_env = bool(os.environ.get("GOOGLE_SERVICE_ACCOUNT_JSON"))
+        if options.spreadsheet_id and not (options.access_token or options.service_account or has_sa_env):
             raise ValueError(
                 "`--spreadsheet-id` was provided without credentials. Supply `--access-token` / "
-                "`GOOGLE_ACCESS_TOKEN` or `--service-account` / `GOOGLE_APPLICATION_CREDENTIALS`."
+                "`GOOGLE_ACCESS_TOKEN` or `--service-account` / `GOOGLE_APPLICATION_CREDENTIALS` / `GOOGLE_SERVICE_ACCOUNT_JSON`."
             )
         if options.service_account and not Path(options.service_account).is_file():
-            if not options.access_token:
+            if not options.access_token and not has_sa_env:
                 raise ValueError(f"Service account file not found: {options.service_account}")
 
         print("📥 Ingesting transactions...", file=sys.stderr)

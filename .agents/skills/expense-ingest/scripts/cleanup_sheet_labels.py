@@ -121,7 +121,7 @@ def coalesce_column_writes(
                 if start_row == prev_row
                 else f"Transactions!{col_letter}{start_row}:{col_letter}{prev_row}"
             )
-            ops.append({"op": "write", "range": rng, "data": buf})
+            ops.append({"op": "write", "range": rng, "data": buf, "value_input": "RAW"})
             start_row, prev_row = row_num, row_num
             buf = [[val]]
 
@@ -130,7 +130,7 @@ def coalesce_column_writes(
         if start_row == prev_row
         else f"Transactions!{col_letter}{start_row}:{col_letter}{prev_row}"
     )
-    ops.append({"op": "write", "range": rng, "data": buf})
+    ops.append({"op": "write", "range": rng, "data": buf, "value_input": "RAW"})
     return ops
 
 
@@ -305,7 +305,7 @@ def main() -> int:
     parser.add_argument(
         "--transactions-json",
         required=True,
-        help="Path to 2D JSON grid from `gsheets readonly read <ID> 'Transactions!A1:L2000' --json`",
+        help="Path to 2D JSON grid from `gsheets readonly read <ID> 'Transactions!A:L' --json`",
     )
     parser.add_argument(
         "--batch-out",

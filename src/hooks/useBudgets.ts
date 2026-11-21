@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useRef } from 'react';
 import {
   Budget,
   Category,
@@ -53,18 +53,40 @@ export function useBudgets(
     setBudgetErrors({});
   }
 
+  const activeProjectIdRef = useRef<string | null>(activeProject?.id ?? null);
+  activeProjectIdRef.current = activeProject?.id ?? null;
+  const workingBudgetsRef = useRef<Budget[]>(workingBudgets);
+  workingBudgetsRef.current = workingBudgets;
+  const refreshSeqRef = useRef(0);
+
+  const updateWorkingBudgets = useCallback((updater: React.SetStateAction<Budget[]>) => {
+    const next =
+      typeof updater === 'function'
+        ? (updater as (prev: Budget[]) => Budget[])(workingBudgetsRef.current)
+        : updater;
+    workingBudgetsRef.current = next;
+    setWorkingBudgets(next);
+  }, []);
+
   const refreshBudgetsAndCategories = useCallback(
-    async (options?: { preserveWorkingDrafts?: boolean; deletedCategoryId?: string }) => {
+    async (options?: {
+      preserveWorkingDrafts?: boolean;
+      deletedCategoryId?: string;
+      throwOnError?: boolean;
+    }) => {
       if (!activeProject || !storageAdapter) return;
+      const pid = activeProject.id;
+      const seq = ++refreshSeqRef.current;
       try {
-        const bgs = await storageAdapter.getBudgets(activeProject.id);
-        const cats = await storageAdapter.getCategories(activeProject.id);
-        const notes = await storageAdapter.getBudgetNotes(activeProject.id);
+        const bgs = await storageAdapter.getBudgets(pid);
+        const cats = await storageAdapter.getCategories(pid);
+        const notes = await storageAdapter.getBudgetNotes(pid);
+        if (activeProjectIdRef.current !== pid || refreshSeqRef.current !== seq) return;
         setPersistedBudgets(bgs);
         if (options?.preserveWorkingDrafts) {
           if (options.deletedCategoryId) {
             const delLower = options.deletedCategoryId.toLowerCase();
-            setWorkingBudgets(prev =>
+            updateWorkingBudgets(prev =>
               prev.filter(b => (b.category || '').toLowerCase() !== delLower)
             );
             setBudgetDrafts(prev => {
@@ -79,7 +101,7 @@ export function useBudgets(
             });
           }
         } else {
-          setWorkingBudgets(bgs);
+          updateWorkingBudgets(bgs);
           setBudgetDrafts({});
           setBudgetErrors({});
         }
@@ -87,9 +109,12 @@ export function useBudgets(
         setBudgetNotes(notes || {});
       } catch (err) {
         console.error('Failed to load budgets/categories/notes:', err);
+        if (options?.throwOnError) {
+          throw err;
+        }
       }
     },
-    [activeProject, storageAdapter]
+    [activeProject, storageAdapter, updateWorkingBudgets]
   );
 
   const activeMonthsCount = useMemo(
@@ -166,6 +191,7 @@ export function useBudgets(
           subCats.flatMap(s => [s.id.toLowerCase(), s.name.toLowerCase()])
         );
 
+        let signedSubNetSum = 0;
         const subCategorySummaries: SubCategorySummary[] = subCats.map(sCat => {
           const subRes = resolveEffectiveCategoryBudget(
             sCat.id,
@@ -187,6 +213,7 @@ export function useBudgets(
               return sum + (t.type === 'expense' ? amt : -amt);
             }, 0);
 
+          signedSubNetSum += rawSubNet;
           const rawSubSpent = Math.max(0, rawSubNet);
           const effectiveSubSpent = rawSubSpent / allTimeDivisor;
           const exposedSubSpent = options.normalizeAllTime
@@ -229,11 +256,7 @@ export function useBudgets(
 
         const rawTotalParentSpent = isNonBudgetable
           ? 0
-          : Math.max(
-              0,
-              directParentSpent +
-                subCategorySummaries.reduce((sum, s) => sum + (s.rawSpent ?? s.spent), 0)
-            );
+          : Math.max(0, directParentSpent + signedSubNetSum);
         const effectiveParentSpent = rawTotalParentSpent / allTimeDivisor;
         const exposedParentSpent = options.normalizeAllTime
           ? effectiveParentSpent
@@ -328,14 +351,16 @@ export function useBudgets(
     [persistedBudgets, workingBudgets, categories, budgetErrors]
   );
 
-  const setBudgets = useCallback((updater: React.SetStateAction<Budget[]>) => {
-    setPersistedBudgets(updater);
-    setWorkingBudgets(updater);
-  }, []);
+  const setBudgets = useCallback(
+    (updater: React.SetStateAction<Budget[]>) => {
+      setPersistedBudgets(updater);
+      updateWorkingBudgets(updater);
+    },
+    [updateWorkingBudgets]
+  );
 
   const handleBudgetInputChange = useCallback(
     (catName: string, val: string) => {
-      setBudgetDrafts(prev => ({ ...prev, [catName]: val }));
       const aliasOpts = getCategoryAliasOptions(categories);
       const matchedCat = categories.find(c =>
         doesBudgetMatchCategory(catName, c, aliasOpts)
@@ -344,8 +369,9 @@ export function useBudgets(
       const canonicalKey = matchedCat ? matchedCat.id : catName;
 
       if (val.trim() === '') {
+        setBudgetDrafts(prev => ({ ...prev, [catName]: val }));
         setBudgetErrors(prev => ({ ...prev, [catName]: '' }));
-        setWorkingBudgets(prev =>
+        updateWorkingBudgets(prev =>
           prev.filter(b => !doesBudgetMatchCategory(b.category, targetIdentity, aliasOpts))
         );
         return;
@@ -353,54 +379,57 @@ export function useBudgets(
 
       const num = parseFloat(val);
       if (isNaN(num) || num < 0) {
+        setBudgetDrafts(prev => ({ ...prev, [catName]: val }));
         setBudgetErrors(prev => ({ ...prev, [catName]: 'Budget must be positive' }));
         return;
       }
 
-      setBudgetErrors(prev => ({ ...prev, [catName]: '' }));
-      setWorkingBudgets(prev => {
-        const withoutTarget = prev.filter(
-          b => !doesBudgetMatchCategory(b.category, targetIdentity, aliasOpts)
-        );
-        const next =
-          num > 0
-            ? [...withoutTarget, { category: canonicalKey, amount: num }]
-            : withoutTarget;
+      const prevBudgets = workingBudgetsRef.current;
+      const withoutTarget = prevBudgets.filter(
+        b => !doesBudgetMatchCategory(b.category, targetIdentity, aliasOpts)
+      );
+      const next =
+        num > 0
+          ? [...withoutTarget, { category: canonicalKey, amount: num }]
+          : withoutTarget;
 
-        // Keep explicit parent target >= sum of child sub-category targets (BUG-BUD-07)
-        if (matchedCat?.parentId) {
-          const parentCat = categories.find(c => c.id === matchedCat.parentId);
-          if (parentCat) {
-            const siblings = categories.filter(c => c.parentId === parentCat.id);
-            let newSubSum = 0;
-            for (const sib of siblings) {
-              const sibEntry = next.find(b =>
-                doesBudgetMatchCategory(b.category, sib, aliasOpts)
-              );
-              newSubSum += Math.max(0, Number(sibEntry?.amount) || 0);
-            }
-            const parentIdx = next.findIndex(b =>
-              doesBudgetMatchCategory(b.category, parentCat, aliasOpts)
+      let bumpedParentId: string | null = null;
+      // Keep explicit parent target >= sum of child sub-category targets (BUG-BUD-07)
+      if (matchedCat?.parentId) {
+        const parentCat = categories.find(c => c.id === matchedCat.parentId);
+        if (parentCat) {
+          const siblings = categories.filter(c => c.parentId === parentCat.id);
+          let newSubSum = 0;
+          for (const sib of siblings) {
+            const sibEntry = next.find(b =>
+              doesBudgetMatchCategory(b.category, sib, aliasOpts)
             );
-            if (parentIdx > -1) {
-              const existingParentAmt = Number(next[parentIdx].amount) || 0;
-              if (existingParentAmt > 0 && newSubSum > existingParentAmt) {
-                next[parentIdx] = { category: parentCat.id, amount: newSubSum };
-                setBudgetDrafts(drafts => {
-                  if (!(parentCat.id in drafts)) return drafts;
-                  const copy = { ...drafts };
-                  delete copy[parentCat.id];
-                  return copy;
-                });
-              }
+            newSubSum += Math.max(0, Number(sibEntry?.amount) || 0);
+          }
+          const parentIdx = next.findIndex(b =>
+            doesBudgetMatchCategory(b.category, parentCat, aliasOpts)
+          );
+          if (parentIdx > -1) {
+            const existingParentAmt = Number(next[parentIdx].amount) || 0;
+            if (existingParentAmt > 0 && newSubSum > existingParentAmt) {
+              next[parentIdx] = { category: parentCat.id, amount: newSubSum };
+              bumpedParentId = parentCat.id;
             }
           }
         }
+      }
 
-        return next;
+      setBudgetErrors(prev => ({ ...prev, [catName]: '' }));
+      updateWorkingBudgets(next);
+      setBudgetDrafts(prev => {
+        const updated = { ...prev, [catName]: val };
+        if (bumpedParentId && bumpedParentId in updated) {
+          delete updated[bumpedParentId];
+        }
+        return updated;
       });
     },
-    [categories]
+    [categories, updateWorkingBudgets]
   );
 
   const handleSaveBudgets = useCallback(async () => {
@@ -434,11 +463,11 @@ export function useBudgets(
       return;
     }
 
-    const cleaned = cleanBudgetsForSave(workingBudgets, categories);
+    const cleaned = cleanBudgetsForSave(workingBudgetsRef.current, categories);
     try {
       await storageAdapter.saveBudgets(activeProject.id, cleaned);
       setPersistedBudgets(cleaned);
-      setWorkingBudgets(cleaned);
+      updateWorkingBudgets(cleaned);
       setBudgetDrafts({});
       setBudgetErrors({});
       showToast('Budgets saved successfully');
@@ -457,16 +486,16 @@ export function useBudgets(
     selectedMonth,
     dirtyState,
     categories,
-    workingBudgets,
+    updateWorkingBudgets,
     showToast,
     setAuthErrorToast,
   ]);
 
   const handleDiscardBudgetChanges = useCallback(() => {
-    setWorkingBudgets(persistedBudgets);
+    updateWorkingBudgets(persistedBudgets);
     setBudgetDrafts({});
     setBudgetErrors({});
-  }, [persistedBudgets]);
+  }, [persistedBudgets, updateWorkingBudgets]);
 
   const handleApplyBudgetPreset = useCallback(
     (catId: string, amount: number) => {
@@ -503,7 +532,7 @@ export function useBudgets(
       return 0;
     }
 
-    setWorkingBudgets(prev => {
+    updateWorkingBudgets(prev => {
       const filtered = prev.filter(
         b =>
           !additions.some(add =>
@@ -527,7 +556,15 @@ export function useBudgets(
       'info'
     );
     return filledCount;
-  }, [isLockedMonth, selectedMonth, categories, categorySummary, spendingHistory, showToast]);
+  }, [
+    isLockedMonth,
+    selectedMonth,
+    categories,
+    categorySummary,
+    spendingHistory,
+    updateWorkingBudgets,
+    showToast,
+  ]);
 
   const handleSaveCategory = async (newCat: Category, isEdit: boolean) => {
     if (!activeProject || !storageAdapter) return false;

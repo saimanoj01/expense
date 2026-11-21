@@ -28,12 +28,6 @@ export default defineConfig({
           ) {
             return 'vendor-react';
           }
-          if (id.includes('node_modules/recharts')) {
-            return 'vendor-recharts';
-          }
-          if (id.includes('node_modules/victory-vendor') || id.includes('node_modules/d3-')) {
-            return 'vendor-d3';
-          }
           if (id.includes('node_modules/framer-motion')) {
             return 'vendor-motion';
           }

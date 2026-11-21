@@ -236,9 +236,10 @@ test.describe('Tier 5 Part 2: Adversarial Coverage Hardening Audit', () => {
       // Now switch month selector to "All Months" ('all')
       await page.getByTestId('month-selector').selectOption('all');
 
-      // Empirically verify flaw: edit and delete buttons are now rendered even though 2026-05 is locked!
+      // Locked-month row in All Time view: Edit stays available as read-only details, Delete is hidden
       await expect(page.getByTestId('edit-transaction-btn-tx-locked-may')).toBeVisible();
-      await expect(page.getByTestId('delete-transaction-btn-tx-locked-may')).toBeVisible();
+      await expect(page.getByTestId('delete-transaction-btn-tx-locked-may')).toHaveCount(0);
+      await expect(page.getByTestId('locked-row-icon-tx-locked-may')).toBeVisible();
     });
 
     test('3.2 Storage adapter saveBudgets allows overwriting budgets for locked months', async ({ page }) => {

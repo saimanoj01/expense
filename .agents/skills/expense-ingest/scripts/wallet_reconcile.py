@@ -14,7 +14,7 @@ Features:
   - Month-end Bilt housing date normalization (`days 28..31` and `amount >= minAmount` -> `YYYY-(M+1)-01`)
     with dual aliasHashes (`raw_hash[:16]` and `norm_hash[:16]`) so each calendar month has exactly one
     mortgage expense and re-runs across month boundaries are 100% idempotent.
-  - Tombstone filtering from `Notes` tab (`__meta_ingest_state__` + `__meta_ingest_tombstones_1__..5__`)
+  - Tombstone filtering from `Notes` tab (`__meta_ingest_state__` + `__meta_ingest_tombstones_1__..4__`)
     so user-deleted rows are never resurrected during a 7-day rolling lookback.
   - Occurrence-aware deduplication (`claimed_existing_ids` + `created_in_batch_ids`), Pending -> Settled
     (`Purchase`) in-place upgrade (same hash, ±3d settlement drift, or `transfers-cc` description shift),
@@ -38,10 +38,37 @@ import sys
 import uuid
 from typing import Any, Dict, List, Optional, Set, Tuple
 
+try:
+    from zoneinfo import ZoneInfo
+except Exception:  # pragma: no cover
+    ZoneInfo = None  # type: ignore[assignment]
+
+DEFAULT_TIMEZONE = "America/Los_Angeles"
 MAX_INLINE_TOMBSTONES = 400
 TOMBSTONE_CHUNK_SIZE = 400
-MAX_TOMBSTONE_CHUNKS = 5
+MAX_TOMBSTONE_CHUNKS = 4
 MAX_TOTAL_TOMBSTONES = MAX_INLINE_TOMBSTONES + (TOMBSTONE_CHUNK_SIZE * MAX_TOMBSTONE_CHUNKS)
+MAX_RECENT_RUNS = 30
+
+
+def resolve_local_date_str(
+    tz_name: str = DEFAULT_TIMEZONE,
+    now_iso: Optional[str] = None,
+) -> str:
+    """Returns YYYY-MM-DD in the configured timezone (defaults to America/Los_Angeles)."""
+    base_dt = (
+        datetime.datetime.fromisoformat(now_iso.replace("Z", "+00:00"))
+        if now_iso
+        else datetime.datetime.now(datetime.timezone.utc)
+    )
+    if base_dt.tzinfo is None:
+        base_dt = base_dt.replace(tzinfo=datetime.timezone.utc)
+    if ZoneInfo is not None and tz_name:
+        try:
+            return base_dt.astimezone(ZoneInfo(tz_name)).date().isoformat()
+        except Exception as exc:
+            sys.stderr.write(f"Warning: Invalid timezone '{tz_name}' ({exc}); falling back to UTC.\n")
+    return base_dt.astimezone(datetime.timezone.utc).date().isoformat()
 
 DEFAULT_WORD_BOUNDARY_KEYWORDS: List[str] = [
     "bar",
@@ -60,9 +87,25 @@ DEFAULT_WORD_BOUNDARY_KEYWORDS: List[str] = [
     "pse",
     "spa",
     "nail",
+    "water",
+    "train",
+    "power",
+    "ticket",
+    "delivery",
+    "rent",
+    "food",
+    "auto",
+    "car",
+    "uber",
 ]
 
 DEFAULT_CATEGORY_KEYWORDS: List[Dict[str, Any]] = [
+    {
+        "category": "transport",
+        "subCategory": "transport-fuel",
+        "spendingBucket": "flexible",
+        "keywords": ["costco gas"],
+    },
     {
         "category": "groceries",
         "subCategory": "groceries-costco",
@@ -200,7 +243,7 @@ DEFAULT_CATEGORY_KEYWORDS: List[Dict[str, Any]] = [
         "category": "transport",
         "subCategory": "transport-fuel",
         "spendingBucket": "flexible",
-        "keywords": ["chevron", "shell", "7-eleven", "arco", "mobil", "exxon", "fuel"],
+        "keywords": ["chevron", "shell", "7-eleven", "arco", "mobil", "exxon", "fuel", "gas"],
     },
     {
         "category": "transport",
@@ -354,6 +397,8 @@ DEFAULT_RULES: Dict[str, Any] = {
             "spendingBucket": None,
             "description": "Bilt",
             "preserveRawInNotes": True,
+            "normalizeMonthEndToFirstOfNextMonth": True,
+            "minAmount": 1000,
         },
     ],
     "creditCardPayoffPatterns": [
@@ -560,6 +605,8 @@ def get_merchant_family(raw: str) -> str:
         return "target"
     if re.search(r"\bwalmart\b|\bwal-mart\b|\bwm\s+supercenter\b", lower):
         return "walmart"
+    if re.search(r"\bcostco\s+gas\b", lower):
+        return "costco gas"
     if re.search(r"\bcostco\b", lower):
         return "costco"
     if re.search(r"\btrader\s+joe'?s\b", lower):
@@ -580,6 +627,8 @@ def get_merchant_family(raw: str) -> str:
 
 
 def is_opaque_marketplace(desc: str, merchant: Optional[str] = None) -> bool:
+    if re.search(r"\bcostco\s+gas\b", f"{desc or ''} {merchant or ''}", re.IGNORECASE):
+        return False
     fam = get_merchant_family(merchant or desc)
     if fam not in MULTI_CATEGORY_MARKETPLACES:
         return False
@@ -671,9 +720,22 @@ def signed_days_between(date_earlier: str, date_later: str) -> int:
     return (db - da).days
 
 
+ACCOUNT_DISPLAY_ALIASES: Dict[str, str] = {
+    "bilt card": "bilt",
+    "bilt palladium": "bilt",
+    "bilt mastercard": "bilt",
+    "amazon card": "amazon store card",
+    "amazon synchrony": "amazon store card",
+    "amazon-synchrony": "amazon store card",
+    "synchrony amazon": "amazon store card",
+}
+
+
 def extract_account_digits(raw_account: str, rules: Dict[str, Any]) -> Tuple[Optional[str], Optional[str], Optional[str]]:
     """Returns (digits_4, canonical_label, display_name) from an account string, labels, or notes."""
     text = (raw_account or "").strip()
+    if not text:
+        return None, None, None
     lower = text.lower()
     account_map = rules.get("accountMap", {})
     # 1. Check explicit 4-digit account numbers first (avoids matching "BILT CARD PMT" on 8885/9666 as 7702)
@@ -685,12 +747,47 @@ def extract_account_digits(raw_account: str, rules: Dict[str, Any]) -> Tuple[Opt
         lbl = info.get("label", "").lower()
         if lbl and re.search(rf"\b{re.escape(lbl)}\b", lower):
             return digits, info.get("label"), info.get("displayName")
-    m = re.search(r"\b(\d{4})\b", text)
+    # 3. Only extract unknown 4-digit suffixes when bare-4-digit, parenthesized, or explicitly prefixed
+    #    (never grab calendar years like 2026 or store numbers like #0110)
+    if re.fullmatch(r"\d{4}", text):
+        digits = text
+        info = account_map.get(digits, {})
+        return digits, info.get("label", digits), info.get("displayName", text)
+    m = re.search(
+        r"\((\d{4})\)|(?:card|acct|account|ending\s+in|x{2,4}|\*{2,4})\s*#?(\d{4})\b",
+        text,
+        re.IGNORECASE,
+    )
     if m:
-        digits = m.group(1)
+        digits = m.group(1) or m.group(2)
         info = account_map.get(digits, {})
         return digits, info.get("label", digits), info.get("displayName", text)
     return None, None, None
+
+
+def canonicalize_account_key(raw_acc: Optional[str], rules: Dict[str, Any]) -> Optional[str]:
+    if not raw_acc:
+        return None
+    text = str(raw_acc).strip()
+    if not text:
+        return None
+    _, mapped_label, _ = extract_account_digits(text, rules)
+    if mapped_label:
+        return mapped_label.strip().lower()
+    lower = re.sub(r"\s+", " ", text.lower())
+    return ACCOUNT_DISPLAY_ALIASES.get(lower, lower)
+
+
+def accounts_are_compatible(
+    acc_a: Optional[str],
+    acc_b: Optional[str],
+    rules: Dict[str, Any],
+) -> bool:
+    key_a = canonicalize_account_key(acc_a, rules)
+    key_b = canonicalize_account_key(acc_b, rules)
+    if not key_a or not key_b:
+        return True
+    return key_a == key_b
 
 
 def row_is_pending(tx: Dict[str, Any]) -> bool:
@@ -734,7 +831,20 @@ def resolve_modal_spending_bucket(group: List[Dict[str, Any]], category_id: str)
         )[0]
         return best_bucket
 
-    return "fixed" if category_id in ("housing", "utilities", "child-care") else "flexible"
+    cat_lower = (category_id or "").strip().lower()
+    if cat_lower in ("housing", "rent", "utilities", "child-care"):
+        return "fixed"
+    if cat_lower in ("travel", "insurance", "taxes"):
+        return "non-monthly"
+    return "flexible"
+
+
+def _is_user_verified_history_row(tx: Dict[str, Any]) -> bool:
+    meta = tx.get("meta") or {}
+    if meta.get("categorizedBy") == "user":
+        return True
+    user_edited = meta.get("userEdited")
+    return isinstance(user_edited, list) and "category" in user_edited
 
 
 def lookup_history_classification(
@@ -746,6 +856,10 @@ def lookup_history_classification(
     if is_opaque_marketplace(description, merchant):
         return None
 
+    target_fam = get_merchant_family(merchant or description)
+    is_enriched_marketplace = target_fam in MULTI_CATEGORY_MARKETPLACES
+    clean_target_desc = (description or "").strip().lower()
+
     candidates: List[Dict[str, Any]] = []
     for tx in existing_txs:
         cat = tx.get("category") or ""
@@ -756,22 +870,35 @@ def lookup_history_classification(
             continue
         if cat == "misc" and (not sub or sub == "misc-other"):
             continue
-        labels = tx.get("labels") or []
-        if "needs-review" in labels or "refund" in labels:
+        labels = [str(l).strip().lower() for l in (tx.get("labels") or [])]
+        if "needs-review" in labels or "refund" in labels or "reimbursement" in labels:
             continue
-        if history_merchants_match(tx.get("description", ""), description, merchant):
+        meta_review = (tx.get("meta") or {}).get("review") or {}
+        if meta_review and not meta_review.get("resolvedAt") and meta_review.get("reason") == "category":
+            continue
+        if is_enriched_marketplace:
+            # Prevent enriched multi-category marketplace items ("Amazon: Baby Wipes")
+            # from learning across unrelated items ("Amazon: HDMI Cable")
+            if (tx.get("description") or "").strip().lower() != clean_target_desc:
+                continue
+            candidates.append(tx)
+        elif history_merchants_match(tx.get("description", ""), description, merchant):
             candidates.append(tx)
 
     if not candidates:
         return None
 
+    # Prioritize user-verified rows so manual UI corrections override legacy auto-categorized history
+    verified_candidates = [c for c in candidates if _is_user_verified_history_row(c)]
+    pool = verified_candidates if verified_candidates else candidates
+
     counts: Dict[Tuple[str, Optional[str]], List[Dict[str, Any]]] = {}
-    for c in candidates:
+    for c in pool:
         key = (c["category"], c.get("subCategory") or None)
         counts.setdefault(key, []).append(c)
 
     best_key, best_group = max(counts.items(), key=lambda kv: len(kv[1]))
-    purity = len(best_group) / len(candidates)
+    purity = len(best_group) / len(pool)
     if purity < 0.6:
         return None
 
@@ -794,6 +921,45 @@ def keyword_matches_text(keyword: str, text_lower: str, word_boundary_set: Set[s
     return kw_lower in text_lower
 
 
+KNOWN_CANONICAL_CATEGORY_IDS: Set[str] = {
+    "groceries",
+    "shopping",
+    "merchandise",
+    "utilities",
+    "food",
+    "entertainment",
+    "misc",
+    "income",
+    "transfers",
+    "travel",
+    "housing",
+    "transport",
+    "healthcare",
+    "child-care",
+    "insurance",
+    "taxes",
+}
+
+
+def _default_bucket_for_category(category_id: str, sub_category_id: Optional[str] = None) -> str:
+    cat_lower = (category_id or "").strip().lower()
+    sub_lower = (sub_category_id or "").strip().lower()
+    if (
+        sub_lower == "entertainment-subs"
+        or sub_lower.startswith("housing-")
+        or sub_lower.startswith("utilities-")
+        or cat_lower in ("housing", "rent", "utilities", "child-care")
+    ):
+        return "fixed"
+    if (
+        sub_lower == "transport-maint"
+        or sub_lower.startswith("travel-")
+        or cat_lower in ("travel", "insurance", "taxes")
+    ):
+        return "non-monthly"
+    return "flexible"
+
+
 def classify_wallet_item(
     raw: Dict[str, Any],
     existing_txs: List[Dict[str, Any]],
@@ -803,11 +969,47 @@ def classify_wallet_item(
     raw_desc = str(raw.get("description") or raw.get("merchant") or "Transaction").strip()
     raw_merchant = str(raw.get("merchant") or "").strip() or None
     raw_status = str(raw.get("status") or raw.get("type") or "").strip()
-    raw_category_hint = str(raw.get("categoryHint") or raw.get("walletCategory") or raw.get("category") or "").strip()
+    raw_explicit_cat_str = str(raw.get("category") or "").strip()
+    raw_explicit_sub = str(raw.get("subCategory") or "").strip() or None
+    raw_explicit_bucket = str(raw.get("spendingBucket") or "").strip() or None
+    if raw_explicit_bucket not in ("fixed", "flexible", "non-monthly"):
+        raw_explicit_bucket = None
+
+    known_cat_ids = set(KNOWN_CANONICAL_CATEGORY_IDS)
+    for entry in rules.get("categoryKeywords", DEFAULT_CATEGORY_KEYWORDS):
+        if entry.get("category"):
+            known_cat_ids.add(str(entry["category"]).strip().lower())
+    for tx in existing_txs:
+        if tx.get("category"):
+            known_cat_ids.add(str(tx["category"]).strip().lower())
+
+    explicit_category: Optional[str] = None
+    if raw_explicit_cat_str:
+        has_explicit_companion = (
+            raw_explicit_sub is not None
+            or raw_explicit_bucket is not None
+            or raw.get("categorizedBy") is not None
+        )
+        if has_explicit_companion:
+            explicit_category = (
+                raw_explicit_cat_str.lower()
+                if raw_explicit_cat_str.lower() in known_cat_ids
+                else raw_explicit_cat_str
+            )
+        elif raw_explicit_cat_str == raw_explicit_cat_str.lower() and raw_explicit_cat_str in known_cat_ids:
+            explicit_category = raw_explicit_cat_str
+
+    raw_category_hint = str(
+        raw.get("categoryHint")
+        or raw.get("walletCategory")
+        or ("" if explicit_category else raw_explicit_cat_str)
+        or ""
+    ).strip()
     raw_account = str(raw.get("account") or raw.get("card") or "").strip()
     raw_notes = str(raw.get("notes") or "").strip()
 
-    amt_val = abs(round(float(raw.get("amount", 0.0)), 2))
+    raw_amount_float = float(raw.get("amount", 0.0))
+    amt_val = abs(round(raw_amount_float, 2))
     is_pending = bool(
         raw.get("pending")
         or raw.get("provisional")
@@ -815,15 +1017,42 @@ def classify_wallet_item(
         or "pending" in raw_notes.lower()
         or bool(re.search(r"\bpending\b", raw_desc.lower()))
     )
-    is_refund = bool(
-        raw.get("isRefund")
-        or "refund" in raw_status.lower()
-        or (float(raw.get("amount", 0.0)) < 0 and raw_status.lower() not in ("expense", "purchase", "transfer"))
-    )
 
-    acc_digits, acc_label, acc_display = extract_account_digits(raw_account or raw_notes, rules)
+    acc_digits, acc_label, acc_display = extract_account_digits(raw_account, rules)
+    if acc_label is None and raw_notes:
+        acc_digits, acc_label, acc_display = extract_account_digits(raw_notes, rules)
+    if acc_label is None and raw_account:
+        acc_label = raw_account
+        acc_display = raw_account
     merchant_and_hint = " ".join(filter(None, [raw_desc, raw_merchant, raw_category_hint]))
-    combined_text = " ".join(filter(None, [raw_desc, raw_merchant, raw_category_hint, raw_notes]))
+
+    is_income_context = (
+        raw_status.lower() in ("income", "deposit", "payroll")
+        or raw_category_hint.lower() == "income"
+        or bool(
+            re.search(
+                r"\b(?:payroll|direct\s+deposit|your\s+rental|rental\s+income)\b",
+                merchant_and_hint,
+                re.IGNORECASE,
+            )
+        )
+    )
+    is_refund = (
+        raw_status.lower() != "transfer"
+        and not is_income_context
+        and bool(
+            raw.get("isRefund")
+            or "refund" in raw_status.lower()
+            or bool(
+                re.search(
+                    r"\b(?:refund|reversal|return\s+credit|reimbursement|chargeback)\b",
+                    raw_desc,
+                    re.IGNORECASE,
+                )
+            )
+            or raw_amount_float < 0
+        )
+    )
 
     # Build provenance note if not explicitly provided
     provenance_parts = ["Google Wallet (Plaid)"]
@@ -835,7 +1064,7 @@ def classify_wallet_item(
     # 1. Check Bilt Housing Pass-Through Rules
     for b_rule in rules.get("biltHousingRules", []):
         if re.search(b_rule["pattern"], raw_desc, re.IGNORECASE) or re.search(
-            b_rule["pattern"], combined_text, re.IGNORECASE
+            b_rule["pattern"], merchant_and_hint, re.IGNORECASE
         ):
             req_acc = b_rule.get("account")
             if not req_acc or not acc_digits or req_acc == acc_digits:
@@ -893,16 +1122,42 @@ def classify_wallet_item(
             "reviewDetail": None,
         }
 
-    # 3. Determine Income vs Expense vs Refund
-    is_pure_income = (
-        not is_refund
-        and (
-            raw_status.lower() in ("income", "deposit", "credit", "payroll")
-            or raw_category_hint.lower() == "income"
-            or bool(re.search(r"\b(?:payroll|direct\s+deposit|your\s+rental|rental\s+income)\b", combined_text, re.IGNORECASE))
-        )
+    # 3. Determine Income vs Expense vs Refund (isolated from free-text `raw_notes`)
+    is_pure_income = not is_refund and (
+        is_income_context or raw_status.lower() == "credit"
     )
     tx_type = "income" if (is_pure_income or is_refund) else "expense"
+
+    # 3b. Honor explicit Nebula category override (e.g., 2-pass Gemini Spark categorization)
+    if explicit_category:
+        if explicit_category.lower() == "transfers":
+            tx_type = "transfer"
+        elif explicit_category.lower() == "income" and not is_refund:
+            tx_type = "income"
+            is_pure_income = True
+        bucket = (
+            (raw_explicit_bucket or _default_bucket_for_category(explicit_category, raw_explicit_sub))
+            if (tx_type == "expense" or is_refund)
+            else None
+        )
+        labels = ["refund"] if is_refund else []
+        notes_out = raw_notes or " • ".join(provenance_parts)
+        return {
+            "description": raw_desc,
+            "amount": amt_val,
+            "type": tx_type,
+            "category": explicit_category,
+            "subCategory": raw_explicit_sub,
+            "spendingBucket": bucket,
+            "labels": labels,
+            "notes": notes_out,
+            "account": acc_label,
+            "provisional": is_pending,
+            "confidence": float(raw.get("confidence") or 0.9),
+            "categorizedBy": str(raw.get("categorizedBy") or "llm"),
+            "reviewReason": None,
+            "reviewDetail": None,
+        }
 
     # 4. Stage 1: Ledger History Memory (runs BEFORE Stage 2 rules so user-verified categories win)
     hist = lookup_history_classification(
@@ -944,10 +1199,10 @@ def classify_wallet_item(
             "reviewDetail": None,
         }
 
-    # 5. Stage 2a: Known Recurring ACH / Merchant Rules
+    # 5. Stage 2a: Known Recurring ACH / Merchant Rules (isolated from free-text `raw_notes`)
     for k_rule in rules.get("knownRecurringRules", []):
         if re.search(k_rule["pattern"], raw_desc, re.IGNORECASE) or re.search(
-            k_rule["pattern"], combined_text, re.IGNORECASE
+            k_rule["pattern"], merchant_and_hint, re.IGNORECASE
         ):
             if k_rule.get("requireIncomeContext") and not is_pure_income:
                 continue
@@ -972,8 +1227,8 @@ def classify_wallet_item(
                 "reviewDetail": None,
             }
 
-    # 6. Stage 2b: Keyword & Category-Hint Rules (with word-boundary protection for short tokens)
-    norm_combined = combined_text.lower()
+    # 6. Stage 2b: Keyword & Category-Hint Rules (isolated from `raw_notes`, with word-boundary protection)
+    norm_merchant_and_hint = merchant_and_hint.lower()
     wb_set = {w.lower() for w in rules.get("wordBoundaryKeywords", DEFAULT_WORD_BOUNDARY_KEYWORDS)}
     cat_kw_entries = rules.get("categoryKeywords", DEFAULT_CATEGORY_KEYWORDS)
 
@@ -982,7 +1237,7 @@ def classify_wallet_item(
         sub_id = entry.get("subCategory")
         default_bucket = entry.get("spendingBucket", "flexible")
         kw_list = entry.get("keywords", [])
-        if any(keyword_matches_text(kw, norm_combined, wb_set) for kw in kw_list):
+        if any(keyword_matches_text(kw, norm_merchant_and_hint, wb_set) for kw in kw_list):
             opaque = is_opaque_marketplace(raw_desc, raw_merchant) and not is_refund
             conf = 0.55 if opaque else 0.85
             rev_reason = "category" if opaque else None
@@ -1093,10 +1348,10 @@ def parse_sheet_row_dict(
     raw_user_edited = meta.get("userEdited")
     user_edited_fields = raw_user_edited if isinstance(raw_user_edited, list) else []
     if not meta.get("account") and "account" not in user_edited_fields:
-        _, acc_label, _ = extract_account_digits(
-            " ".join(labels) or row_dict.get("notes") or "",
-            rules,
-        )
+        labels_str = " ".join(str(l) for l in labels).strip()
+        _, acc_label, _ = extract_account_digits(labels_str, rules)
+        if not acc_label and row_dict.get("notes"):
+            _, acc_label, _ = extract_account_digits(row_dict.get("notes") or "", rules)
         if acc_label:
             meta["account"] = acc_label
     try:
@@ -1122,10 +1377,10 @@ def parse_sheet_row_dict(
 
 
 def load_transactions_tsv(tsv_path: str, rules: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """Loads Transactions.tsv using line-accurate `csv.reader` so blank rows never shift `rowNumber`."""
+    """Loads Transactions.tsv using unquoted TSV parsing (`QUOTE_NONE`) so quotes in notes never shift `rowNumber`."""
     rows: List[Dict[str, Any]] = []
-    with open(tsv_path, "r", encoding="utf-8") as f:
-        reader = csv.reader(f, delimiter="\t")
+    with open(tsv_path, "r", encoding="utf-8-sig") as f:
+        reader = csv.reader(f, delimiter="\t", quoting=csv.QUOTE_NONE)
         header: Optional[List[str]] = None
         for row_idx, raw_cells in enumerate(reader, start=1):
             if row_idx == 1:
@@ -1146,7 +1401,7 @@ def load_transactions_tsv(tsv_path: str, rules: Dict[str, Any]) -> List[Dict[str
 
 
 def load_transactions_json(json_path: str, rules: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """Loads a 2D JSON grid from `gsheets readonly read <ID> 'Transactions!A1:L2000' --json`."""
+    """Loads a 2D JSON grid from `gsheets readonly read <ID> 'Transactions!A:L' --json`."""
     rows: List[Dict[str, Any]] = []
     with open(json_path, "r", encoding="utf-8") as f:
         payload = json.load(f)
@@ -1167,16 +1422,44 @@ def load_transactions_json(json_path: str, rules: Dict[str, Any]) -> List[Dict[s
     return rows
 
 
+def load_locks_json(locks_json_path: Optional[str]) -> Set[str]:
+    """Loads locked YYYY-MM months from `Locks!A:C` JSON (`gsheets readonly read <ID> 'Locks!A:C' --json`)."""
+    locked_months: Set[str] = set()
+    if locks_json_path is None:
+        return locked_months
+    if not os.path.exists(locks_json_path):
+        raise FileNotFoundError(f"Locks JSON file not found: {locks_json_path}")
+    with open(locks_json_path, "r", encoding="utf-8") as f:
+        raw_payload = json.load(f)
+    grid = raw_payload.get("values", raw_payload) if isinstance(raw_payload, dict) else raw_payload
+    if not isinstance(grid, list):
+        return locked_months
+    for idx, row in enumerate(grid):
+        if not isinstance(row, list) or len(row) < 2:
+            continue
+        month_val = str(row[0]).strip()
+        if idx == 0 and month_val.lower() == "month":
+            continue
+        locked_raw = row[1]
+        is_locked = (
+            locked_raw is True
+            or str(locked_raw).strip().lower() == "true"
+        )
+        if is_locked and re.match(r"^\d{4}-\d{2}$", month_val):
+            locked_months.add(month_val)
+    return locked_months
+
+
 def load_ingest_state_from_notes(
     notes_json_path: Optional[str],
     now_iso: Optional[str] = None,
 ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     """
-    Loads IngestState and row metadata from `Notes!A1:B50` JSON.
+    Loads IngestState and row metadata from unbounded `Notes!A:B` JSON.
     Returns `(ingest_state, notes_meta)` where `notes_meta` tracks:
       - `stateRow`: first row index containing `__meta_ingest_state__`
-      - `duplicateStateRows`: any duplicate `__meta_ingest_state__` row indices to clear
-      - `overflowRowMap`: `{chunk_idx: row_num}` for `__meta_ingest_tombstones_1__..5__`
+      - `duplicateStateRows`: any duplicate `__meta_ingest_state__` or duplicate chunk row indices to clear
+      - `overflowRowMap`: `{chunk_idx: row_num}` for `__meta_ingest_tombstones_1__..N__`
       - `activeLock`: active lease lock dict if `__meta_ingest_lock__` is unexpired
     """
     default_state: Dict[str, Any] = {
@@ -1190,9 +1473,12 @@ def load_ingest_state_from_notes(
         "duplicateStateRows": [],
         "overflowRowMap": {},
         "activeLock": None,
+        "workspaceConfig": None,
     }
-    if not notes_json_path or not os.path.exists(notes_json_path):
+    if notes_json_path is None:
         return default_state, notes_meta
+    if not os.path.exists(notes_json_path):
+        raise FileNotFoundError(f"Notes JSON file not found: {notes_json_path}")
 
     with open(notes_json_path, "r", encoding="utf-8") as f:
         raw_payload = json.load(f)
@@ -1232,7 +1518,10 @@ def load_ingest_state_from_notes(
         elif key.startswith("__meta_ingest_tombstones_"):
             try:
                 chunk_idx = int(key.replace("__meta_ingest_tombstones_", "").replace("__", ""))
-                notes_meta["overflowRowMap"][chunk_idx] = idx
+                if chunk_idx not in notes_meta["overflowRowMap"]:
+                    notes_meta["overflowRowMap"][chunk_idx] = idx
+                else:
+                    notes_meta["duplicateStateRows"].append(idx)
                 wrapper = json.loads(val_str)
                 inner = (
                     json.loads(wrapper["text"])
@@ -1240,7 +1529,8 @@ def load_ingest_state_from_notes(
                     else wrapper
                 )
                 if isinstance(inner, list):
-                    overflow_chunks[chunk_idx] = [str(x) for x in inner]
+                    existing_chunk = overflow_chunks.get(chunk_idx) or []
+                    overflow_chunks[chunk_idx] = list(dict.fromkeys([*existing_chunk, *(str(x) for x in inner)]))
             except Exception:
                 pass
         elif key == "__meta_ingest_lock__" and val_str:
@@ -1257,6 +1547,18 @@ def load_ingest_state_from_notes(
                     )
                     if exp_dt > now_dt:
                         notes_meta["activeLock"] = inner
+            except Exception:
+                pass
+        elif key == "__meta_workspace_config__" and val_str:
+            try:
+                wrapper = json.loads(val_str)
+                inner = (
+                    json.loads(wrapper["text"])
+                    if isinstance(wrapper, dict) and "text" in wrapper
+                    else wrapper
+                )
+                if isinstance(inner, dict):
+                    notes_meta["workspaceConfig"] = inner
             except Exception:
                 pass
 
@@ -1276,12 +1578,15 @@ def reconcile_wallet_batch(
     reference_date: Optional[str] = None,
     lookback_days: Optional[int] = None,
     now_iso: Optional[str] = None,
+    locked_months: Optional[Set[str]] = None,
+    timezone_name: str = DEFAULT_TIMEZONE,
 ) -> Dict[str, Any]:
     now_str = now_iso or datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    ref_date_str = reference_date or now_str[:10]
+    ref_date_str = reference_date or resolve_local_date_str(timezone_name, now_iso)
     lb_days = lookback_days if lookback_days is not None else int(rules.get("lookbackDays", 7))
     sheet_window_days = int(rules.get("sheetWindowDays", 14))
     source_id = rules.get("sourceId", "gpay-plaid")
+    locked_month_set: Set[str] = set(locked_months or ())
 
     ref_date = parse_iso_date(ref_date_str)
     cutoff_date = (ref_date - datetime.timedelta(days=lb_days)).isoformat() if ref_date and lb_days > 0 else None
@@ -1298,12 +1603,14 @@ def reconcile_wallet_batch(
         "skippedDuplicate": 0,
         "skippedTombstoned": 0,
         "skippedBeforeLookback": 0,
+        "skippedLockedMonth": 0,
     }
 
     append_rows: List[List[Any]] = []
     inserted_txs: List[Dict[str, Any]] = []
     update_ops: List[Dict[str, Any]] = []
     flagged_txs: List[Dict[str, Any]] = []
+    deferred_locked: List[Dict[str, Any]] = []
     records: List[Dict[str, Any]] = []
 
     working_ledger = [
@@ -1311,6 +1618,7 @@ def reconcile_wallet_batch(
         for t in existing_txs
     ]
     claimed_existing_ids: Set[str] = set()
+    skipped_locked_ids: Set[str] = set()
     created_in_batch_ids: Set[str] = set()
 
     for idx, raw in enumerate(incoming_raw):
@@ -1369,13 +1677,17 @@ def reconcile_wallet_batch(
             records.append({"inputIndex": idx, "status": "skipped_tombstoned", "hash": tx_hash})
             continue
 
-        # 2. Check Exact Hash or Alias Hash Match (Unclaimed existing rows first)
+        # 2. Check Exact Hash or Alias Hash Match (Unclaimed existing rows with compatible account first)
         exact_match = next(
             (
                 t
                 for t in working_ledger
                 if t["id"] not in created_in_batch_ids
                 and t["id"] not in claimed_existing_ids
+                and t["id"] not in skipped_locked_ids
+                and accounts_are_compatible(
+                    t.get("meta", {}).get("account"), classified["account"], rules
+                )
                 and (
                     t.get("hash") in candidate_hashes
                     or bool(candidate_short_hashes & set(t.get("meta", {}).get("aliasHashes") or []))
@@ -1384,8 +1696,25 @@ def reconcile_wallet_batch(
             None,
         )
         if exact_match:
-            claimed_existing_ids.add(exact_match["id"])
             if row_is_pending(exact_match) and not classified["provisional"]:
+                exact_month = (exact_match.get("date") or "")[:7]
+                if exact_month in locked_month_set:
+                    skipped_locked_ids.add(exact_match["id"])
+                    summary["skippedLockedMonth"] += 1
+                    deferred_item = {
+                        "inputIndex": idx,
+                        "action": "updated_pending_to_settled",
+                        "lockedMonth": exact_month,
+                        "date": tx_date,
+                        "description": classified["description"],
+                        "amount": classified["amount"],
+                        "type": classified["type"],
+                        "existingId": exact_match["id"],
+                    }
+                    deferred_locked.append(deferred_item)
+                    records.append({"inputIndex": idx, "status": "skipped_locked_month", **deferred_item})
+                    continue
+                claimed_existing_ids.add(exact_match["id"])
                 user_edited = set(exact_match.get("meta", {}).get("userEdited") or [])
                 if "notes" not in user_edited:
                     exact_match["notes"] = (
@@ -1427,16 +1756,20 @@ def reconcile_wallet_batch(
                 records.append({"inputIndex": idx, "status": "updated_pending_to_settled", "id": exact_match["id"]})
                 continue
 
+            claimed_existing_ids.add(exact_match["id"])
             summary["skippedDuplicate"] += 1
             records.append({"inputIndex": idx, "status": "skipped_exact_duplicate", "id": exact_match["id"]})
             continue
 
-        # 2b. Check if an identical hash was already claimed or created in this batch (2nd identical charge)
+        # 2b. Check if an identical hash was already claimed or created in this batch on a compatible account (2nd identical charge)
         claimed_or_batch_exact = next(
             (
                 t
                 for t in working_ledger
                 if (t["id"] in created_in_batch_ids or t["id"] in claimed_existing_ids)
+                and accounts_are_compatible(
+                    t.get("meta", {}).get("account"), classified["account"], rules
+                )
                 and (
                     t.get("hash") in candidate_hashes
                     or bool(candidate_short_hashes & set(t.get("meta", {}).get("aliasHashes") or []))
@@ -1453,22 +1786,22 @@ def reconcile_wallet_batch(
             if "needs-review" not in classified["labels"]:
                 classified["labels"].append("needs-review")
 
-        # 3. Check Pending -> Settled Upgrade with ±3d Settlement Date Drift (within 14d window)
+        # 3. Check Pending -> Settled Upgrade with ±3d (or ±7d for month-end normalized Bilt rules) Settlement Date Drift
         if not classified["provisional"] and not claimed_or_batch_exact:
+            max_pending_drift = 7 if classified.get("normalizeMonthEndToFirstOfNextMonth") else 3
             pending_candidates = [
                 t
                 for t in working_ledger
                 if t["id"] not in created_in_batch_ids
                 and t["id"] not in claimed_existing_ids
+                and t["id"] not in skipped_locked_ids
                 and row_is_pending(t)
                 and days_between(t["date"], ref_date_str) <= sheet_window_days
-                and days_between(t["date"], tx_date) <= 3
+                and days_between(t["date"], tx_date) <= max_pending_drift
                 and t["type"] == classified["type"]
                 and abs(t["amount"] - classified["amount"]) <= 0.01
-                and (
-                    not t.get("meta", {}).get("account")
-                    or not classified["account"]
-                    or t["meta"]["account"] == classified["account"]
+                and accounts_are_compatible(
+                    t.get("meta", {}).get("account"), classified["account"], rules
                 )
                 and (
                     merchants_match(t["description"], classified["description"])
@@ -1484,9 +1817,31 @@ def reconcile_wallet_batch(
 
             if len(pending_candidates) >= 1:
                 target = pending_candidates[0]
+                user_edited = set(target.get("meta", {}).get("userEdited") or [])
+                target_existing_month = (target.get("date") or "")[:7]
+                effective_next_month = target_existing_month if "date" in user_edited else tx_date[:7]
+                if target_existing_month in locked_month_set or effective_next_month in locked_month_set:
+                    skipped_locked_ids.add(target["id"])
+                    summary["skippedLockedMonth"] += 1
+                    deferred_item = {
+                        "inputIndex": idx,
+                        "action": "updated_pending_to_settled",
+                        "lockedMonth": (
+                            target_existing_month
+                            if target_existing_month in locked_month_set
+                            else effective_next_month
+                        ),
+                        "date": tx_date,
+                        "description": classified["description"],
+                        "amount": classified["amount"],
+                        "type": classified["type"],
+                        "existingId": target["id"],
+                    }
+                    deferred_locked.append(deferred_item)
+                    records.append({"inputIndex": idx, "status": "skipped_locked_month", **deferred_item})
+                    continue
                 claimed_existing_ids.add(target["id"])
                 old_short = (target.get("hash") or "")[:16]
-                user_edited = set(target.get("meta", {}).get("userEdited") or [])
                 if "date" not in user_edited:
                     target["date"] = tx_date
                 if (
@@ -1519,6 +1874,8 @@ def reconcile_wallet_batch(
                 meta["aliasHashes"] = aliases
                 meta["provisional"] = False
                 meta["updatedAt"] = now_str
+                if source_id not in (meta.get("sources") or []):
+                    meta["sources"] = list(dict.fromkeys([*(meta.get("sources") or []), source_id]))
                 target["meta"] = meta
                 row_vals = tx_to_sheet_row(target)
                 update_ops.append(
@@ -1538,17 +1895,19 @@ def reconcile_wallet_batch(
             if classified["type"] == "expense":
                 tip_candidates = []
                 for t in working_ledger:
-                    if t["id"] in created_in_batch_ids or t["id"] in claimed_existing_ids:
+                    if (
+                        t["id"] in created_in_batch_ids
+                        or t["id"] in claimed_existing_ids
+                        or t["id"] in skipped_locked_ids
+                    ):
                         continue
                     if not row_is_pending(t) or t["type"] != "expense":
                         continue
                     delta_d = signed_days_between(t["date"], tx_date)
                     if delta_d < 0 or delta_d > 3:
                         continue
-                    if (
-                        t.get("meta", {}).get("account")
-                        and classified["account"]
-                        and t["meta"]["account"] != classified["account"]
+                    if not accounts_are_compatible(
+                        t.get("meta", {}).get("account"), classified["account"], rules
                     ):
                         continue
                     if not merchants_match(t["description"], classified["description"]):
@@ -1562,9 +1921,31 @@ def reconcile_wallet_batch(
                 tip_candidates.sort(key=lambda t: days_between(t["date"], tx_date))
                 if len(tip_candidates) >= 1:
                     target = tip_candidates[0]
+                    user_edited = set(target.get("meta", {}).get("userEdited") or [])
+                    target_existing_month = (target.get("date") or "")[:7]
+                    effective_next_month = target_existing_month if "date" in user_edited else tx_date[:7]
+                    if target_existing_month in locked_month_set or effective_next_month in locked_month_set:
+                        skipped_locked_ids.add(target["id"])
+                        summary["skippedLockedMonth"] += 1
+                        deferred_item = {
+                            "inputIndex": idx,
+                            "action": "merged_tip_adjusted",
+                            "lockedMonth": (
+                                target_existing_month
+                                if target_existing_month in locked_month_set
+                                else effective_next_month
+                            ),
+                            "date": tx_date,
+                            "description": classified["description"],
+                            "amount": classified["amount"],
+                            "type": classified["type"],
+                            "existingId": target["id"],
+                        }
+                        deferred_locked.append(deferred_item)
+                        records.append({"inputIndex": idx, "status": "skipped_locked_month", **deferred_item})
+                        continue
                     claimed_existing_ids.add(target["id"])
                     old_short = (target.get("hash") or "")[:16]
-                    user_edited = set(target.get("meta", {}).get("userEdited") or [])
                     if "date" not in user_edited:
                         target["date"] = tx_date
                     if "amount" not in user_edited:
@@ -1592,6 +1973,8 @@ def reconcile_wallet_batch(
                     meta["aliasHashes"] = aliases
                     meta["provisional"] = False
                     meta["updatedAt"] = now_str
+                    if source_id not in (meta.get("sources") or []):
+                        meta["sources"] = list(dict.fromkeys([*(meta.get("sources") or []), source_id]))
                     target["meta"] = meta
                     row_vals = tx_to_sheet_row(target)
                     update_ops.append(
@@ -1616,10 +1999,8 @@ def reconcile_wallet_batch(
                     if t["type"] == classified["type"]
                     and abs(t["amount"] - classified["amount"]) <= 0.01
                     and days_between(t["date"], tx_date) <= 2
-                    and (
-                        not t.get("meta", {}).get("account")
-                        or not classified["account"]
-                        or t["meta"]["account"] == classified["account"]
+                    and accounts_are_compatible(
+                        t.get("meta", {}).get("account"), classified["account"], rules
                     )
                     and merchants_match(t["description"], classified["description"])
                 ),
@@ -1634,6 +2015,22 @@ def reconcile_wallet_batch(
                 )
                 if "needs-review" not in classified["labels"]:
                     classified["labels"].append("needs-review")
+
+        # 4c. Enforce Monthly Locks before inserting a new row
+        if tx_date[:7] in locked_month_set:
+            summary["skippedLockedMonth"] += 1
+            deferred_item = {
+                "inputIndex": idx,
+                "action": "insert",
+                "lockedMonth": tx_date[:7],
+                "date": tx_date,
+                "description": classified["description"],
+                "amount": classified["amount"],
+                "type": classified["type"],
+            }
+            deferred_locked.append(deferred_item)
+            records.append({"inputIndex": idx, "status": "skipped_locked_month", **deferred_item})
+            continue
 
         # 5. Insert New Transaction
         new_id = str(raw.get("id") or uuid.uuid4())
@@ -1714,7 +2111,7 @@ def reconcile_wallet_batch(
         next_src_state["syncStartDate"] = prev_src["syncStartDate"]
     prev_sources[source_id] = next_src_state
 
-    recent_runs = list(ingest_state.get("recentRuns") or [])[-19:]
+    recent_runs = list(ingest_state.get("recentRuns") or [])[-(MAX_RECENT_RUNS - 1):]
     recent_runs.append(
         {
             "runId": f"run-{int(datetime.datetime.now(datetime.timezone.utc).timestamp() * 1000)}",
@@ -1727,7 +2124,8 @@ def reconcile_wallet_batch(
             "removed": 0,
             "skipped": summary["skippedDuplicate"]
             + summary["skippedTombstoned"]
-            + summary["skippedBeforeLookback"],
+            + summary["skippedBeforeLookback"]
+            + summary["skippedLockedMonth"],
         }
     )
 
@@ -1745,6 +2143,7 @@ def reconcile_wallet_batch(
         "insertedTransactions": inserted_txs,
         "updateOps": update_ops,
         "flaggedTransactions": flagged_txs,
+        "deferredLocked": deferred_locked,
         "nextIngestState": next_ingest_state,
         "records": records,
     }
@@ -1764,6 +2163,9 @@ def format_digest_markdown(plan: Dict[str, Any]) -> str:
         f"| Restaurant Tip Adjusted | {s['mergedTipAdjusted']} |",
         f"| Skipped (Duplicate / Tombstoned) | {s['skippedDuplicate'] + s['skippedTombstoned']} |",
     ]
+    if s.get("skippedLockedMonth", 0) > 0:
+        lines.append(f"| Skipped (Locked Month) | {s['skippedLockedMonth']} |")
+
     if plan["insertedTransactions"]:
         lines.extend(
             [
@@ -1811,6 +2213,20 @@ def format_digest_markdown(plan: Dict[str, Any]) -> str:
             lines.append(
                 f"| {tx['date']} | {tx['description']} | ${tx['amount']:.2f} | `{cat_str}` | {rev.get('detail') or rev.get('reason') or 'category'} |"
             )
+
+    if plan.get("deferredLocked"):
+        lines.extend(
+            [
+                "",
+                "#### 🔒 Skipped (Locked Month — Unlock to Import)",
+                "| Locked Month | Date | Description | Amount | Action |",
+                "| :--- | :--- | :--- | ---: | :--- |",
+            ]
+        )
+        for item in plan["deferredLocked"]:
+            lines.append(
+                f"| {item['lockedMonth']} | {item['date']} | {item['description']} | ${item['amount']:.2f} | `{item['action']}` |"
+            )
     return "\n".join(lines)
 
 
@@ -1832,6 +2248,7 @@ def build_gsheets_batch_requests(
                     "op": "write",
                     "range": f"Transactions!A{row_num}:L{row_num}",
                     "data": [op["row"]],
+                    "value_input": "RAW",
                 }
             )
     if plan["appendRows"]:
@@ -1840,6 +2257,7 @@ def build_gsheets_batch_requests(
                 "op": "append",
                 "range": "Transactions!A1",
                 "data": plan["appendRows"],
+                "value_input": "RAW",
             }
         )
 
@@ -1849,7 +2267,16 @@ def build_gsheets_batch_requests(
     inline_tombstones = all_tombstones[:MAX_INLINE_TOMBSTONES]
     overflow_tombstones = all_tombstones[MAX_INLINE_TOMBSTONES:]
 
-    inline_state = dict(full_state, tombstones=inline_tombstones)
+    overflow_chunks: List[List[str]] = [
+        overflow_tombstones[i : i + TOMBSTONE_CHUNK_SIZE]
+        for i in range(0, len(overflow_tombstones), TOMBSTONE_CHUNK_SIZE)
+    ][:MAX_TOMBSTONE_CHUNKS]
+
+    inline_state = dict(
+        full_state,
+        tombstones=inline_tombstones,
+        tombstoneChunks=len(overflow_chunks),
+    )
     note_cell = json.dumps(
         {
             "text": json.dumps(inline_state, separators=(",", ":")),
@@ -1863,6 +2290,7 @@ def build_gsheets_batch_requests(
                 "op": "write",
                 "range": f"Notes!A{notes_state_row}:B{notes_state_row}",
                 "data": [["__meta_ingest_state__", note_cell]],
+                "value_input": "RAW",
             }
         )
     else:
@@ -1871,6 +2299,7 @@ def build_gsheets_batch_requests(
                 "op": "append",
                 "range": "Notes!A1",
                 "data": [["__meta_ingest_state__", note_cell]],
+                "value_input": "RAW",
             }
         )
 
@@ -1883,11 +2312,16 @@ def build_gsheets_batch_requests(
             }
         )
 
-    # Write or clear overflow tombstone chunks (`__meta_ingest_tombstones_1__..5__`)
-    for chunk_idx in range(1, MAX_TOMBSTONE_CHUNKS + 1):
-        start_i = (chunk_idx - 1) * TOMBSTONE_CHUNK_SIZE
-        end_i = start_i + TOMBSTONE_CHUNK_SIZE
-        chunk_items = overflow_tombstones[start_i:end_i]
+    # Write active overflow tombstone chunks and clear any unused or legacy chunks (e.g. chunk 5)
+    all_chunk_indices = sorted(
+        set(range(1, MAX_TOMBSTONE_CHUNKS + 1)) | set(overflow_row_map.keys())
+    )
+    for chunk_idx in all_chunk_indices:
+        chunk_items = (
+            overflow_chunks[chunk_idx - 1]
+            if 1 <= chunk_idx <= len(overflow_chunks)
+            else []
+        )
         key_name = f"__meta_ingest_tombstones_{chunk_idx}__"
         existing_row = overflow_row_map.get(chunk_idx)
 
@@ -1905,6 +2339,7 @@ def build_gsheets_batch_requests(
                         "op": "write",
                         "range": f"Notes!A{existing_row}:B{existing_row}",
                         "data": [[key_name, chunk_cell]],
+                        "value_input": "RAW",
                     }
                 )
             else:
@@ -1913,6 +2348,7 @@ def build_gsheets_batch_requests(
                         "op": "append",
                         "range": "Notes!A1",
                         "data": [[key_name, chunk_cell]],
+                        "value_input": "RAW",
                     }
                 )
         elif existing_row:
@@ -1934,16 +2370,23 @@ def main() -> int:
     parser.add_argument("--transactions-tsv", help="Path to exported Transactions.tsv from Google Sheets")
     parser.add_argument(
         "--transactions-json",
-        help="Path to Transactions!A1:L2000 JSON read from Google Sheets (`gsheets readonly read --json`)",
+        help="Path to unbounded Transactions!A:L JSON read from Google Sheets (`gsheets readonly read --json`)",
     )
-    parser.add_argument("--notes-json", help="Path to Notes!A1:B50 JSON read from Google Sheets")
+    parser.add_argument("--notes-json", help="Path to unbounded Notes!A:B JSON read from Google Sheets")
+    parser.add_argument("--locks-json", help="Path to Locks!A:C JSON read from Google Sheets (`gsheets readonly read --json`)")
+    parser.add_argument(
+        "--override-locks",
+        action="store_true",
+        help="Allow writing into locked months even when --locks-json marks them locked",
+    )
     parser.add_argument(
         "--allow-notes-init",
         action="store_true",
         help="Allow `--batch-out` even when `--notes-json` is omitted (initializes a new Notes state row)",
     )
     parser.add_argument("--rules", help="Path to wallet_rules.json (optional; uses bundled rules by default)")
-    parser.add_argument("--reference-date", help="Reference YYYY-MM-DD date for lookback window (default: today)")
+    parser.add_argument("--reference-date", help="Reference YYYY-MM-DD date for lookback window (default: today in --timezone)")
+    parser.add_argument("--timezone", default=DEFAULT_TIMEZONE, help=f"IANA timezone for default date (default: {DEFAULT_TIMEZONE})")
     parser.add_argument("--lookback-days", type=int, default=7, help="Rolling lookback window in days (default: 7)")
     parser.add_argument("--batch-out", help="Write `gsheets mutate batch -f` JSON payload to this file path")
     parser.add_argument("--format", choices=["json", "summary"], default="json", help="Output format")
@@ -1952,7 +2395,7 @@ def main() -> int:
     if args.batch_out and not args.notes_json and not args.allow_notes_init:
         sys.stderr.write(
             "Error: --notes-json is required when --batch-out is specified so existing __meta_ingest_state__ "
-            "and lease locks in Notes!A1:B50 are preserved (or pass --allow-notes-init for a brand-new sheet).\n"
+            "and lease locks in Notes!A:B are preserved (or pass --allow-notes-init for a brand-new sheet).\n"
         )
         return 2
 
@@ -1974,6 +2417,26 @@ def main() -> int:
         raw_payload.get("transactions", raw_payload) if isinstance(raw_payload, dict) else raw_payload
     )
 
+    ingest_state, notes_meta = load_ingest_state_from_notes(args.notes_json)
+    if args.batch_out and notes_meta.get("activeLock"):
+        lock_info = notes_meta["activeLock"]
+        holder = lock_info.get("holderId") or lock_info.get("holder") or "another process"
+        sys.stderr.write(
+            f"Error: Active ingestion lease lock held by {holder} "
+            f"until {lock_info.get('expiresAt')}. Aborting batch output.\n"
+        )
+        return 3
+
+    ws_cfg = notes_meta.get("workspaceConfig")
+    if isinstance(ws_cfg, dict):
+        for cfg_key, cfg_val in ws_cfg.items():
+            if cfg_key == "accountMap" and isinstance(cfg_val, dict):
+                merged_acc = dict(rules.get("accountMap") or {})
+                merged_acc.update(cfg_val)
+                rules["accountMap"] = merged_acc
+            else:
+                rules[cfg_key] = cfg_val
+
     if args.transactions_json:
         existing_txs = load_transactions_json(args.transactions_json, rules)
     elif args.transactions_tsv:
@@ -1981,14 +2444,7 @@ def main() -> int:
     else:
         existing_txs = []
 
-    ingest_state, notes_meta = load_ingest_state_from_notes(args.notes_json)
-    if args.batch_out and notes_meta.get("activeLock"):
-        lock_info = notes_meta["activeLock"]
-        sys.stderr.write(
-            f"Error: Active ingestion lease lock held by {lock_info.get('holder', 'another process')} "
-            f"until {lock_info.get('expiresAt')}. Aborting batch output.\n"
-        )
-        return 3
+    locked_months = set() if args.override_locks else load_locks_json(args.locks_json)
 
     plan = reconcile_wallet_batch(
         existing_txs=existing_txs,
@@ -1997,6 +2453,8 @@ def main() -> int:
         rules=rules,
         reference_date=args.reference_date,
         lookback_days=args.lookback_days,
+        locked_months=locked_months,
+        timezone_name=args.timezone,
     )
 
     batch_reqs = build_gsheets_batch_requests(plan, notes_meta)

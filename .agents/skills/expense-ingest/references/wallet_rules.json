@@ -65,7 +65,9 @@
       "subCategory": "housing-mortgage",
       "spendingBucket": null,
       "description": "Bilt",
-      "preserveRawInNotes": true
+      "preserveRawInNotes": true,
+      "normalizeMonthEndToFirstOfNextMonth": true,
+      "minAmount": 1000
     }
   ],
   "creditCardPayoffPatterns": [
@@ -199,9 +201,25 @@
     "pud",
     "pse",
     "spa",
-    "nail"
+    "nail",
+    "water",
+    "train",
+    "power",
+    "ticket",
+    "delivery",
+    "rent",
+    "food",
+    "auto",
+    "car",
+    "uber"
   ],
   "categoryKeywords": [
+    {
+      "category": "transport",
+      "subCategory": "transport-fuel",
+      "spendingBucket": "flexible",
+      "keywords": ["costco gas"]
+    },
     {
       "category": "groceries",
       "subCategory": "groceries-costco",
@@ -374,7 +392,8 @@
         "arco",
         "mobil",
         "exxon",
-        "fuel"
+        "fuel",
+        "gas"
       ]
     },
     {

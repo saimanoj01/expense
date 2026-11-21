@@ -778,16 +778,18 @@ export const TransactionItem = memo(
               >
                 <Edit2 className="w-3.5 h-3.5" />
               </button>
-              <button
-                type="button"
-                onClick={() => handleDeleteTxn(transaction.id)}
-                data-testid={`delete-transaction-btn-${transaction.id}`}
-                title="Delete transaction"
-                aria-label="Delete transaction"
-                className="p-1.5 hover:bg-negative/10 rounded-[8px] text-muted-foreground hover:text-negative transition-colors"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-              </button>
+              {!isRowDateLocked && (
+                <button
+                  type="button"
+                  onClick={() => handleDeleteTxn(transaction.id)}
+                  data-testid={`delete-transaction-btn-${transaction.id}`}
+                  title="Delete transaction"
+                  aria-label="Delete transaction"
+                  className="p-1.5 hover:bg-negative/10 rounded-[8px] text-muted-foreground hover:text-negative transition-colors"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
           )}
 

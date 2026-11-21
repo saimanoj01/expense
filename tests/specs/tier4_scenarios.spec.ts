@@ -280,9 +280,10 @@ test.describe('Tier 4: Real-world Application Scenarios', () => {
     // Intercept Google token callback redirection
     await appPage.loginWithGoogle();
     
-    // Simulate user selecting Google account and returning with hash token
+    // Simulate user selecting Google account and returning with hash token + CSRF state
     await page.evaluate(() => {
-      window.location.hash = '#access_token=google-oauth-token-123&token_type=Bearer&expires_in=3600';
+      const state = sessionStorage.getItem('oauth_csrf_state') || '';
+      window.location.hash = `#access_token=google-oauth-token-123&token_type=Bearer&expires_in=3600&state=${encodeURIComponent(state)}`;
       // Fire hashchange to let SPA process oauth
       window.dispatchEvent(new HashChangeEvent('hashchange'));
     });

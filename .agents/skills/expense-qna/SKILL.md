@@ -40,7 +40,7 @@ The app stores all data either in **Google Sheets** (live cloud target) or **bro
 |--------|--------------------------|-------------------|-------------|
 | Projects | `expense_projects` | Drive API metadata | `src/services/storage.ts` |
 | Transactions | `expense_txs_{projectId}` | `Transactions!A:L` (`id, date, category, subCategory, amount, type, description, notes, labels, hash, spendingBucket, meta`) | `src/services/storage.ts` |
-| Categories | `expense_categories_{projectId}` | `Categories!A:E` | `src/services/storage.ts` |
+| Categories | `expense_categories_{projectId}` | `Categories!A:F` | `src/services/storage.ts` |
 | Budgets | `expense_budgets_{projectId}` | `Budgets!A:B` | `src/services/storage.ts` |
 | Budget Notes | `expense_budget_notes_{projectId}` | `Notes!A:B` | `src/services/storage.ts` |
 | Monthly Locks | `expense_locks_{projectId}` | `Locks!A:C` | `src/services/storage.ts` |
@@ -49,12 +49,19 @@ The app stores all data either in **Google Sheets** (live cloud target) or **bro
 
 1. **Cloud Native Path (Google Sheets / Scheduled Gemini Task)**:
    - If `/home/antigravity/saimanoj01/expense` is not mounted in the VM, first materialize the bundled export script by calling `get_skill_resources(name="expense-qna", filenames=["scripts/export_expense_context.py"])` and writing it to `/tmp/export_expense_context.py`.
-   - Export `Transactions` from **Nebula Expense - PriyMan** (`1Whmjhktu_sgdw9WYFYx9JydpB61JU2RGuCm7AT_USLY`) via `gsheets` and pass `--tsv` (or `--json-grid`) to `export_expense_context.py`:
+   - Export `Transactions`, `Budgets`, `Categories`, `Notes`, and `Locks` from **Nebula Expense - PriyMan** (`1Whmjhktu_sgdw9WYFYx9JydpB61JU2RGuCm7AT_USLY`) via `gsheets` and pass them to `export_expense_context.py`:
    ```bash
-   gsheets readonly export 1Whmjhktu_sgdw9WYFYx9JydpB61JU2RGuCm7AT_USLY /tmp/nebula_transactions.tsv --format tsv --sheet Transactions
-   # (Or read as a 2D JSON grid: gsheets readonly read 1Whmjhktu_sgdw9WYFYx9JydpB61JU2RGuCm7AT_USLY 'Transactions!A1:L2000' --json > /tmp/nebula_transactions.json)
+   gsheets readonly read 1Whmjhktu_sgdw9WYFYx9JydpB61JU2RGuCm7AT_USLY 'Transactions!A:L' --json > /tmp/nebula_transactions.json
+   gsheets readonly read 1Whmjhktu_sgdw9WYFYx9JydpB61JU2RGuCm7AT_USLY 'Budgets!A:B' --json > /tmp/nebula_budgets.json
+   gsheets readonly read 1Whmjhktu_sgdw9WYFYx9JydpB61JU2RGuCm7AT_USLY 'Categories!A:F' --json > /tmp/nebula_categories.json
+   gsheets readonly read 1Whmjhktu_sgdw9WYFYx9JydpB61JU2RGuCm7AT_USLY 'Notes!A:B' --json > /tmp/nebula_notes.json
+   gsheets readonly read 1Whmjhktu_sgdw9WYFYx9JydpB61JU2RGuCm7AT_USLY 'Locks!A:C' --json > /tmp/nebula_locks.json
    python3 .agents/skills/expense-qna/scripts/export_expense_context.py \
-     --tsv /tmp/nebula_transactions.tsv \
+     --json-grid /tmp/nebula_transactions.json \
+     --budgets-json /tmp/nebula_budgets.json \
+     --categories-json /tmp/nebula_categories.json \
+     --notes-json /tmp/nebula_notes.json \
+     --locks-json /tmp/nebula_locks.json \
      --month 2026-11 \
      --scope quarter
    ```
@@ -63,7 +70,7 @@ The app stores all data either in **Google Sheets** (live cloud target) or **bro
    ```bash
    python3 .agents/skills/expense-qna/scripts/export_expense_context.py --state-file /path/to/state.json --month 2026-11
    ```
-   Options: `--tsv <path> --json-grid <path> --state-file <path> --month 2026-11 --scope all|quarter|ytd|month --redact --json`
+   Options: `--tsv <path> --json-grid <path> --budgets-json <path> --categories-json <path> --notes-json <path> --locks-json <path> --state-file <path> --month 2026-11 --scope all|quarter|ytd|month --redact --json`
 
 ---
 

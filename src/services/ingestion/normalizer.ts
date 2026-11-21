@@ -28,6 +28,7 @@ const KNOWN_MERCHANT_FAMILIES = new Set([
   'bilt',
   'target',
   'walmart',
+  'costco gas',
   'costco',
   'trader joes',
   'starbucks',
@@ -111,6 +112,7 @@ export function getMerchantFamily(raw: string): string {
   if (BILT_PATTERNS.some(re => re.test(lower))) return 'bilt';
   if (/\btarget\b/i.test(lower)) return 'target';
   if (/\bwalmart\b|\bwal-mart\b|\bwm\s+supercenter\b/i.test(lower)) return 'walmart';
+  if (/\bcostco\s+gas\b/i.test(lower)) return 'costco gas';
   if (/\bcostco\b/i.test(lower)) return 'costco';
   if (/\btrader\s+joe'?s\b/i.test(lower)) return 'trader joes';
   if (/\bstarbucks\b/i.test(lower)) return 'starbucks';
@@ -326,6 +328,11 @@ export function isOpaqueDescription(desc: string): boolean {
 
   // Enriched descriptions like "Amazon: Anker USB-C Cable" or "Target: Laundry Detergent" are NOT opaque
   if (/^[a-z0-9\s]+:\s+\S+/i.test(trimmed)) {
+    return false;
+  }
+
+  // Costco Gas is unambiguously fuel, not an opaque multi-category warehouse receipt
+  if (/\bcostco\s+gas\b/i.test(trimmed)) {
     return false;
   }
 

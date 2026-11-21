@@ -350,8 +350,26 @@ export function bucketOf(
   }
 
   const catLower = (transaction.category || '').toLowerCase();
-  if (catLower === 'housing' || catLower === 'rent' || catLower === 'utilities') {
+  const subLower = (transaction.subCategory || '').toLowerCase();
+  if (
+    subLower === 'entertainment-subs' ||
+    subLower.startsWith('housing-') ||
+    subLower.startsWith('utilities-') ||
+    catLower === 'housing' ||
+    catLower === 'rent' ||
+    catLower === 'utilities' ||
+    catLower === 'child-care'
+  ) {
     return 'fixed';
+  }
+  if (
+    subLower === 'transport-maint' ||
+    subLower.startsWith('travel-') ||
+    catLower === 'travel' ||
+    catLower === 'insurance' ||
+    catLower === 'taxes'
+  ) {
+    return 'non-monthly';
   }
 
   return 'flexible';
@@ -410,15 +428,21 @@ export function bucketSource(
     catLower === 'housing' ||
     catLower === 'rent' ||
     catLower === 'utilities' ||
+    catLower === 'child-care' ||
     catLower === 'food' ||
     catLower === 'groceries' ||
     catLower === 'shopping' ||
+    catLower === 'merchandise' ||
     catLower === 'dining' ||
     catLower === 'entertainment' ||
     catLower === 'transport' ||
     catLower === 'transportation' ||
     catLower === 'health' ||
-    catLower === 'travel'
+    catLower === 'healthcare' ||
+    catLower === 'travel' ||
+    catLower === 'insurance' ||
+    catLower === 'taxes' ||
+    catLower === 'misc'
   ) {
     return 'category';
   }

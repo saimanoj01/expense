@@ -34,6 +34,7 @@ export interface Level2BucketViewProps {
   categories: Category[];
   budgets: Budget[];
   activeMonthsCount?: number;
+  isLockedMonth?: boolean;
   onOpenAddTxn: () => void;
   className?: string;
 }
@@ -46,6 +47,7 @@ export const Level2BucketView: React.FC<Level2BucketViewProps> = ({
   categories,
   budgets,
   activeMonthsCount = 1,
+  isLockedMonth = false,
   onOpenAddTxn,
   className = '',
 }) => {
@@ -398,8 +400,14 @@ export const Level2BucketView: React.FC<Level2BucketViewProps> = ({
             <button
               type="button"
               data-testid="add-bucket-txn-btn"
-              onClick={onOpenAddTxn}
-              className="px-2.5 py-1 rounded-[8px] bg-primary text-primary-foreground font-medium hover:opacity-90 transition-opacity focus-visible:ring-2 ring-ring/40"
+              disabled={isLockedMonth}
+              onClick={() => {
+                if (!isLockedMonth) onOpenAddTxn();
+              }}
+              title={isLockedMonth ? 'Month is locked' : 'Add Transaction'}
+              className={`px-2.5 py-1 rounded-[8px] bg-primary text-primary-foreground font-medium transition-opacity focus-visible:ring-2 ring-ring/40 ${
+                isLockedMonth ? 'opacity-50 cursor-not-allowed' : 'hover:opacity-90'
+              }`}
             >
               + Add
             </button>

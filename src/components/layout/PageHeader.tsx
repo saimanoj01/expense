@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Lock, Unlock } from 'lucide-react';
+import { Lock, Unlock, RefreshCw } from 'lucide-react';
 import { BreadcrumbTrail } from './BreadcrumbTrail';
 import { MonthSwitcher } from '../dashboard/MonthSwitcher';
 
@@ -10,7 +10,27 @@ export interface PageHeaderProps {
   isLockedMonth?: boolean;
   onLockMonth?: () => void;
   onUnlockMonth?: () => void;
+  onRefresh?: () => void;
+  isRefreshing?: boolean;
+  lastSyncAt?: string | null;
+  isSyncStale?: boolean;
   className?: string;
+}
+
+function formatCompactSyncLabel(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const ts = Date.parse(iso);
+  if (!Number.isFinite(ts)) return null;
+  const d = new Date(ts);
+  const now = new Date();
+  const sameDay =
+    d.getFullYear() === now.getFullYear() &&
+    d.getMonth() === now.getMonth() &&
+    d.getDate() === now.getDate();
+  if (sameDay) {
+    return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  }
+  return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
 }
 
 export const PageHeader: React.FC<PageHeaderProps> = ({
@@ -20,6 +40,10 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
   isLockedMonth,
   onLockMonth,
   onUnlockMonth,
+  onRefresh,
+  isRefreshing = false,
+  lastSyncAt,
+  isSyncStale = false,
   className = '',
 }) => {
   const [scrolled, setScrolled] = useState(false);
@@ -37,6 +61,8 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
     };
   }, []);
 
+  const syncLabel = formatCompactSyncLabel(lastSyncAt);
+
   return (
     <header
       data-testid="dashboard-header"
@@ -47,6 +73,35 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
       <BreadcrumbTrail />
 
       <div className="flex items-center gap-1.5 shrink-0">
+        {onRefresh && (
+          <button
+            type="button"
+            data-testid="header-refresh-sync-btn"
+            disabled={isRefreshing}
+            onClick={onRefresh}
+            title={
+              isSyncStale
+                ? `Last automated sync was ${syncLabel || 'over 36h ago'} — click to refresh from Google Sheets`
+                : syncLabel
+                ? `Last synced ${syncLabel} — click to refresh from Google Sheets`
+                : 'Refresh data from Google Sheets'
+            }
+            aria-label="Refresh workspace data"
+            className={`inline-flex items-center gap-1.5 h-8 px-2 rounded-[10px] text-label font-medium transition-colors focus-visible:ring-2 ring-ring/40 ${
+              isSyncStale
+                ? 'bg-warning/15 border border-warning/30 text-warning hover:bg-warning/20'
+                : 'text-muted-foreground hover:text-foreground hover:bg-surface2'
+            } ${isRefreshing ? 'opacity-60 cursor-wait' : ''}`}
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
+            {syncLabel && (
+              <span data-testid="header-sync-time" className="hidden lg:inline">
+                {isSyncStale ? `Stale · ${syncLabel}` : syncLabel}
+              </span>
+            )}
+          </button>
+        )}
+
         {selectedMonth !== 'all' && (onLockMonth || onUnlockMonth) && (
           <button
             type="button"

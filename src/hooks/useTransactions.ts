@@ -497,27 +497,31 @@ export function useTransactions(
     const chartWidth = width - paddingLeft - paddingRight;
     const chartHeight = height - paddingTop - paddingBottom;
 
-    // 1. Monthly Expenses for Current Selected Month (unfiltered by selectedBucket for pacing & highestSpendDay)
-    const expenses = monthTransactions.filter(t => t.type === 'expense');
+    // 1. Monthly Net Expenses for Current Selected Month (unfiltered by selectedBucket for pacing & highestSpendDay)
+    const expenseAndRefundTxns = monthTransactions.filter(
+      t => t.type === 'expense' || isRefundTransaction(t)
+    );
     
-    // Group current month by date
+    // Group current month by date (netting category refunds)
     const dateMap: { [date: string]: number } = {};
     let totalSpent = 0;
-    expenses.forEach(t => {
+    expenseAndRefundTxns.forEach(t => {
       if (t.date) {
         const amt = typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount || 0));
         const validAmt = isNaN(amt) ? 0 : amt;
-        dateMap[t.date] = (dateMap[t.date] || 0) + validAmt;
-        totalSpent += validAmt;
+        const signedAmt = t.type === 'expense' ? validAmt : -validAmt;
+        dateMap[t.date] = (dateMap[t.date] || 0) + signedAmt;
+        totalSpent += signedAmt;
       }
     });
+    const clampedTotalSpent = Math.max(0, totalSpent);
 
     const sortedDates = Object.keys(dateMap).sort();
 
     // Discrete points (legacy fallback)
     let highestPoint: { date: string; formattedDate: string; amount: number } | null = null;
     const legacyPoints: TrendPoint[] = sortedDates.map((date, idx) => {
-      const amt = dateMap[date];
+      const amt = Math.max(0, dateMap[date]);
       const formattedDate = formatShortDate(date);
       if (!highestPoint || amt > highestPoint.amount) {
         highestPoint = { date, formattedDate, amount: amt };
@@ -525,18 +529,23 @@ export function useTransactions(
       const x = sortedDates.length === 1
         ? paddingLeft + chartWidth / 2
         : paddingLeft + (idx / (sortedDates.length - 1)) * chartWidth;
-      const y = height - paddingBottom - (amt / Math.max(totalSpent, 1)) * chartHeight;
+      const y = height - paddingBottom - (amt / Math.max(clampedTotalSpent, 1)) * chartHeight;
       return { date, formattedDate, amount: amt, x, y };
     });
 
-    // 2. Cumulative Pacing calculation for Current Month (Days 1..daysInMonth)
+    // 2. Cumulative Pacing calculation for Current Month (Days 1..daysInMonth, netting refunds)
     const currentMonthDailyExpenses: number[] = new Array(daysInMonth).fill(0);
     transactions.forEach(t => {
-      if (t.type === 'expense' && t.date && t.date.startsWith(currentMonthStr)) {
+      if (
+        (t.type === 'expense' || isRefundTransaction(t)) &&
+        t.date &&
+        t.date.startsWith(currentMonthStr)
+      ) {
         const day = parseInt(t.date.split('-')[2], 10);
         if (day >= 1 && day <= daysInMonth) {
           const amt = typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount || 0));
-          currentMonthDailyExpenses[day - 1] += isNaN(amt) ? 0 : amt;
+          const validAmt = isNaN(amt) ? 0 : amt;
+          currentMonthDailyExpenses[day - 1] += t.type === 'expense' ? validAmt : -validAmt;
         }
       }
     });
@@ -548,7 +557,7 @@ export function useTransactions(
     const isCurrentCalendarMonth = (validYear === nowYear && validMonth === nowMonth);
     let maxDayWithTx = 0;
     for (let d = daysInMonth; d >= 1; d--) {
-      if (currentMonthDailyExpenses[d - 1] > 0) {
+      if (currentMonthDailyExpenses[d - 1] !== 0) {
         maxDayWithTx = d;
         break;
       }
@@ -568,22 +577,27 @@ export function useTransactions(
     }
     const daysElapsed = Math.min(Math.max(lastActiveDay, 1), daysInMonth);
 
-    // Calculate Cumulative amounts
+    // Calculate Cumulative amounts (clamped at 0)
     const currentCumulative: number[] = [];
     let runningSum = 0;
     for (let d = 0; d < daysInMonth; d++) {
       runningSum += currentMonthDailyExpenses[d];
-      currentCumulative.push(runningSum);
+      currentCumulative.push(Math.max(0, runningSum));
     }
 
-    // 3. Previous Month Cumulative Pacing calculation
+    // 3. Previous Month Cumulative Pacing calculation (netting refunds)
     const prevMonthDailyExpenses: number[] = new Array(prevDaysInMonth).fill(0);
     transactions.forEach(t => {
-      if (t.type === 'expense' && t.date && t.date.startsWith(prevMonthStr)) {
+      if (
+        (t.type === 'expense' || isRefundTransaction(t)) &&
+        t.date &&
+        t.date.startsWith(prevMonthStr)
+      ) {
         const day = parseInt(t.date.split('-')[2], 10);
         if (day >= 1 && day <= prevDaysInMonth) {
           const amt = typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount || 0));
-          prevMonthDailyExpenses[day - 1] += isNaN(amt) ? 0 : amt;
+          const validAmt = isNaN(amt) ? 0 : amt;
+          prevMonthDailyExpenses[day - 1] += t.type === 'expense' ? validAmt : -validAmt;
         }
       }
     });
@@ -592,7 +606,7 @@ export function useTransactions(
     let prevRunningSum = 0;
     for (let d = 0; d < prevDaysInMonth; d++) {
       prevRunningSum += prevMonthDailyExpenses[d];
-      prevCumulative.push(prevRunningSum);
+      prevCumulative.push(Math.max(0, prevRunningSum));
     }
 
     // Maximum value for scale across current cumulative, prev month cumulative
@@ -667,7 +681,7 @@ export function useTransactions(
       eomProjection = Math.round(totalExpenses);
     } else {
       const daysRemaining = Math.max(0, daysInMonth - daysElapsed);
-      // Compute prior-month fixed and trailing 3-month daily variable average
+      // Compute prior-month fixed and trailing 3-month daily variable average (netting category refunds)
       const [cy, cm] = currentMonthStr.split('-').map(Number);
       const priorKeys: string[] = [];
       for (let i = 1; i <= 3; i++) {
@@ -675,9 +689,21 @@ export function useTransactions(
         priorKeys.push(`${pd.getUTCFullYear()}-${String(pd.getUTCMonth() + 1).padStart(2, '0')}`);
       }
       const prior1Key = priorKeys[0];
-      const priorFixed = transactions
-        .filter(t => t.type === 'expense' && t.date && t.date.startsWith(prior1Key) && bucketOf(t, categories) === 'fixed')
-        .reduce((s, t) => s + (typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount || 0)) || 0), 0);
+      const priorFixed = Math.max(
+        0,
+        transactions
+          .filter(
+            t =>
+              (t.type === 'expense' || isRefundTransaction(t)) &&
+              t.date &&
+              t.date.startsWith(prior1Key) &&
+              bucketOf(t, categories) === 'fixed'
+          )
+          .reduce((s, t) => {
+            const amt = typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount || 0)) || 0;
+            return s + (t.type === 'expense' ? amt : -amt);
+          }, 0)
+      );
 
       const priorMonthsWithVar = priorKeys.filter(pk =>
         transactions.some(t => t.type === 'expense' && t.date && t.date.startsWith(pk))
@@ -685,9 +711,21 @@ export function useTransactions(
       let avgDailyVar = daysElapsed > 0 ? flexibleExpenses / daysElapsed : 0;
       if (priorMonthsWithVar.length > 0) {
         const totalPriorVar = priorMonthsWithVar.reduce((sum, pk) => {
-          const mVar = transactions
-            .filter(t => t.type === 'expense' && t.date && t.date.startsWith(pk) && bucketOf(t, categories) === 'flexible')
-            .reduce((s, t) => s + (typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount || 0)) || 0), 0);
+          const mVar = Math.max(
+            0,
+            transactions
+              .filter(
+                t =>
+                  (t.type === 'expense' || isRefundTransaction(t)) &&
+                  t.date &&
+                  t.date.startsWith(pk) &&
+                  bucketOf(t, categories) === 'flexible'
+              )
+              .reduce((s, t) => {
+                const amt = typeof t.amount === 'number' ? t.amount : parseFloat(String(t.amount || 0)) || 0;
+                return s + (t.type === 'expense' ? amt : -amt);
+              }, 0)
+          );
           return sum + mVar;
         }, 0);
         const totalPriorDays = priorMonthsWithVar.reduce((days, pk) => {
@@ -842,56 +880,69 @@ export function useTransactions(
 
   const trendPathData = trendDetails.pathData;
 
-  const refreshTransactions = useCallback(async () => {
-    if (!activeProject || !storageAdapter) return;
-    try {
-      const txs = await storageAdapter.getTransactions(activeProject.id);
-      setTransactions(txs);
-    } catch (err) {
-      console.error("Failed to load transactions:", err);
-    }
-  }, [activeProject, storageAdapter]);
+  const activeProjectIdRef = useRef<string | null>(activeProject?.id ?? null);
+  activeProjectIdRef.current = activeProject?.id ?? null;
+  const refreshSeqRef = useRef(0);
+  const deletingIdsRef = useRef<Set<string>>(new Set());
 
-  const recordDeletedTransactionsInState = useCallback(
-    async (deletedTxs: Transaction[]): Promise<string[]> => {
-      if (!activeProject || !storageAdapter || deletedTxs.length === 0) return [];
-      if (
-        typeof storageAdapter.getIngestState !== 'function' ||
-        typeof storageAdapter.saveIngestState !== 'function'
-      ) {
-        return [];
-      }
+  const refreshTransactions = useCallback(
+    async (options?: { throwOnError?: boolean }) => {
+      if (!activeProject || !storageAdapter) return;
+      const pid = activeProject.id;
+      const seq = ++refreshSeqRef.current;
       try {
-        const currentState = await storageAdapter.getIngestState(activeProject.id);
-        const prevSet = new Set(
-          Array.isArray(currentState?.tombstones) ? currentState.tombstones : []
-        );
-        const nextState = recordDeletionTombstones(deletedTxs, currentState);
-        await storageAdapter.saveIngestState(activeProject.id, nextState);
-        return nextState.tombstones.filter(tb => !prevSet.has(tb));
+        const txs = await storageAdapter.getTransactions(pid);
+        if (activeProjectIdRef.current !== pid || refreshSeqRef.current !== seq) return;
+        setTransactions(txs);
       } catch (err) {
-        console.warn('Failed to persist deletion tombstones:', err);
-        return [];
+        console.error("Failed to load transactions:", err);
+        if (options?.throwOnError) {
+          throw err;
+        }
       }
     },
     [activeProject, storageAdapter]
   );
 
-  const reverseDeletedTransactionsInState = useCallback(
-    async (tombstonesToRemove: string[]) => {
-      if (!activeProject || !storageAdapter || tombstonesToRemove.length === 0) return;
+  const recordDeletedTransactionsInState = useCallback(
+    async (deletedTxs: Transaction[], targetProjectId?: string): Promise<string[]> => {
+      const pid = targetProjectId ?? activeProject?.id;
+      if (!pid || !storageAdapter || deletedTxs.length === 0) return [];
       if (
         typeof storageAdapter.getIngestState !== 'function' ||
         typeof storageAdapter.saveIngestState !== 'function'
       ) {
-        return;
+        return [];
+      }
+      const currentState = await storageAdapter.getIngestState(pid);
+      const prevSet = new Set(
+        Array.isArray(currentState?.tombstones) ? currentState.tombstones : []
+      );
+      const nextState = recordDeletionTombstones(deletedTxs, currentState);
+      await storageAdapter.saveIngestState(pid, nextState);
+      return nextState.tombstones.filter(tb => !prevSet.has(tb));
+    },
+    [activeProject, storageAdapter]
+  );
+
+  const reverseDeletedTransactionsInState = useCallback(
+    async (tombstonesToRemove: string[], targetProjectId?: string): Promise<boolean> => {
+      const pid = targetProjectId ?? activeProject?.id;
+      if (!pid || !storageAdapter || tombstonesToRemove.length === 0) return true;
+      if (
+        typeof storageAdapter.getIngestState !== 'function' ||
+        typeof storageAdapter.saveIngestState !== 'function'
+      ) {
+        return true;
       }
       try {
-        const currentState = await storageAdapter.getIngestState(activeProject.id);
+        const currentState = await storageAdapter.getIngestState(pid);
         const nextState = removeDeletionTombstones(tombstonesToRemove, currentState);
-        await storageAdapter.saveIngestState(activeProject.id, nextState);
+        await storageAdapter.saveIngestState(pid, nextState);
+        return true;
       } catch (err) {
         console.warn('Failed to reverse deletion tombstones:', err);
+        return false;
       }
     },
     [activeProject, storageAdapter]
@@ -962,6 +1013,8 @@ export function useTransactions(
 
   const handleDeleteTxn = async (id: string, onDeleted?: (id: string) => void) => {
     if (!activeProject || !storageAdapter) return;
+    if (deletingIdsRef.current.has(id)) return;
+    const targetProjectId = activeProject.id;
     const deletedTarget = transactions.find(t => t.id === id);
     const lockedMonth = getLockedMonthForDate(deletedTarget?.date, locks);
     if (lockedMonth) {
@@ -969,13 +1022,19 @@ export function useTransactions(
       return;
     }
 
+    deletingIdsRef.current.add(id);
+    let addedTombstones: string[] = [];
     try {
-      await storageAdapter.deleteTransaction(activeProject.id, id);
-      const addedTombstones = deletedTarget
-        ? await recordDeletedTransactionsInState([deletedTarget])
-        : [];
-      await refreshTransactions();
+      // Persist tombstones BEFORE deleting so a failed Notes write never causes silent resurrection on next Spark sync
+      if (deletedTarget) {
+        addedTombstones = await recordDeletedTransactionsInState([deletedTarget], targetProjectId);
+      }
+      await storageAdapter.deleteTransaction(targetProjectId, id);
+      if (activeProjectIdRef.current === targetProjectId) {
+        await refreshTransactions();
+      }
       if (onDeleted) onDeleted(id);
+      let undoTriggered = false;
       showToast(
         'Transaction deleted',
         'success',
@@ -986,15 +1045,26 @@ export function useTransactions(
                 label: 'Undo',
                 testId: 'toast-undo-btn',
                 onClick: () => {
+                  if (undoTriggered) return;
+                  undoTriggered = true;
                   void (async () => {
                     try {
-                      await storageAdapter.saveTransaction(activeProject.id, deletedTarget);
+                      await storageAdapter.saveTransaction(targetProjectId, deletedTarget);
+                      let reversedOk = true;
                       if (addedTombstones.length > 0) {
-                        await reverseDeletedTransactionsInState(addedTombstones);
+                        reversedOk = await reverseDeletedTransactionsInState(addedTombstones, targetProjectId);
                       }
-                      await refreshTransactions();
-                      showToast('Transaction restored');
+                      if (activeProjectIdRef.current === targetProjectId) {
+                        await refreshTransactions();
+                      }
+                      showToast(
+                        reversedOk
+                          ? 'Transaction restored'
+                          : 'Transaction restored, but sync state update failed — refresh before next sync.',
+                        reversedOk ? 'success' : 'error'
+                      );
                     } catch (restoreErr: unknown) {
+                      undoTriggered = false;
                       showToast(
                         restoreErr instanceof Error
                           ? restoreErr.message
@@ -1009,13 +1079,22 @@ export function useTransactions(
           : undefined
       );
     } catch (err: unknown) {
+      if (addedTombstones.length > 0) {
+        await reverseDeletedTransactionsInState(addedTombstones, targetProjectId);
+      }
       showToast(err instanceof Error ? err.message : 'Failed to delete transaction', 'error');
+    } finally {
+      deletingIdsRef.current.delete(id);
     }
   };
 
   const handleExecuteBulkDelete = async (selectedTxnIds: Set<string>, onComplete?: () => void) => {
     if (!activeProject || !storageAdapter || selectedTxnIds.size === 0) return;
-    const selectedTargets = transactions.filter(t => selectedTxnIds.has(t.id));
+    const targetProjectId = activeProject.id;
+    const selectedTargets = transactions.filter(
+      t => selectedTxnIds.has(t.id) && !deletingIdsRef.current.has(t.id)
+    );
+    if (selectedTargets.length === 0) return;
     const unlocked: Transaction[] = [];
     let lockedSkipped = 0;
     for (const t of selectedTargets) {
@@ -1039,37 +1118,54 @@ export function useTransactions(
     }
 
     const idsToDelete = unlocked.map(t => t.id);
+    idsToDelete.forEach(id => deletingIdsRef.current.add(id));
+    let addedTombstones: string[] = [];
     try {
+      // Persist tombstones BEFORE deleting so a failed Notes write never leaves un-tombstoned deletes
+      addedTombstones = await recordDeletedTransactionsInState(unlocked, targetProjectId);
       if (typeof storageAdapter.deleteTransactions === 'function') {
-        await storageAdapter.deleteTransactions(activeProject.id, idsToDelete);
+        await storageAdapter.deleteTransactions(targetProjectId, idsToDelete);
       } else {
         for (const id of idsToDelete) {
-          await storageAdapter.deleteTransaction(activeProject.id, id);
+          await storageAdapter.deleteTransaction(targetProjectId, id);
         }
       }
-      const addedTombstones = await recordDeletedTransactionsInState(unlocked);
-      await refreshTransactions();
+      if (activeProjectIdRef.current === targetProjectId) {
+        await refreshTransactions();
+      }
       if (onComplete) onComplete();
 
       const msg = `Successfully deleted ${unlocked.length} transaction${
         unlocked.length > 1 ? 's' : ''
       }${lockedSkipped > 0 ? ` (${lockedSkipped} skipped due to month lock)` : ''}`;
 
+      let undoTriggered = false;
       showToast(msg, 'success', {
         duration: 6000,
         action: {
           label: 'Undo',
           testId: 'toast-undo-btn',
           onClick: () => {
+            if (undoTriggered) return;
+            undoTriggered = true;
             void (async () => {
               try {
-                await storageAdapter.saveTransactions(activeProject.id, unlocked);
+                await storageAdapter.saveTransactions(targetProjectId, unlocked);
+                let reversedOk = true;
                 if (addedTombstones.length > 0) {
-                  await reverseDeletedTransactionsInState(addedTombstones);
+                  reversedOk = await reverseDeletedTransactionsInState(addedTombstones, targetProjectId);
                 }
-                await refreshTransactions();
-                showToast('Transactions restored');
+                if (activeProjectIdRef.current === targetProjectId) {
+                  await refreshTransactions();
+                }
+                showToast(
+                  reversedOk
+                    ? 'Transactions restored'
+                    : 'Transactions restored, but sync state update failed — refresh before next sync.',
+                  reversedOk ? 'success' : 'error'
+                );
               } catch (restoreErr: unknown) {
+                undoTriggered = false;
                 showToast(
                   restoreErr instanceof Error
                     ? restoreErr.message
@@ -1082,7 +1178,12 @@ export function useTransactions(
         },
       });
     } catch (err: unknown) {
+      if (addedTombstones.length > 0) {
+        await reverseDeletedTransactionsInState(addedTombstones, targetProjectId);
+      }
       showToast(err instanceof Error ? err.message : 'Failed to delete selected transactions', 'error');
+    } finally {
+      idsToDelete.forEach(id => deletingIdsRef.current.delete(id));
     }
   };
 
@@ -1166,11 +1267,17 @@ export function useTransactions(
     const nowIso = new Date().toISOString();
     const updatedTxns: Transaction[] = [];
     let lockedSkipped = 0;
+    let nonExpenseSkipped = 0;
 
     for (const t of transactions) {
       if (selectedTxnIds.has(t.id)) {
         if (isTransactionMonthLocked(t.date, locks)) {
           lockedSkipped += 1;
+          continue;
+        }
+        const isExpOrRef = t.type === 'expense' || isRefundTransaction(t);
+        if (!isExpOrRef) {
+          nonExpenseSkipped += 1;
           continue;
         }
         const candidate: Transaction = { ...t, spendingBucket: bucket };
@@ -1193,6 +1300,11 @@ export function useTransactions(
           } in a locked month.`,
           'error'
         );
+      } else if (nonExpenseSkipped > 0) {
+        showToast(
+          'Spending buckets only apply to expenses and category refunds.',
+          'info'
+        );
       }
       return;
     }
@@ -1201,10 +1313,13 @@ export function useTransactions(
       await storageAdapter.saveTransactions(activeProject.id, updatedTxns);
       await refreshTransactions();
       if (onComplete) onComplete();
+      const skipNotes: string[] = [];
+      if (lockedSkipped > 0) skipNotes.push(`${lockedSkipped} locked`);
+      if (nonExpenseSkipped > 0) skipNotes.push(`${nonExpenseSkipped} income/transfer`);
       showToast(
         `Updated spending bucket for ${updatedTxns.length} transaction${
           updatedTxns.length > 1 ? 's' : ''
-        }${lockedSkipped > 0 ? ` (${lockedSkipped} skipped due to month lock)` : ''}`
+        }${skipNotes.length > 0 ? ` (${skipNotes.join(', ')} skipped)` : ''}`
       );
     } catch (err: unknown) {
       showToast(err instanceof Error ? err.message : 'Failed to update spending buckets', 'error');
