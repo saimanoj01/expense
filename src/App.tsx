@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, lazy, Suspense } from 'react';
+import { useState, useEffect, useRef, useMemo, lazy, Suspense } from 'react';
 import { AnimatePresence, LayoutGroup, motion, MotionConfig, useReducedMotion } from 'framer-motion';
 import { Loader2 } from 'lucide-react';
 import { dur, ease } from './theme/motion';
@@ -8,6 +8,7 @@ import { useNavigation } from './hooks/useNavigation';
 import { getCurrentLocalMonth } from './utils/navigation';
 import { getLocalTodayDate, isRefundTransaction } from './utils/metrics';
 import { bucketSource, deriveCategoryBucket, suggestSpendingBucket } from './utils/categorizer';
+import { cleanBudgetsForSave } from './utils/budgetPlanning';
 import { Transaction, SpendingBucket, Category, Project, MonthlyLock, DEFAULT_CATEGORIES } from './services/storage';
 import { NavigationProvider } from './context/NavigationContext';
 import { PageHeader } from './components/layout/PageHeader';
@@ -73,7 +74,7 @@ interface MainRouterProps {
   rangeSelectTxns: (ids: string[], select: boolean) => void;
   toggleSelectAllTxns: (visibleIds: string[]) => void;
   clearSelectedTxns: () => void;
-  handleOpenAddTxn: () => void;
+  handleOpenAddTxn: (defaultType?: 'income' | 'expense' | 'transfer') => void;
   handleEditTxn: (txn: Transaction) => void;
   handleLockCurrentMonth: () => Promise<void>;
   handleUnlockCurrentMonth: () => Promise<void>;
@@ -163,10 +164,10 @@ function MainRouter({
         totalIncome={txnHooks.totalIncome}
         transactions={txnHooks.transactions}
         categories={budgetHooks.categories}
-        budgets={budgetHooks.budgets}
+        budgets={budgetHooks.effectiveSavedBudgets}
         activeMonthsCount={budgetHooks.activeMonthsCount}
         isLockedMonth={isCurrentMonthLocked}
-        onOpenAddTxn={handleOpenAddTxn}
+        onOpenAddTxn={() => handleOpenAddTxn()}
       />
     );
   } else if (currentRoute.view === 'category') {
@@ -177,10 +178,10 @@ function MainRouter({
         month={currentRoute.month || txnHooks.selectedMonth}
         transactions={txnHooks.transactions}
         categories={budgetHooks.categories}
-        budgets={budgetHooks.budgets}
+        budgets={budgetHooks.effectiveSavedBudgets}
         locks={locks}
         activeMonthsCount={budgetHooks.activeMonthsCount}
-        onOpenAddTxn={handleOpenAddTxn}
+        onOpenAddTxn={() => handleOpenAddTxn()}
         onEditTxn={handleEditTxn}
         onDeleteTxn={(id) => txnHooks.handleDeleteTxn(id, () => setSelectedTxnIds(prev => { const n = new Set(prev); n.delete(id); return n; }))}
       />
@@ -207,7 +208,7 @@ function MainRouter({
           onSelectBucket={txnHooks.setSelectedBucket}
           onSelectTagFilter={txnHooks.setSelectedTagFilter}
           onSetSortBy={txnHooks.setSortBy}
-          onOpenAddTxn={handleOpenAddTxn}
+          onOpenAddTxn={() => handleOpenAddTxn()}
           onOpenCsvWizard={() => {
             csvHooks.setCsvStep(1);
             csvHooks.setShowCsvWizard(true);
@@ -307,7 +308,11 @@ function MainRouter({
           savingsAmount={txnHooks.savingsAmount}
           allTransactions={txnHooks.transactions}
           categories={budgetHooks.categories}
-          workingBudgets={budgetHooks.workingBudgets}
+          workingBudgets={
+            budgetHooks.isUsingBudgetSnapshot
+              ? budgetHooks.effectiveSavedBudgets
+              : budgetHooks.workingBudgets
+          }
           committedBudgetMap={budgetHooks.committedBudgetMap}
           activeMonthsCount={budgetHooks.activeMonthsCount}
           isDirty={budgetHooks.isDirty}
@@ -413,14 +418,16 @@ function MainRouter({
         savingsRate={txnHooks.savingsRate}
         allTransactions={txnHooks.transactions}
         categories={budgetHooks.categories}
-        budgets={budgetHooks.budgets}
+        budgets={budgetHooks.effectiveSavedBudgets}
         categorySummary={budgetHooks.savedCategorySummary}
         duplicateTxnIds={txnHooks.duplicateTxnIds}
         isLockedMonth={isCurrentMonthLocked}
+        isSyncStale={isSyncStale}
         isMockMode={isMockMode}
         selectedBucket={txnHooks.selectedBucket}
         onSelectBucket={txnHooks.setSelectedBucket}
-        onOpenAddTxn={handleOpenAddTxn}
+        onOpenAddTxn={() => handleOpenAddTxn()}
+        onOpenAddIncome={() => handleOpenAddTxn('income')}
         onEditTxn={handleEditTxn}
         onOpenCsvWizard={() => {
           csvHooks.setCsvStep(1);
@@ -636,7 +643,9 @@ function AppInner() {
         const runTimes = (fetchedIngest.recentRuns || [])
           .map(r => r?.timestamp)
           .filter((v): v is string => typeof v === 'string' && v.length > 0);
-        const allTimes = [...sourceTimes, ...runTimes].sort();
+        const allTimes = [...sourceTimes, ...runTimes]
+          .filter(t => Number.isFinite(Date.parse(t)))
+          .sort((a, b) => Date.parse(a) - Date.parse(b));
         setLastSyncAt(allTimes.length > 0 ? allTimes[allTimes.length - 1] : null);
       }
       if (options?.forceRemote && !options?.silent) {
@@ -655,7 +664,8 @@ function AppInner() {
   };
 
   const isSyncStale = Boolean(
-    lastSyncAt &&
+    !isMockMode &&
+      lastSyncAt &&
       Number.isFinite(Date.parse(lastSyncAt)) &&
       Date.now() - Date.parse(lastSyncAt) > 36 * 60 * 60 * 1000
   );
@@ -721,7 +731,7 @@ function AppInner() {
     });
   };
 
-  const handleOpenAddTxn = () => {
+  const handleOpenAddTxn = (defaultType?: 'income' | 'expense' | 'transfer') => {
     if (isCurrentMonthLocked) {
       showToast(`Month ${txnHooks.selectedMonth} is locked.`);
       return;
@@ -732,9 +742,13 @@ function AppInner() {
       txnHooks.selectedMonth === 'all' || txnHooks.selectedMonth === currLocalMonth
         ? getLocalTodayDate()
         : `${txnHooks.selectedMonth}-01`;
-    setEditingTxnData({
-      date: defaultDate
-    });
+    setEditingTxnData(
+      defaultType === 'income'
+        ? { date: defaultDate, type: 'income', category: 'income' }
+        : defaultType === 'transfer'
+        ? { date: defaultDate, type: 'transfer', category: 'transfers' }
+        : { date: defaultDate }
+    );
     setShowTxnModal(true);
   };
 
@@ -813,6 +827,17 @@ function AppInner() {
       const reviewInMonth = txnHooks.monthTransactions.filter(t =>
         isTransactionNeedsReview(t, txnHooks.duplicateTxnIds)
       ).length;
+      if (typeof storageAdapter.saveBudgetSnapshot === 'function') {
+        const canonicalBudgets = cleanBudgetsForSave(
+          budgetHooks.budgets,
+          budgetHooks.categories
+        );
+        await storageAdapter.saveBudgetSnapshot(
+          activeProject.id,
+          txnHooks.selectedMonth,
+          canonicalBudgets
+        );
+      }
       await storageAdapter.saveLock(activeProject.id, { month: txnHooks.selectedMonth, locked: true, lockedAt: new Date().toISOString() });
       setSelectedTxnIds(new Set());
       const cautions: string[] = [];
@@ -891,6 +916,11 @@ function AppInner() {
     showToast(`Exported ${sorted.length} transactions to CSV`);
   };
 
+  const totalReviewCount = useMemo(
+    () => txnHooks.transactions.filter(t => isTransactionNeedsReview(t, txnHooks.duplicateTxnIds)).length,
+    [txnHooks.transactions, txnHooks.duplicateTxnIds]
+  );
+
   const mainRef = useRef<HTMLElement>(null);
 
   return (
@@ -927,8 +957,9 @@ function AppInner() {
             toggleTheme={() => setTheme(prev => prev === 'dark' ? 'light' : 'dark')}
             onOpenCommandPalette={activeProject ? () => setShowCommandPalette(true) : undefined}
             logout={logout}
-            onOpenAddTxn={handleOpenAddTxn}
+            onOpenAddTxn={() => handleOpenAddTxn()}
             isLockedMonth={isCurrentMonthLocked}
+            totalReviewCount={totalReviewCount}
           />
         )}
 
@@ -1018,7 +1049,11 @@ function AppInner() {
       </div>
 
       {isAuthenticated && activeProject && (
-        <BottomNav onOpenAddTxn={handleOpenAddTxn} isLockedMonth={isCurrentMonthLocked} />
+        <BottomNav
+          onOpenAddTxn={() => handleOpenAddTxn()}
+          isLockedMonth={isCurrentMonthLocked}
+          totalReviewCount={totalReviewCount}
+        />
       )}
 
       {isAuthenticated && activeProject && (
@@ -1026,7 +1061,8 @@ function AppInner() {
           isOpen={showCommandPalette}
           onClose={() => setShowCommandPalette(false)}
           categories={budgetHooks.categories}
-          onOpenAddTxn={handleOpenAddTxn}
+          transactions={txnHooks.transactions}
+          onOpenAddTxn={() => handleOpenAddTxn()}
           onOpenCsvImport={() => {
             csvHooks.setCsvStep(1);
             csvHooks.setShowCsvWizard(true);

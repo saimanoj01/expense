@@ -17,12 +17,14 @@ import { getCurrentLocalMonth } from '../../utils/navigation';
 interface BottomNavProps {
   onOpenAddTxn: () => void;
   isLockedMonth?: boolean;
+  totalReviewCount?: number;
   className?: string;
 }
 
 export const BottomNav: React.FC<BottomNavProps> = ({
   onOpenAddTxn,
   isLockedMonth = false,
+  totalReviewCount = 0,
   className = '',
 }) => {
   const { currentRoute, navigate } = useNavigation();
@@ -80,17 +82,27 @@ export const BottomNav: React.FC<BottomNavProps> = ({
               setShowMoreMenu(false);
               navigate(`#/transactions?month=${activeMonth}`);
             }}
-            className={`flex flex-col items-center justify-center flex-1 py-1 text-label font-medium transition-colors ${
+            className={`relative flex flex-col items-center justify-center flex-1 py-1 text-label font-medium transition-colors ${
               currentRoute.view === 'transactions'
                 ? 'text-foreground'
                 : 'text-muted-foreground hover:text-foreground'
             }`}
           >
-            <Receipt
-              className={`w-5 h-5 mb-0.5 ${
-                currentRoute.view === 'transactions' ? 'text-foreground' : ''
-              }`}
-            />
+            <span className="relative inline-flex">
+              <Receipt
+                className={`w-5 h-5 mb-0.5 ${
+                  currentRoute.view === 'transactions' ? 'text-foreground' : ''
+                }`}
+              />
+              {totalReviewCount > 0 && (
+                <span
+                  data-testid="bottom-nav-review-badge"
+                  className="absolute -top-1 -right-2.5 min-w-[16px] h-4 px-1 rounded-full bg-warning text-background text-[10px] font-bold inline-flex items-center justify-center tabular-nums num"
+                >
+                  {totalReviewCount > 99 ? '99+' : totalReviewCount}
+                </span>
+              )}
+            </span>
             <span>Txns</span>
           </button>
 

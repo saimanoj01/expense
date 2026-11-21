@@ -102,6 +102,7 @@ export const ModalHost: React.FC<ModalHostProps> = ({
           locks={locks}
           isTxnLocked={isEditingTxnLocked}
           onDismissReview={txnHooks.handleDismissReview}
+          onApplyMerchantSweep={txnHooks.handleApplyMerchantSweep}
           onDeleteTransaction={id => {
             txnHooks.handleDeleteTxn(id, () => {
               setSelectedTxnIds(prev => {
@@ -205,6 +206,7 @@ export const ModalHost: React.FC<ModalHostProps> = ({
       {csvHooks.showCsvDuplicateWarningModal && (
         <CsvDuplicateWarningModal
           showModal={csvHooks.showCsvDuplicateWarningModal}
+          isImporting={csvHooks.isImportingCsv}
           onCancel={() => csvHooks.setShowCsvDuplicateWarningModal(false)}
           onProceed={csvHooks.executeCommitCsvImport}
         />

@@ -32,6 +32,8 @@ import {
   isTransactionMonthLocked,
   formatReviewBadgeLabel,
   getReviewDetailText,
+  isLowRiskReviewItem,
+  isRecentlyIngested24h,
 } from '../../utils/transactionTaxonomy';
 import { parseHash, formatMonthLabel } from '../../utils/navigation';
 import {
@@ -174,6 +176,7 @@ export function TransactionsView({
   const [needsReviewOnly, setNeedsReviewOnly] = useState<boolean>(initialUrlState.review);
   const [autoFilter, setAutoFilter] = useState<boolean>(initialUrlState.auto);
   const [pendingOnly, setPendingOnly] = useState<boolean>(initialUrlState.pending);
+  const [recentOnly, setRecentOnly] = useState<boolean>(false);
   const [selectedDay, setSelectedDay] = useState<number | null>(initialUrlState.day);
   const [searchQuery, setSearchQuery] = useState<string>(initialUrlState.q);
   const [sweepPrompt, setSweepPrompt] = useState<MerchantSweepPrompt | null>(null);
@@ -232,6 +235,7 @@ export function TransactionsView({
     setNeedsReviewOnly(parsed.review);
     setAutoFilter(parsed.auto);
     setPendingOnly(parsed.pending);
+    setRecentOnly(false);
     setSelectedDay(parsed.day);
     setSearchQuery(parsed.q);
 
@@ -474,6 +478,7 @@ export function TransactionsView({
     setAutoFilter(false);
     setNeedsReviewOnly(false);
     setPendingOnly(false);
+    setRecentOnly(false);
     setSearchQuery('');
     setActiveCategoryFilter(null);
 
@@ -494,8 +499,48 @@ export function TransactionsView({
     onSelectTagFilter,
   ]);
 
+  const matchesTxnSearch = useCallback(
+    (t: Transaction, q: string, qNoCommas: string): boolean => {
+      const desc = (t.description || '').toLowerCase();
+      const note = getUserFacingNote(t).toLowerCase();
+      const catObj = allCategories.find(c => c.id === t.category);
+      const subObj = t.subCategory ? allCategories.find(c => c.id === t.subCategory) : null;
+      const subAlias = subObj?.name === 'Electricity' ? 'electric power' : '';
+      const catText = `${t.category || ''} ${catObj?.name || ''} ${subObj?.name || ''} ${subAlias}`.toLowerCase();
+      const acctText = formatAccountDisplay(resolveTransactionAccount(t)).toLowerCase();
+      const userTags = getVisibleUserTags(t);
+      const tags = userTags.map(tag => `#${tag} ${tag}`).join(' ').toLowerCase();
+      const dateText = (t.date || '').toLowerCase();
+      const orderText = (t.meta?.orderId || '').toLowerCase();
+      const isFlagged = isTransactionNeedsReview(t, duplicateTxnIds);
+      const isDup = duplicateTxnIds.has(t.id);
+      const reviewText = isFlagged
+        ? `${formatReviewBadgeLabel(t, isDup)} ${getReviewDetailText(t, isDup)}`.toLowerCase()
+        : '';
+      const amtNum = Math.abs(coerceAmount(t.amount));
+      const formattedAmt = formatCurrency(amtNum).toLowerCase();
+      const amtText = `${t.amount ?? ''} ${amtNum.toFixed(2)} ${formattedAmt} ${formattedAmt.replace(
+        /,/g,
+        ''
+      )}`;
+      return (
+        desc.includes(q) ||
+        note.includes(q) ||
+        catText.includes(q) ||
+        acctText.includes(q) ||
+        tags.includes(q) ||
+        dateText.includes(q) ||
+        orderText.includes(q) ||
+        (reviewText !== '' && reviewText.includes(q)) ||
+        amtText.includes(q) ||
+        (qNoCommas.length > 0 && amtText.includes(qNoCommas))
+      );
+    },
+    [allCategories, duplicateTxnIds]
+  );
+
   /**
-   * Context-scoped slice (month + category/subcategory + day + autoFilter + pendingOnly + account + user-tag + search)
+   * Context-scoped slice (month + category/subcategory + day + autoFilter + pendingOnly + recentOnly + account + user-tag + search)
    * evaluated BEFORE bucket / type / review pill toggles so the top KPI strip dynamically summarizes
    * any searched/tagged/account slice while keeping sibling bucket pills interactive.
    */
@@ -557,6 +602,10 @@ export function TransactionsView({
       list = list.filter(t => isTransactionPending(t));
     }
 
+    if (recentOnly) {
+      list = list.filter(t => isRecentlyIngested24h(t));
+    }
+
     if (selectedAccount) {
       if (selectedAccount === 'unassigned') {
         list = list.filter(t => !resolveTransactionAccount(t));
@@ -576,42 +625,7 @@ export function TransactionsView({
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim();
       const qNoCommas = q.replace(/,/g, '');
-      list = list.filter(t => {
-        const desc = (t.description || '').toLowerCase();
-        const note = getUserFacingNote(t).toLowerCase();
-        const catObj = allCategories.find(c => c.id === t.category);
-        const subObj = t.subCategory ? allCategories.find(c => c.id === t.subCategory) : null;
-        const subAlias = subObj?.name === 'Electricity' ? 'electric power' : '';
-        const catText = `${t.category || ''} ${catObj?.name || ''} ${subObj?.name || ''} ${subAlias}`.toLowerCase();
-        const acctText = formatAccountDisplay(resolveTransactionAccount(t)).toLowerCase();
-        const userTags = getVisibleUserTags(t);
-        const tags = userTags.map(tag => `#${tag} ${tag}`).join(' ').toLowerCase();
-        const dateText = (t.date || '').toLowerCase();
-        const orderText = (t.meta?.orderId || '').toLowerCase();
-        const isFlagged = isTransactionNeedsReview(t, duplicateTxnIds);
-        const isDup = duplicateTxnIds.has(t.id);
-        const reviewText = isFlagged
-          ? `${formatReviewBadgeLabel(t, isDup)} ${getReviewDetailText(t, isDup)}`.toLowerCase()
-          : '';
-        const amtNum = Math.abs(coerceAmount(t.amount));
-        const formattedAmt = formatCurrency(amtNum).toLowerCase();
-        const amtText = `${t.amount ?? ''} ${amtNum.toFixed(2)} ${formattedAmt} ${formattedAmt.replace(
-          /,/g,
-          ''
-        )}`;
-        return (
-          desc.includes(q) ||
-          note.includes(q) ||
-          catText.includes(q) ||
-          acctText.includes(q) ||
-          tags.includes(q) ||
-          dateText.includes(q) ||
-          orderText.includes(q) ||
-          (reviewText !== '' && reviewText.includes(q)) ||
-          amtText.includes(q) ||
-          (qNoCommas.length > 0 && amtText.includes(qNoCommas))
-        );
-      });
+      list = list.filter(t => matchesTxnSearch(t, q, qNoCommas));
     }
 
     return list;
@@ -622,13 +636,41 @@ export function TransactionsView({
     selectedDay,
     autoFilter,
     pendingOnly,
+    recentOnly,
     selectedAccount,
     effectiveSelectedTagFilter,
     searchQuery,
     categories,
     allCategories,
-    duplicateTxnIds,
+    matchesTxnSearch,
   ]);
+
+  const otherMonthSearchMatchCount = useMemo(() => {
+    const trimmed = searchQuery.trim();
+    if (!trimmed || month === 'all' || !allTransactions || allTransactions.length === 0) {
+      return 0;
+    }
+    const q = trimmed.toLowerCase();
+    const qNoCommas = q.replace(/,/g, '');
+    let count = 0;
+    for (const t of allTransactions) {
+      if (t.date && t.date.startsWith(month)) continue;
+      if (matchesTxnSearch(t, q, qNoCommas)) {
+        count++;
+      }
+    }
+    return count;
+  }, [searchQuery, month, allTransactions, matchesTxnSearch]);
+
+  const pendingCount = useMemo(
+    () => transactions.filter(t => isTransactionPending(t)).length,
+    [transactions]
+  );
+
+  const recent24hCount = useMemo(
+    () => transactions.filter(t => isRecentlyIngested24h(t)).length,
+    [transactions]
+  );
 
   const categorySortLabelMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -913,6 +955,7 @@ export function TransactionsView({
       needsReviewOnly ||
       autoFilter ||
       pendingOnly ||
+      recentOnly ||
       selectedDay !== null ||
       searchQuery.trim()
   );
@@ -1014,9 +1057,21 @@ export function TransactionsView({
           t =>
             !isLockedMonth &&
             !isTransactionMonthLocked(t.date, locks) &&
-            isTransactionNeedsReview(t, duplicateTxnIds)
+            isLowRiskReviewItem(t, duplicateTxnIds)
         )
         .map(t => t.id),
+    [displayedTransactions, isLockedMonth, locks, duplicateTxnIds]
+  );
+
+  const highRiskDisplayedReviewCount = useMemo(
+    () =>
+      displayedTransactions.filter(
+        t =>
+          !isLockedMonth &&
+          !isTransactionMonthLocked(t.date, locks) &&
+          isTransactionNeedsReview(t, duplicateTxnIds) &&
+          !isLowRiskReviewItem(t, duplicateTxnIds)
+      ).length,
     [displayedTransactions, isLockedMonth, locks, duplicateTxnIds]
   );
 
@@ -1024,7 +1079,7 @@ export function TransactionsView({
     activeCategoryFilter || ''
   }|${selectedAccount || ''}|${effectiveSelectedTagFilter || ''}|${
     needsReviewOnly ? '1' : '0'
-  }|${autoFilter ? '1' : '0'}|${pendingOnly ? '1' : '0'}|${
+  }|${autoFilter ? '1' : '0'}|${pendingOnly ? '1' : '0'}|${recentOnly ? '1' : '0'}|${
     selectedDay ?? ''
   }|${searchQuery}|${sortBy || 'date-desc'}`;
 
@@ -1044,6 +1099,15 @@ export function TransactionsView({
             <span>Mark all {unlockedDisplayedReviewIds.length} reviewed</span>
           </button>
         )}
+
+      {needsReviewOnly && !isLockedMonth && highRiskDisplayedReviewCount > 0 && (
+        <span
+          data-testid="high-risk-review-note"
+          className="shrink-0 text-[11px] text-muted-foreground whitespace-nowrap"
+        >
+          {highRiskDisplayedReviewCount} duplicate/voided require explicit review
+        </span>
+      )}
 
       <div className="flex items-center gap-1 overflow-x-auto no-scrollbar min-w-0">
         {activeCategoryChipLabel && (
@@ -1097,6 +1161,20 @@ export function TransactionsView({
             className="shrink-0 inline-flex items-center gap-1 h-6 px-2 rounded-full bg-surface2 border border-border text-[11px] font-medium text-foreground hover:bg-secondary whitespace-nowrap transition-colors"
           >
             <span>Pending only</span>
+            <X className="w-3 h-3 text-muted-foreground shrink-0" />
+          </button>
+        )}
+        {recentOnly && (
+          <button
+            type="button"
+            aria-label="Clear New (24h) filter"
+            onClick={() => {
+              clearPendingSyncGuards();
+              setRecentOnly(false);
+            }}
+            className="shrink-0 inline-flex items-center gap-1 h-6 px-2 rounded-full bg-surface2 border border-border text-[11px] font-medium text-foreground hover:bg-secondary whitespace-nowrap transition-colors"
+          >
+            <span>New (24h)</span>
             <X className="w-3 h-3 text-muted-foreground shrink-0" />
           </button>
         )}
@@ -1343,6 +1421,46 @@ export function TransactionsView({
             <span className="font-semibold tabular-nums num">{needsReviewCount}</span>
           </button>
         )}
+
+        {(pendingCount > 0 || pendingOnly) && (
+          <button
+            type="button"
+            data-testid="kpi-pending-filter"
+            aria-pressed={pendingOnly}
+            onClick={() => {
+              clearPendingSyncGuards();
+              setPendingOnly(prev => !prev);
+            }}
+            className={`shrink-0 sm:shrink inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[10px] border text-label font-medium whitespace-nowrap transition-colors focus-visible:ring-2 focus-visible:ring-primary/40 ${
+              pendingOnly
+                ? 'bg-primary text-primary-foreground border-primary'
+                : 'bg-card border-border text-muted-foreground hover:text-foreground hover:bg-surface2'
+            }`}
+          >
+            <span>Pending</span>
+            <span className="font-semibold tabular-nums num">{pendingCount}</span>
+          </button>
+        )}
+
+        {(recent24hCount > 0 || recentOnly) && (
+          <button
+            type="button"
+            data-testid="kpi-recent-24h-filter"
+            aria-pressed={recentOnly}
+            onClick={() => {
+              clearPendingSyncGuards();
+              setRecentOnly(prev => !prev);
+            }}
+            className={`shrink-0 sm:shrink inline-flex items-center gap-1.5 px-3 py-1.5 rounded-[10px] border text-label font-medium whitespace-nowrap transition-colors focus-visible:ring-2 focus-visible:ring-primary/40 ${
+              recentOnly
+                ? 'bg-primary text-primary-foreground border-primary'
+                : 'bg-card border-border text-muted-foreground hover:text-foreground hover:bg-surface2'
+            }`}
+          >
+            <span>New (24h)</span>
+            <span className="font-semibold tabular-nums num">{recent24hCount}</span>
+          </button>
+        )}
       </div>
 
       {/* Zone 2: Compact Control Bar */}
@@ -1406,6 +1524,35 @@ export function TransactionsView({
         onExportCsv={handleExportCsv}
         canExportCsv={displayedTransactions.length > 0}
       />
+
+      {/* Cross-Month Search Callout when query also matches outside current month */}
+      {otherMonthSearchMatchCount > 0 && (
+        <div
+          data-testid="cross-month-search-banner"
+          className="flex flex-wrap items-center justify-between gap-2 px-3.5 py-2 rounded-[12px] bg-surface2 border border-border text-label"
+        >
+          <span className="text-muted-foreground">
+            Also found{' '}
+            <span className="font-semibold text-foreground tabular-nums num">
+              {otherMonthSearchMatchCount}
+            </span>{' '}
+            match{otherMonthSearchMatchCount === 1 ? '' : 'es'} in other months
+          </span>
+          <button
+            type="button"
+            data-testid="cross-month-view-all-btn"
+            onClick={() => {
+              clearPendingSyncGuards();
+              navigate(
+                `#/transactions?month=all&q=${encodeURIComponent(searchQuery.trim())}`
+              );
+            }}
+            className="px-2.5 py-1 rounded-[8px] bg-card hover:bg-secondary border border-border text-foreground font-semibold whitespace-nowrap transition-colors"
+          >
+            View All Time →
+          </button>
+        </div>
+      )}
 
       {/* Contextual Merchant Sweep Banner (never a competing toast) */}
       {sweepPrompt && (
@@ -1496,6 +1643,7 @@ export function TransactionsView({
       {/* Zone 3 Persistent Subheader + Day-Grouped Ledger Rows */}
       <TransactionList
         transactions={displayedTransactions}
+        allTransactions={allTransactions || transactions}
         categories={categories}
         locks={locks}
         availableTags={availableTags}
@@ -1522,6 +1670,14 @@ export function TransactionsView({
         onSelectAccountFilter={acctKey => {
           clearPendingSyncGuards();
           setSelectedAccount(prev => (prev === acctKey ? null : acctKey));
+        }}
+        onFilterOrderId={orderId => {
+          clearPendingSyncGuards();
+          setNeedsReviewOnly(false);
+          setRecentOnly(false);
+          setPendingOnly(false);
+          setSearchQuery(orderId);
+          navigate(`#/transactions?month=all&q=${encodeURIComponent(orderId)}`);
         }}
         toggleSelectTxn={onToggleSelectTxn}
         onRangeSelectTxns={onRangeSelectTxns}

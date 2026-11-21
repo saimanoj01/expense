@@ -11,6 +11,7 @@ export interface ToastAction {
 export interface ToastOptions {
   duration?: number;
   action?: ToastAction;
+  toastTestId?: string;
 }
 
 export type ShowToastFn = (
@@ -34,7 +35,7 @@ export function showToast(
   sonnerToast.custom(
     id => (
       <div
-        data-testid="notification-toast"
+        data-testid={options?.toastTestId || 'notification-toast'}
         className={`${
           isError
             ? 'notification-error bg-rose-500/95 border-rose-400/40 text-white'

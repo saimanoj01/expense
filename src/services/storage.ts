@@ -161,6 +161,9 @@ export interface StorageAdapter {
 
   getBudgets(projectId: string): Promise<Budget[]>;
   saveBudgets(projectId: string, budgets: Budget[]): Promise<void>;
+  getBudgetSnapshots?(projectId: string): Promise<Record<string, Budget[]>>;
+  saveBudgetSnapshot?(projectId: string, month: string, budgets: Budget[]): Promise<void>;
+  replaceBudgetSnapshots?(projectId: string, snapshots: Record<string, Budget[]>): Promise<void>;
 
   saveCategories?(projectId: string, categories: Category[]): Promise<void>;
 
@@ -334,6 +337,41 @@ function extractLockedNoteMonth(key: string, locks: MonthlyLock[]): string | nul
     return monthPrefix;
   }
   return null;
+}
+
+const BUDGET_SNAPSHOT_PREFIX = '__meta_budget_snapshot_';
+const BUDGET_SNAPSHOT_SUFFIX = '__';
+
+function parseBudgetSnapshotsFromNotes(
+  rawNotes: Record<string, BudgetNote> | undefined
+): Record<string, Budget[]> {
+  const result: Record<string, Budget[]> = {};
+  if (!rawNotes) return result;
+  for (const [key, note] of Object.entries(rawNotes)) {
+    if (
+      key.startsWith(BUDGET_SNAPSHOT_PREFIX) &&
+      key.endsWith(BUDGET_SNAPSHOT_SUFFIX) &&
+      note?.text
+    ) {
+      const month = key.slice(BUDGET_SNAPSHOT_PREFIX.length, -BUDGET_SNAPSHOT_SUFFIX.length);
+      if (!/^\d{4}-\d{2}$/.test(month)) continue;
+      try {
+        const parsed = JSON.parse(note.text);
+        if (Array.isArray(parsed)) {
+          const cleaned: Budget[] = [];
+          for (const item of parsed) {
+            if (item && typeof item.category === 'string' && Number.isFinite(Number(item.amount))) {
+              cleaned.push({ category: item.category, amount: Number(item.amount) });
+            }
+          }
+          result[month] = cleaned;
+        }
+      } catch {
+        // Ignore malformed budget snapshot
+      }
+    }
+  }
+  return result;
 }
 
 export const SEED_TRANSACTIONS: Record<string, Transaction[]> = {
@@ -719,6 +757,61 @@ export class LocalStorageAdapter implements StorageAdapter {
       localStorage.setItem(`expense_budgets_${projectId}`, JSON.stringify(budgets));
     } catch (e) {
       throw new Error('Local storage quota exceeded. Unable to save budgets.');
+    }
+  }
+
+  async getBudgetSnapshots(projectId: string): Promise<Record<string, Budget[]>> {
+    return parseBudgetSnapshotsFromNotes(this.getRawBudgetNotes(projectId));
+  }
+
+  async saveBudgetSnapshot(projectId: string, month: string, budgets: Budget[]): Promise<void> {
+    if (!/^\d{4}-\d{2}$/.test(month)) {
+      throw new Error(`Invalid snapshot month: ${month}`);
+    }
+    const notes = this.getRawBudgetNotes(projectId);
+    const cleaned = budgets.map(b => ({
+      category: b.category,
+      amount: Number(b.amount) || 0,
+    }));
+    notes[`${BUDGET_SNAPSHOT_PREFIX}${month}${BUDGET_SNAPSHOT_SUFFIX}`] = {
+      text: JSON.stringify(cleaned),
+      updatedAt: new Date().toISOString(),
+    };
+    try {
+      localStorage.setItem(`expense_budget_notes_${projectId}`, JSON.stringify(notes));
+    } catch {
+      throw new Error('Local storage quota exceeded. Unable to save budget snapshot.');
+    }
+  }
+
+  async replaceBudgetSnapshots(
+    projectId: string,
+    snapshots: Record<string, Budget[]>
+  ): Promise<void> {
+    const existingRaw = this.getRawBudgetNotes(projectId);
+    const nextNotes: Record<string, BudgetNote> = {};
+    for (const [k, v] of Object.entries(existingRaw)) {
+      if (k.startsWith(BUDGET_SNAPSHOT_PREFIX) && k.endsWith(BUDGET_SNAPSHOT_SUFFIX)) {
+        continue;
+      }
+      nextNotes[k] = v;
+    }
+    const nowIso = new Date().toISOString();
+    for (const [month, budgets] of Object.entries(snapshots || {})) {
+      if (!/^\d{4}-\d{2}$/.test(month) || !Array.isArray(budgets)) continue;
+      const cleaned = budgets.map(b => ({
+        category: b.category,
+        amount: Number(b.amount) || 0,
+      }));
+      nextNotes[`${BUDGET_SNAPSHOT_PREFIX}${month}${BUDGET_SNAPSHOT_SUFFIX}`] = {
+        text: JSON.stringify(cleaned),
+        updatedAt: nowIso,
+      };
+    }
+    try {
+      localStorage.setItem(`expense_budget_notes_${projectId}`, JSON.stringify(nextNotes));
+    } catch {
+      throw new Error('Local storage quota exceeded. Unable to replace budget snapshots.');
     }
   }
 
@@ -1794,6 +1887,65 @@ export class GoogleSheetsAdapter implements StorageAdapter {
       const nextBudgets = [...budgets];
       await this.saveBudgetsToSheet(projectId, nextBudgets);
       this.cache[projectId].budgets = nextBudgets;
+    });
+  }
+
+  async getBudgetSnapshots(projectId: string): Promise<Record<string, Budget[]>> {
+    await this.ensureCache(projectId);
+    return parseBudgetSnapshotsFromNotes(this.cache[projectId].notes);
+  }
+
+  async saveBudgetSnapshot(projectId: string, month: string, budgets: Budget[]): Promise<void> {
+    if (!/^\d{4}-\d{2}$/.test(month)) {
+      throw new Error(`Invalid snapshot month: ${month}`);
+    }
+    return this.enqueueWrite(projectId, async () => {
+      await this.refreshCacheIfStale(projectId);
+      const cleaned = budgets.map(b => ({
+        category: b.category,
+        amount: Number(b.amount) || 0,
+      }));
+      const snapshotKey = `${BUDGET_SNAPSHOT_PREFIX}${month}${BUDGET_SNAPSHOT_SUFFIX}`;
+      const nextNotes: Record<string, BudgetNote> = {
+        ...(this.cache[projectId].notes || {}),
+        [snapshotKey]: {
+          text: JSON.stringify(cleaned),
+          updatedAt: new Date().toISOString(),
+        },
+      };
+      await this.saveNotesToSheet(projectId, nextNotes);
+      this.cache[projectId].notes = nextNotes;
+    });
+  }
+
+  async replaceBudgetSnapshots(
+    projectId: string,
+    snapshots: Record<string, Budget[]>
+  ): Promise<void> {
+    return this.enqueueWrite(projectId, async () => {
+      await this.refreshCacheIfStale(projectId);
+      const existingAll = this.cache[projectId].notes || {};
+      const nextNotes: Record<string, BudgetNote> = {};
+      for (const [k, v] of Object.entries(existingAll)) {
+        if (k.startsWith(BUDGET_SNAPSHOT_PREFIX) && k.endsWith(BUDGET_SNAPSHOT_SUFFIX)) {
+          continue;
+        }
+        nextNotes[k] = v;
+      }
+      const nowIso = new Date().toISOString();
+      for (const [month, budgets] of Object.entries(snapshots || {})) {
+        if (!/^\d{4}-\d{2}$/.test(month) || !Array.isArray(budgets)) continue;
+        const cleaned = budgets.map(b => ({
+          category: b.category,
+          amount: Number(b.amount) || 0,
+        }));
+        nextNotes[`${BUDGET_SNAPSHOT_PREFIX}${month}${BUDGET_SNAPSHOT_SUFFIX}`] = {
+          text: JSON.stringify(cleaned),
+          updatedAt: nowIso,
+        };
+      }
+      await this.saveNotesToSheet(projectId, nextNotes);
+      this.cache[projectId].notes = nextNotes;
     });
   }
 

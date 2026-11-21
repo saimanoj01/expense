@@ -369,3 +369,174 @@ export function getReviewDetailText(
   return 'Flagged by automated ingestion for review';
 }
 
+/**
+ * Resolves the highest-priority actionable review reason for a transaction.
+ */
+export function getEffectiveReviewReason(
+  tx: Partial<Transaction>,
+  isDuplicate: boolean
+): ReviewReason | null {
+  const rev = tx.meta?.review;
+  const reasons: ReviewReason[] = [
+    ...(Array.isArray(rev?.reasons) ? rev.reasons : []),
+    ...(rev?.reason ? [rev.reason] : []),
+  ];
+  if (isDuplicate || reasons.includes('duplicate')) {
+    return 'duplicate';
+  }
+  if (reasons.includes('voided')) {
+    return 'voided';
+  }
+  if (rev?.reason) {
+    return rev.reason;
+  }
+  return reasons[0] ?? null;
+}
+
+/**
+ * True when a flagged transaction is safe for bulk "Mark all reviewed" dismissal.
+ * High-risk items (`duplicate` and `voided`) require explicit per-row decision.
+ */
+export function isLowRiskReviewItem(
+  tx?: Partial<Transaction> | null,
+  duplicateTxnIds?: Set<string>
+): boolean {
+  if (!tx || !isTransactionNeedsReview(tx, duplicateTxnIds)) {
+    return false;
+  }
+  const isDup = Boolean(tx.id && duplicateTxnIds?.has(tx.id));
+  const reason = getEffectiveReviewReason(tx, isDup);
+  return reason !== 'duplicate' && reason !== 'voided';
+}
+
+function parseIsoDayMs(dateStr?: string | null): number | null {
+  if (!dateStr || !/^\d{4}-\d{2}-\d{2}/.test(dateStr)) return null;
+  const [y, m, d] = dateStr.slice(0, 10).split('-').map(Number);
+  return Date.UTC(y, m - 1, d);
+}
+
+function getLocalTodayIsoDate(): string {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+/**
+ * Computes whole calendar days elapsed between a transaction's YYYY-MM-DD date and todayIso.
+ * Returns null if either date is invalid.
+ */
+export function getCalendarDaysSince(
+  dateStr?: string | null,
+  todayIso: string = getLocalTodayIsoDate()
+): number | null {
+  const txDayMs = parseIsoDayMs(dateStr);
+  const todayDayMs = parseIsoDayMs(todayIso);
+  if (txDayMs === null || todayDayMs === null) return null;
+  return Math.max(0, Math.floor((todayDayMs - txDayMs) / (24 * 60 * 60 * 1000)));
+}
+
+/**
+ * Unified watchdog predicate for stale pending authorizations older than `thresholdDays` calendar days.
+ */
+export function isOrphanPendingTransaction(
+  tx?: Partial<Transaction> | null,
+  todayIso: string = getLocalTodayIsoDate(),
+  thresholdDays: number = 7
+): boolean {
+  if (!tx || !isTransactionPending(tx)) return false;
+  const ageDays = getCalendarDaysSince(tx.date, todayIso);
+  return ageDays !== null && ageDays > thresholdDays;
+}
+
+/**
+ * Finds the closest sibling transaction matching a flagged duplicate for side-by-side triage.
+ */
+export function findMatchingDuplicateTransaction(
+  tx: Transaction,
+  allTransactions: Transaction[]
+): Transaction | null {
+  if (!tx || !Array.isArray(allTransactions) || allTransactions.length === 0) {
+    return null;
+  }
+  const txDesc = (tx.description || '').trim().toLowerCase();
+  const txAmt = Math.abs(Number(tx.amount) || 0);
+  const txDayMs = parseIsoDayMs(tx.date);
+  const txHash16 = tx.hash ? tx.hash.slice(0, 16) : '';
+  const txAliases = new Set(
+    (Array.isArray(tx.meta?.aliasHashes) ? tx.meta!.aliasHashes : []).map(h => h.slice(0, 16))
+  );
+
+  let best: Transaction | null = null;
+  let bestScore = -1;
+
+  for (const other of allTransactions) {
+    if (!other || other.id === tx.id) continue;
+    const otherHash16 = other.hash ? other.hash.slice(0, 16) : '';
+    const otherAliases = Array.isArray(other.meta?.aliasHashes)
+      ? other.meta!.aliasHashes.map(h => h.slice(0, 16))
+      : [];
+
+    if (
+      (tx.hash && other.hash && tx.hash === other.hash) ||
+      (txHash16 && otherAliases.includes(txHash16)) ||
+      (otherHash16 && txAliases.has(otherHash16))
+    ) {
+      return other;
+    }
+
+    if (other.type !== tx.type) continue;
+    const otherAmt = Math.abs(Number(other.amount) || 0);
+    if (Math.abs(otherAmt - txAmt) >= 0.01) continue;
+
+    const otherDesc = (other.description || '').trim().toLowerCase();
+    const otherDayMs = parseIsoDayMs(other.date);
+    const dayDiff =
+      txDayMs !== null && otherDayMs !== null
+        ? Math.abs(txDayMs - otherDayMs) / (24 * 60 * 60 * 1000)
+        : 99;
+
+    if (dayDiff > 3) continue;
+
+    let score = 0;
+    if (txDesc && otherDesc === txDesc) {
+      score += 50;
+    } else if (txDesc && otherDesc && (txDesc.includes(otherDesc) || otherDesc.includes(txDesc))) {
+      score += 25;
+    } else {
+      const txFirst = txDesc.split(/\s+/)[0] || '';
+      const otherFirst = otherDesc.split(/\s+/)[0] || '';
+      if (txFirst.length >= 3 && txFirst === otherFirst) {
+        score += 15;
+      } else {
+        continue;
+      }
+    }
+
+    score += Math.max(0, 10 - dayDiff * 3);
+    if (score > bestScore) {
+      bestScore = score;
+      best = other;
+    }
+  }
+
+  return best;
+}
+
+/**
+ * True if a transaction was ingested within the past 24 hours based on `meta.ingestedAt`.
+ */
+export function isRecentlyIngested24h(
+  tx?: Partial<Transaction> | null,
+  nowMs: number = Date.now()
+): boolean {
+  const ingestedAt = tx?.meta?.ingestedAt;
+  if (!ingestedAt || typeof ingestedAt !== 'string') return false;
+  const ts = Date.parse(ingestedAt);
+  if (!Number.isFinite(ts)) return false;
+  const ageMs = nowMs - ts;
+  return ageMs >= -60_000 && ageMs <= 24 * 60 * 60 * 1000;
+}
+
+

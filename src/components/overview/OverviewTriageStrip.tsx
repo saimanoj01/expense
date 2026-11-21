@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { AlertCircle, Lock, Sparkles, ArrowRight, X } from 'lucide-react';
+import { AlertCircle, Clock, Lock, Sparkles, ArrowRight, X } from 'lucide-react';
 import { useNavigation } from '../../hooks/useNavigation';
 import { formatMonthLabel } from '../../utils/navigation';
 import type { MonthPhase } from '../../utils/metrics';
@@ -8,6 +8,9 @@ export interface OverviewTriageStripProps {
   selectedMonth: string;
   phase: MonthPhase;
   reviewCount: number;
+  otherMonthsReviewCount?: number;
+  orphanPendingCount?: number;
+  isSyncStale?: boolean;
   unclassifiedCount: number;
   isLockedMonth?: boolean;
   hasRecordedActivity: boolean;
@@ -29,6 +32,9 @@ export const OverviewTriageStrip: React.FC<OverviewTriageStripProps> = ({
   selectedMonth,
   phase,
   reviewCount,
+  otherMonthsReviewCount = 0,
+  orphanPendingCount = 0,
+  isSyncStale = false,
   unclassifiedCount,
   isLockedMonth = false,
   hasRecordedActivity,
@@ -55,6 +61,9 @@ export const OverviewTriageStrip: React.FC<OverviewTriageStripProps> = ({
   };
 
   const showReview = reviewCount > 0;
+  const showOtherMonthsReview = selectedMonth !== 'all' && otherMonthsReviewCount > 0;
+  const showOrphanPending = orphanPendingCount > 0;
+  const showStaleSync = isSyncStale;
   const showUnclassified = unclassifiedCount > 0 && !isLockedMonth && Boolean(onClassifyBuckets);
   const showLockPrompt =
     phase === 'past' &&
@@ -66,7 +75,14 @@ export const OverviewTriageStrip: React.FC<OverviewTriageStripProps> = ({
     unclassifiedCount === 0 &&
     Boolean(onLockMonth);
 
-  if (!showReview && !showUnclassified && !showLockPrompt) {
+  if (
+    !showReview &&
+    !showOtherMonthsReview &&
+    !showOrphanPending &&
+    !showStaleSync &&
+    !showUnclassified &&
+    !showLockPrompt
+  ) {
     return null;
   }
 
@@ -91,6 +107,66 @@ export const OverviewTriageStrip: React.FC<OverviewTriageStripProps> = ({
             >
               <span>Review</span>
               <ArrowRight className="w-3 h-3" />
+            </button>
+          </div>
+        )}
+
+        {showOtherMonthsReview && (
+          <div
+            data-testid="overview-other-months-review"
+            className="inline-flex items-center gap-2 min-w-0"
+          >
+            <AlertCircle className="w-3.5 h-3.5 text-warning/80 shrink-0" />
+            <span className="text-muted-foreground tabular-nums num">
+              {otherMonthsReviewCount} flagged in other months
+            </span>
+            <button
+              type="button"
+              data-testid="overview-review-all-months-btn"
+              onClick={() => navigate('#/transactions?month=all&review=1')}
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-[6px] bg-background hover:bg-secondary border border-border text-foreground font-medium transition-colors focus-visible:ring-2 ring-ring/40"
+            >
+              <span>Review all</span>
+              <ArrowRight className="w-3 h-3" />
+            </button>
+          </div>
+        )}
+
+        {showOrphanPending && (
+          <div
+            data-testid="overview-orphan-pending"
+            className="inline-flex items-center gap-2 min-w-0"
+          >
+            <Clock className="w-3.5 h-3.5 text-warning shrink-0" />
+            <span className="text-muted-foreground tabular-nums num">
+              {orphanPendingCount} pending &gt;7d
+            </span>
+            <button
+              type="button"
+              data-testid="overview-pending-btn"
+              onClick={() => navigate('#/transactions?month=all&pending=1')}
+              className="px-2 py-0.5 rounded-[6px] bg-background hover:bg-secondary border border-border text-foreground font-medium transition-colors focus-visible:ring-2 ring-ring/40"
+            >
+              Inspect
+            </button>
+          </div>
+        )}
+
+        {showStaleSync && (
+          <div
+            data-testid="overview-stale-sync"
+            className="inline-flex items-center gap-2 min-w-0"
+          >
+            <AlertCircle className="w-3.5 h-3.5 text-warning shrink-0" />
+            <span className="text-warning font-medium">
+              Daily sync hasn&apos;t run in &gt;36h
+            </span>
+            <button
+              type="button"
+              onClick={() => navigate(`#/settings?month=${selectedMonth}`)}
+              className="px-2 py-0.5 rounded-[6px] bg-background hover:bg-secondary border border-border text-foreground font-medium transition-colors focus-visible:ring-2 ring-ring/40"
+            >
+              Sync Health
             </button>
           </div>
         )}

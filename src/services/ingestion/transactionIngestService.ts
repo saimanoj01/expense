@@ -305,15 +305,20 @@ export function resolveTransactionReview(
   options?: { clearDuplicate?: boolean }
 ): Transaction {
   const currentLabels = Array.isArray(tx.labels) ? tx.labels : [];
-  const nextLabels = currentLabels.filter(l => l !== 'needs-review');
+  const hasReviewLabel = currentLabels.some(
+    l => typeof l === 'string' && l.trim().toLowerCase() === 'needs-review'
+  );
+  const nextLabels = currentLabels.filter(
+    l => typeof l !== 'string' || l.trim().toLowerCase() !== 'needs-review'
+  );
   const existingReview = tx.meta?.review;
-  const activeReasons = existingReview?.reasons?.length
-    ? existingReview.reasons
-    : existingReview?.reason
-    ? [existingReview.reason]
-    : [];
+  const activeReasons: ReviewReason[] = Array.from(
+    new Set<ReviewReason>([
+      ...(Array.isArray(existingReview?.reasons) ? existingReview.reasons : []),
+      ...(existingReview?.reason ? [existingReview.reason] : []),
+    ])
+  );
 
-  const hasReviewLabel = currentLabels.includes('needs-review');
   // A needs-review label with no structured meta.review (e.g. rows written by hand) is an
   // unknown-reason flag: treat "Looks Good" as the user confirming the best-guess category.
   const isLegacyLabelReview = !existingReview && hasReviewLabel;
@@ -323,7 +328,10 @@ export function resolveTransactionReview(
     (!existingReview && !hasReviewLabel);
   const isCategoryReview = activeReasons.includes('category') || isLegacyLabelReview;
 
-  if (isDuplicateReview && !nextLabels.includes('duplicate-verified')) {
+  if (
+    isDuplicateReview &&
+    !nextLabels.some(l => typeof l === 'string' && l.trim().toLowerCase() === 'duplicate-verified')
+  ) {
     nextLabels.push('duplicate-verified');
   }
 

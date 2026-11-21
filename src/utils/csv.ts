@@ -1,5 +1,5 @@
 import { type Transaction, type Category, DEFAULT_CATEGORIES } from '../services/storage';
-import { bucketOf } from './categorizer';
+import { bucketOf, detectRefund, detectTransactionType } from './categorizer';
 import { isRefundTransaction } from './metrics';
 import {
   resolveTransactionAccount,
@@ -7,6 +7,74 @@ import {
   getVisibleUserTags,
   getUserFacingNote,
 } from './transactionTaxonomy';
+
+export type CsvSignConvention = 'card' | 'checking';
+
+export interface CsvRowClassification {
+  amount: number;
+  type: 'income' | 'expense' | 'transfer';
+  isRefund: boolean;
+}
+
+export function classifyCsvRowTypeAndRefund(input: {
+  description: string;
+  amountCell: string;
+  typeCell?: string;
+  hasTypeCol: boolean;
+  signConvention: CsvSignConvention;
+}): CsvRowClassification {
+  const { description, amountCell, typeCell = '', hasTypeCol, signConvention } = input;
+  const parsedAmt = parseCurrencyAmount(amountCell || '0');
+  let rawAmt = parsedAmt.amount;
+  const isNegativeAmount = parsedAmt.isNegative;
+
+  let rawType: 'income' | 'expense' | 'transfer' = detectTransactionType(
+    description,
+    hasTypeCol ? typeCell : ''
+  );
+
+  const refundDetected = detectRefund(description, hasTypeCol ? typeCell : '');
+
+  if (parsedAmt.isCredit) {
+    rawType = 'income';
+  } else if (signConvention === 'checking') {
+    if (isNegativeAmount) {
+      if (rawType !== 'transfer') {
+        rawType = 'expense';
+      }
+    } else if (rawAmt > 0 && rawType !== 'transfer') {
+      rawType = 'income';
+    }
+  } else if (isNegativeAmount && !hasTypeCol) {
+    rawType = refundDetected ? 'income' : 'transfer';
+  }
+
+  const typeColumnRefund =
+    hasTypeCol &&
+    /refund|return/i.test(typeCell) &&
+    !/transfer|payment/i.test(typeCell);
+
+  if (hasTypeCol) {
+    const inflowVal = parseCurrencyAmount(typeCell);
+    if (inflowVal.amount > 0 && rawAmt === 0) {
+      rawType = 'income';
+      rawAmt = inflowVal.amount;
+    } else if (/income/i.test(typeCell) || inflowVal.isCredit) {
+      rawType = 'income';
+    } else if (/transfer|payment/i.test(typeCell)) {
+      rawType = 'transfer';
+    } else if (/refund|return|credit/i.test(typeCell) && !/transfer|payment/i.test(typeCell)) {
+      rawType = 'income';
+    } else if (signConvention === 'card' && isNegativeAmount && !/expense/i.test(typeCell)) {
+      rawType = refundDetected ? 'income' : 'transfer';
+    } else if (signConvention === 'checking' && /expense|debit/i.test(typeCell)) {
+      rawType = 'expense';
+    }
+  }
+
+  const isRefund = rawType === 'income' && (refundDetected || typeColumnRefund);
+  return { amount: rawAmt, type: rawType, isRefund };
+}
 
 export function parseCurrencyAmount(raw: string): { amount: number; isNegative: boolean; isCredit: boolean } {
   if (!raw || typeof raw !== 'string') return { amount: 0, isNegative: false, isCredit: false };

@@ -41,6 +41,7 @@ export interface SidebarProps {
   logout?: () => void;
   onOpenAddTxn: () => void;
   isLockedMonth?: boolean;
+  totalReviewCount?: number;
   className?: string;
 }
 
@@ -57,6 +58,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   logout,
   onOpenAddTxn,
   isLockedMonth = false,
+  totalReviewCount = 0,
   className = '',
 }) => {
   const { currentRoute, navigate } = useNavigation();
@@ -299,21 +301,45 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {activeProject &&
           navItems.map(item => {
             const Icon = item.icon;
+            const showReviewBadge = item.id === 'transactions' && totalReviewCount > 0;
+            const badgeText = totalReviewCount > 99 ? '99+' : String(totalReviewCount);
             return (
               <button
                 key={item.id}
                 type="button"
                 data-testid={`nav-item-${item.id}`}
                 onClick={() => navigate(item.route)}
-                className={`w-full h-9 flex items-center gap-3 px-2.5 rounded-[10px] text-body font-medium transition-colors focus-visible:ring-2 ring-ring/40 ${
+                className={`relative w-full h-9 flex items-center gap-3 px-2.5 rounded-[10px] text-body font-medium transition-colors focus-visible:ring-2 ring-ring/40 ${
                   item.isActive
                     ? 'bg-surface2 text-foreground'
                     : 'text-muted-foreground hover:text-foreground hover:bg-surface2/60'
                 } ${collapsed ? 'justify-center px-0' : ''}`}
-                title={collapsed ? item.label : undefined}
+                title={
+                  collapsed
+                    ? showReviewBadge
+                      ? `${item.label} (${totalReviewCount} needs review)`
+                      : item.label
+                    : undefined
+                }
               >
                 <Icon className="w-4 h-4 shrink-0" />
                 {!collapsed && <span className="truncate">{item.label}</span>}
+                {showReviewBadge &&
+                  (collapsed ? (
+                    <span
+                      data-testid="sidebar-review-badge"
+                      className="absolute top-1 right-1.5 min-w-[14px] h-[14px] px-0.5 rounded-full bg-warning text-background text-[9px] font-bold flex items-center justify-center leading-none tabular-nums"
+                    >
+                      {badgeText}
+                    </span>
+                  ) : (
+                    <span
+                      data-testid="sidebar-review-badge"
+                      className="ml-auto px-1.5 py-0.5 rounded-full bg-warning/20 text-warning text-[10px] font-bold leading-none tabular-nums shrink-0"
+                    >
+                      {badgeText}
+                    </span>
+                  ))}
               </button>
             );
           })}

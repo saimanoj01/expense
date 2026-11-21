@@ -16,7 +16,7 @@ import {
   SpendingBucket,
   MonthlyLock,
 } from '../../services/storage';
-import { formatTransactionAmount } from '../../utils/formatters';
+import { formatCurrency, formatTransactionAmount } from '../../utils/formatters';
 import { bucketOf } from '../../utils/categorizer';
 import { isRefundTransaction } from '../../utils/metrics';
 import {
@@ -29,6 +29,7 @@ import {
   getLockedMonthForDate,
   formatReviewBadgeLabel,
   getReviewDetailText,
+  getEffectiveReviewReason,
 } from '../../utils/transactionTaxonomy';
 import { TagInputPopover } from '../common/TagInputPopover';
 
@@ -40,6 +41,7 @@ interface TransactionItemProps {
   isLockedMonth: boolean;
   isSelected: boolean;
   isDuplicate: boolean;
+  matchingDuplicate?: Transaction | null;
   includeYear?: boolean;
   showInlineDate?: boolean;
   showReviewDetailInline?: boolean;
@@ -52,6 +54,7 @@ interface TransactionItemProps {
   handleBucketChange?: (txn: Transaction, newBucket: SpendingBucket) => void;
   setSelectedTagFilter: (tag: string | null) => void;
   onSelectAccountFilter?: (accountKey: string) => void;
+  onFilterOrderId?: (orderId: string) => void;
   handleAddTag?: (txnId: string, tags: string[]) => void;
   handleRemoveTag?: (txnId: string, tag: string) => void;
   handleDismissReview?: (txnId: string) => void;
@@ -79,6 +82,7 @@ export const TransactionItem = memo(
       isLockedMonth,
       isSelected,
       isDuplicate,
+      matchingDuplicate = null,
       includeYear = false,
       showInlineDate = false,
       showReviewDetailInline = false,
@@ -91,6 +95,7 @@ export const TransactionItem = memo(
       handleBucketChange,
       setSelectedTagFilter,
       onSelectAccountFilter,
+      onFilterOrderId,
       handleAddTag,
       handleRemoveTag,
       handleDismissReview,
@@ -243,9 +248,12 @@ export const TransactionItem = memo(
     const userNote = useMemo(() => getUserFacingNote(transaction), [transaction]);
 
     const hasExplicitReview =
-      currentLabels.includes('needs-review') ||
+      currentLabels.some(l => l.trim().toLowerCase() === 'needs-review') ||
       Boolean(transaction.meta?.review && !transaction.meta.review.resolvedAt);
     const needsReview = hasExplicitReview || isDuplicate;
+    const effectiveReviewReason = needsReview
+      ? getEffectiveReviewReason(transaction, isDuplicate)
+      : null;
 
     const reviewBadgeLabel = formatReviewBadgeLabel(transaction, isDuplicate);
     const reviewDetailTitle = getReviewDetailText(transaction, isDuplicate);
@@ -384,15 +392,29 @@ export const TransactionItem = memo(
                 </span>
               )}
 
-              {isSplitOrder && (
-                <span
-                  data-testid={`split-badge-${transaction.id}`}
-                  title={`Split item from order ${transaction.meta?.orderId}`}
-                  className="px-1.5 py-0.5 rounded text-[11px] font-medium bg-surface2 text-muted-foreground border border-border shrink-0"
-                >
-                  Split
-                </span>
-              )}
+              {isSplitOrder &&
+                (onFilterOrderId && transaction.meta?.orderId ? (
+                  <button
+                    type="button"
+                    data-testid={`split-badge-${transaction.id}`}
+                    title={`Filter sibling split items from order ${transaction.meta.orderId}`}
+                    onClick={e => {
+                      e.stopPropagation();
+                      onFilterOrderId(transaction.meta!.orderId!);
+                    }}
+                    className="px-1.5 py-0.5 rounded text-[11px] font-medium bg-surface2 hover:bg-secondary text-muted-foreground hover:text-foreground border border-border shrink-0 transition-colors cursor-pointer"
+                  >
+                    Split
+                  </button>
+                ) : (
+                  <span
+                    data-testid={`split-badge-${transaction.id}`}
+                    title={`Split item from order ${transaction.meta?.orderId}`}
+                    className="px-1.5 py-0.5 rounded text-[11px] font-medium bg-surface2 text-muted-foreground border border-border shrink-0"
+                  >
+                    Split
+                  </span>
+                ))}
 
               {isRefund && (
                 <span className="px-1.5 py-0.5 rounded text-[11px] font-medium bg-positive/10 text-positive border border-positive/25 shrink-0">
@@ -427,12 +449,141 @@ export const TransactionItem = memo(
             </div>
 
             {needsReview && showReviewDetailInline && (
-              <p
-                data-testid={`review-detail-${transaction.id}`}
-                className="text-[11px] text-warning/90 mt-0.5 truncate"
-              >
-                {reviewDetailTitle}
-              </p>
+              <div className="mt-1 space-y-1">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <p
+                    data-testid={`review-detail-${transaction.id}`}
+                    className="text-[11px] text-warning/90 truncate"
+                  >
+                    {reviewDetailTitle}
+                  </p>
+                  {effectiveReviewReason === 'category' &&
+                    (transaction.meta?.categorizedBy ||
+                      typeof transaction.meta?.confidence === 'number') && (
+                      <span
+                        data-testid={`review-confidence-${transaction.id}`}
+                        className="px-1.5 py-0.5 rounded bg-surface2 border border-border text-[10px] font-medium text-muted-foreground shrink-0 tabular-nums"
+                      >
+                        {transaction.meta?.categorizedBy
+                          ? `${transaction.meta.categorizedBy.charAt(0).toUpperCase()}${transaction.meta.categorizedBy.slice(1)}`
+                          : 'Auto'}
+                        {typeof transaction.meta?.confidence === 'number'
+                          ? ` · ${Math.round(transaction.meta.confidence * 100)}%`
+                          : ''}
+                      </span>
+                    )}
+                </div>
+
+                {!effectiveInlineLocked && effectiveReviewReason === 'duplicate' && (
+                  <div
+                    data-testid={`triage-duplicate-panel-${transaction.id}`}
+                    onClick={e => e.stopPropagation()}
+                    className="px-2 py-1.5 rounded-[8px] bg-warning/5 border border-warning/25 flex flex-wrap items-center justify-between gap-2 text-[11px]"
+                  >
+                    {matchingDuplicate ? (
+                      <span className="text-muted-foreground min-w-0 truncate">
+                        Matches:{' '}
+                        <span className="font-medium text-foreground">
+                          {matchingDuplicate.date} · {matchingDuplicate.description}
+                        </span>
+                        {resolveTransactionAccount(matchingDuplicate)
+                          ? ` · ${formatAccountDisplay(resolveTransactionAccount(matchingDuplicate))}`
+                          : ''}
+                        {' · '}
+                        <span className="tabular-nums font-semibold text-foreground">
+                          {formatCurrency(matchingDuplicate.amount)}
+                        </span>
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground">
+                        Possible duplicate record — choose whether to delete or keep both.
+                      </span>
+                    )}
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        data-testid={`triage-delete-duplicate-${transaction.id}`}
+                        onClick={e => {
+                          e.stopPropagation();
+                          handleDeleteTxn(transaction.id);
+                        }}
+                        className="px-2 py-0.5 rounded bg-negative/15 hover:bg-negative/25 text-negative border border-negative/30 font-semibold transition-colors"
+                      >
+                        Delete Duplicate
+                      </button>
+                      {handleDismissReview && (
+                        <button
+                          type="button"
+                          data-testid={`triage-keep-both-${transaction.id}`}
+                          onClick={e => {
+                            e.stopPropagation();
+                            handleDismissReview(transaction.id);
+                          }}
+                          className="px-2 py-0.5 rounded bg-background hover:bg-surface2 text-foreground border border-border font-semibold transition-colors"
+                        >
+                          Keep Both
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {!effectiveInlineLocked && effectiveReviewReason === 'voided' && (
+                  <div
+                    data-testid={`triage-voided-panel-${transaction.id}`}
+                    onClick={e => e.stopPropagation()}
+                    className="flex flex-wrap items-center gap-1.5 text-[11px]"
+                  >
+                    <button
+                      type="button"
+                      data-testid={`triage-remove-voided-${transaction.id}`}
+                      onClick={e => {
+                        e.stopPropagation();
+                        handleDeleteTxn(transaction.id);
+                      }}
+                      className="px-2 py-0.5 rounded bg-negative/15 hover:bg-negative/25 text-negative border border-negative/30 font-semibold transition-colors"
+                    >
+                      Remove Voided
+                    </button>
+                    {handleDismissReview && (
+                      <button
+                        type="button"
+                        data-testid={`triage-keep-voided-${transaction.id}`}
+                        onClick={e => {
+                          e.stopPropagation();
+                          handleDismissReview(transaction.id);
+                        }}
+                        className="px-2 py-0.5 rounded bg-background hover:bg-surface2 text-foreground border border-border font-semibold transition-colors"
+                      >
+                        Keep
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {!effectiveInlineLocked &&
+                  (effectiveReviewReason === 'tip-drift' ||
+                    effectiveReviewReason === 'amount-mismatch') &&
+                  handleDismissReview && (
+                    <div
+                      data-testid={`triage-amount-panel-${transaction.id}`}
+                      onClick={e => e.stopPropagation()}
+                      className="flex flex-wrap items-center gap-1.5 text-[11px]"
+                    >
+                      <button
+                        type="button"
+                        data-testid={`triage-confirm-amount-${transaction.id}`}
+                        onClick={e => {
+                          e.stopPropagation();
+                          handleDismissReview(transaction.id);
+                        }}
+                        className="px-2 py-0.5 rounded bg-positive/15 hover:bg-positive/25 text-positive border border-positive/30 font-semibold transition-colors"
+                      >
+                        Confirm Amount
+                      </button>
+                    </div>
+                  )}
+              </div>
             )}
 
             {/* Calm Single-Source Metadata Line (orphan-free CSS pseudo separators) */}

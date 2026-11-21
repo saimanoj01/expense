@@ -204,6 +204,8 @@ export function BudgetsView({
     });
   };
 
+  const isSpecificLocked = isLockedMonth && month !== 'all';
+
   return (
     <div
       className="max-w-[1040px] mx-auto space-y-2 sm:space-y-3 pb-8"
@@ -217,8 +219,8 @@ export function BudgetsView({
         reconciliation={reconciliation}
         runway={runway}
         isLockedMonth={isLockedMonth}
-        isDirty={isDirty}
-        dirtyCount={dirtyCount}
+        isDirty={isSpecificLocked ? false : isDirty}
+        dirtyCount={isSpecificLocked ? 0 : dirtyCount}
         onOpenCategoryManager={onOpenCategoryManager}
         onSaveBudgets={onSaveBudgets}
         onDiscardBudgets={onDiscardBudgetChanges}
@@ -228,8 +230,8 @@ export function BudgetsView({
       <BudgetUtilization
         categorySummary={categorySummary}
         piePaths={piePaths}
-        budgetErrors={budgetErrors}
-        budgetDrafts={budgetDrafts}
+        budgetErrors={isSpecificLocked ? {} : budgetErrors}
+        budgetDrafts={isSpecificLocked ? {} : budgetDrafts}
         handleBudgetInputChange={onBudgetInputChange}
         handleSaveBudgets={onSaveBudgets}
         onOpenCategoryManager={onOpenCategoryManager}

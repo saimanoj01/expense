@@ -14,6 +14,7 @@ import {
   getVisibleUserTags,
   isTransactionMonthLocked,
   isTransactionNeedsReview,
+  findMatchingDuplicateTransaction,
 } from '../../utils/transactionTaxonomy';
 import { TransactionItem } from './TransactionItem';
 import { TagInputPopover } from '../common/TagInputPopover';
@@ -22,6 +23,7 @@ const PAGE_CHUNK = 150;
 
 interface TransactionListProps {
   transactions: Transaction[];
+  allTransactions?: Transaction[];
   categories: Category[];
   locks?: MonthlyLock[];
   availableTags?: string[];
@@ -43,6 +45,7 @@ interface TransactionListProps {
   onOpenCsvWizard?: () => void;
   setSelectedTagFilter: (tag: string | null) => void;
   onSelectAccountFilter?: (accountKey: string) => void;
+  onFilterOrderId?: (orderId: string) => void;
   toggleSelectTxn: (id: string) => void;
   onRangeSelectTxns?: (ids: string[], select: boolean) => void;
   toggleSelectAllTxns: (visibleIds: string[]) => void;
@@ -86,6 +89,7 @@ function formatDayHeader(dateStr: string, includeYear: boolean = false): string 
 
 export function TransactionList({
   transactions,
+  allTransactions,
   categories,
   locks = [],
   availableTags = [],
@@ -106,6 +110,7 @@ export function TransactionList({
   onOpenCsvWizard,
   setSelectedTagFilter,
   onSelectAccountFilter,
+  onFilterOrderId,
   toggleSelectTxn,
   onRangeSelectTxns,
   toggleSelectAllTxns,
@@ -469,66 +474,86 @@ export function TransactionList({
                 </span>
               </div>
               <div className="space-y-0.5">
-                {group.txns.map(txn => (
-                  <TransactionItem
-                    key={txn.id}
-                    transaction={txn}
-                    categories={categories}
-                    locks={locks}
-                    availableTags={availableTags}
-                    isLockedMonth={isLockedMonth}
-                    isSelected={selectedTxnIds.has(txn.id)}
-                    isDuplicate={duplicateTxnIds.has(txn.id)}
-                    includeYear={includeYear}
-                    showInlineDate={false}
-                    showReviewDetailInline={showReviewDetailInline}
-                    showMobileCheckbox={showMobileCheckbox}
-                    toggleSelectTxn={handleToggleSingle}
-                    onShiftSelectTxn={handleShiftSelect}
-                    handleEditTxn={handleEditTxn}
-                    handleDeleteTxn={handleDeleteTxn}
-                    handleCategoryChange={handleCategoryChange}
-                    handleBucketChange={handleBucketChange}
-                    setSelectedTagFilter={setSelectedTagFilter}
-                    onSelectAccountFilter={onSelectAccountFilter}
-                    handleAddTag={handleAddTag}
-                    handleRemoveTag={handleRemoveTag}
-                    handleDismissReview={handleDismissReview}
-                  />
-                ))}
+                {group.txns.map(txn => {
+                  const isDup = duplicateTxnIds.has(txn.id);
+                  const matchingDup =
+                    showReviewDetailInline &&
+                    (isDup || txn.meta?.review?.reason === 'duplicate' || txn.meta?.review?.reasons?.includes('duplicate'))
+                      ? findMatchingDuplicateTransaction(txn, allTransactions || transactions)
+                      : null;
+                  return (
+                    <TransactionItem
+                      key={txn.id}
+                      transaction={txn}
+                      categories={categories}
+                      locks={locks}
+                      availableTags={availableTags}
+                      isLockedMonth={isLockedMonth}
+                      isSelected={selectedTxnIds.has(txn.id)}
+                      isDuplicate={isDup}
+                      matchingDuplicate={matchingDup}
+                      includeYear={includeYear}
+                      showInlineDate={false}
+                      showReviewDetailInline={showReviewDetailInline}
+                      showMobileCheckbox={showMobileCheckbox}
+                      toggleSelectTxn={handleToggleSingle}
+                      onShiftSelectTxn={handleShiftSelect}
+                      handleEditTxn={handleEditTxn}
+                      handleDeleteTxn={handleDeleteTxn}
+                      handleCategoryChange={handleCategoryChange}
+                      handleBucketChange={handleBucketChange}
+                      setSelectedTagFilter={setSelectedTagFilter}
+                      onSelectAccountFilter={onSelectAccountFilter}
+                      onFilterOrderId={onFilterOrderId}
+                      handleAddTag={handleAddTag}
+                      handleRemoveTag={handleRemoveTag}
+                      handleDismissReview={handleDismissReview}
+                    />
+                  );
+                })}
               </div>
             </div>
           ))}
         </div>
       ) : (
         <div className="divide-y divide-border/50 border-t border-border py-1">
-          {windowedTransactions.map(txn => (
-            <TransactionItem
-              key={txn.id}
-              transaction={txn}
-              categories={categories}
-              locks={locks}
-              availableTags={availableTags}
-              isLockedMonth={isLockedMonth}
-              isSelected={selectedTxnIds.has(txn.id)}
-              isDuplicate={duplicateTxnIds.has(txn.id)}
-              includeYear={includeYear}
-              showInlineDate={true}
-              showReviewDetailInline={showReviewDetailInline}
-              showMobileCheckbox={showMobileCheckbox}
-              toggleSelectTxn={handleToggleSingle}
-              onShiftSelectTxn={handleShiftSelect}
-              handleEditTxn={handleEditTxn}
-              handleDeleteTxn={handleDeleteTxn}
-              handleCategoryChange={handleCategoryChange}
-              handleBucketChange={handleBucketChange}
-              setSelectedTagFilter={setSelectedTagFilter}
-              onSelectAccountFilter={onSelectAccountFilter}
-              handleAddTag={handleAddTag}
-              handleRemoveTag={handleRemoveTag}
-              handleDismissReview={handleDismissReview}
-            />
-          ))}
+          {windowedTransactions.map(txn => {
+            const isDup = duplicateTxnIds.has(txn.id);
+            const matchingDup =
+              showReviewDetailInline &&
+              (isDup || txn.meta?.review?.reason === 'duplicate' || txn.meta?.review?.reasons?.includes('duplicate'))
+                ? findMatchingDuplicateTransaction(txn, allTransactions || transactions)
+                : null;
+            return (
+              <TransactionItem
+                key={txn.id}
+                transaction={txn}
+                categories={categories}
+                locks={locks}
+                availableTags={availableTags}
+                isLockedMonth={isLockedMonth}
+                isSelected={selectedTxnIds.has(txn.id)}
+                isDuplicate={isDup}
+                matchingDuplicate={matchingDup}
+                includeYear={includeYear}
+                showInlineDate={true}
+                showReviewDetailInline={showReviewDetailInline}
+                showMobileCheckbox={showMobileCheckbox}
+                toggleSelectTxn={handleToggleSingle}
+                onShiftSelectTxn={handleShiftSelect}
+                handleEditTxn={handleEditTxn}
+                handleDeleteTxn={handleDeleteTxn}
+                handleCategoryChange={handleCategoryChange}
+                handleBucketChange={handleBucketChange}
+                setSelectedTagFilter={setSelectedTagFilter}
+                onSelectAccountFilter={onSelectAccountFilter}
+                onFilterOrderId={onFilterOrderId}
+                handleAddTag={handleAddTag}
+                handleRemoveTag={handleRemoveTag}
+                handleDismissReview={handleDismissReview}
+              />
+            );
+          })}
         </div>
       )}
 

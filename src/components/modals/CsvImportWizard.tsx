@@ -2,12 +2,15 @@ import React from 'react';
 import { Upload, Check, X } from 'lucide-react';
 import { Modal } from '../common/Modal';
 import { CsvItem } from '../../hooks/useCsvImport';
+import type { CsvSignConvention } from '../../utils/csv';
 import { Category, DEFAULT_CATEGORIES } from '../../services/storage';
 import { formatTransactionAmount } from '../../utils/formatters';
 
 interface CsvImportWizardProps {
   showCsvWizard: boolean;
   csvStep: 1 | 2;
+  signConvention?: CsvSignConvention;
+  setSignConvention?: (v: CsvSignConvention) => void;
   csvError: string | null;
   csvRawHeaders: string[];
   mapDateCol: string;
@@ -31,6 +34,8 @@ interface CsvImportWizardProps {
   setBatchTagsInput?: (v: string) => void;
   setParsedCsvItems: React.Dispatch<React.SetStateAction<CsvItem[]>>;
   updateItemTags?: (index: number, newTags: string[]) => void;
+  updateItemType?: (index: number, newType: 'income' | 'expense' | 'transfer') => void | Promise<void>;
+  isImportingCsv?: boolean;
   setShowCategoryManagerModal?: (v: boolean) => void;
   handleCsvFileUpload?: (e: React.ChangeEvent<HTMLInputElement>) => void;
   handleCsvNextStep: () => void;
@@ -40,6 +45,8 @@ interface CsvImportWizardProps {
 export function CsvImportWizard({
   showCsvWizard,
   csvStep,
+  signConvention = 'card',
+  setSignConvention,
   csvError,
   csvRawHeaders,
   mapDateCol,
@@ -63,6 +70,8 @@ export function CsvImportWizard({
   setBatchTagsInput,
   setParsedCsvItems,
   updateItemTags,
+  updateItemType,
+  isImportingCsv = false,
   setShowCategoryManagerModal,
   handleCsvFileUpload,
   handleCsvNextStep,
@@ -163,6 +172,49 @@ export function CsvImportWizard({
                     {csvRawHeaders.map(h => <option key={h} value={h} className="bg-card text-card-foreground">{h}</option>)}
                   </select>
                 </div>
+                {setSignConvention && (
+                  <div>
+                    <label className="block text-sm font-bold text-muted-foreground mb-1">
+                      Amount Sign Convention
+                    </label>
+                    <div
+                      data-testid="csv-sign-convention-toggle"
+                      className="grid grid-cols-2 gap-1 p-1 rounded-xl bg-surface2 border border-border"
+                    >
+                      <button
+                        type="button"
+                        data-testid="csv-sign-card-btn"
+                        aria-pressed={signConvention === 'card'}
+                        onClick={() => setSignConvention('card')}
+                        className={`px-3 py-2 rounded-lg text-xs font-semibold transition-colors ${
+                          signConvention === 'card'
+                            ? 'bg-card text-foreground border border-border shadow-sm'
+                            : 'text-muted-foreground hover:text-foreground border border-transparent'
+                        }`}
+                      >
+                        Card CSV (+ expense)
+                      </button>
+                      <button
+                        type="button"
+                        data-testid="csv-sign-checking-btn"
+                        aria-pressed={signConvention === 'checking'}
+                        onClick={() => setSignConvention('checking')}
+                        className={`px-3 py-2 rounded-lg text-xs font-semibold transition-colors ${
+                          signConvention === 'checking'
+                            ? 'bg-card text-foreground border border-border shadow-sm'
+                            : 'text-muted-foreground hover:text-foreground border border-transparent'
+                        }`}
+                      >
+                        Checking CSV (− expense)
+                      </button>
+                    </div>
+                    <p className="text-[11px] text-muted-foreground mt-1">
+                      {signConvention === 'card'
+                        ? 'Positive amounts import as expenses; negative amounts import as refunds or card payments.'
+                        : 'Negative amounts import as expenses; positive amounts import as income or refunds.'}
+                    </p>
+                  </div>
+                )}
               </div>
 
               <div className="space-y-4">
@@ -319,7 +371,7 @@ export function CsvImportWizard({
                             })()}
                           </td>
                           <td className="p-3">
-                            {item.type === 'expense' ? (
+                            {item.type === 'expense' || item.isRefund ? (
                               <select
                                 value={item.spendingBucket || 'flexible'}
                                 onChange={(e) => {
@@ -382,22 +434,40 @@ export function CsvImportWizard({
                             );
                           })()}
                           <td className="p-3">
-                            <select
-                              value={item.type}
-                              onChange={(e) => {
-                                const newType = e.target.value as 'income' | 'expense' | 'transfer';
-                                setParsedCsvItems(prev => {
-                                  const next = [...prev];
-                                  next[idx].type = newType;
-                                  return next;
-                                });
-                              }}
-                              className="bg-card/70 border border-border/70 rounded-lg px-2 py-1 text-xs font-semibold uppercase focus:ring-1 focus:ring-primary outline-none"
-                            >
-                              <option value="expense" className="bg-card text-card-foreground">Expense</option>
-                              <option value="income" className="bg-card text-card-foreground">Income</option>
-                              <option value="transfer" className="bg-card text-card-foreground">Transfer</option>
-                            </select>
+                            <div className="flex items-center gap-1.5">
+                              <select
+                                value={item.type}
+                                onChange={(e) => {
+                                  const newType = e.target.value as 'income' | 'expense' | 'transfer';
+                                  if (updateItemType) {
+                                    void updateItemType(idx, newType);
+                                  } else {
+                                    setParsedCsvItems(prev => {
+                                      const next = [...prev];
+                                      next[idx] = {
+                                        ...next[idx],
+                                        type: newType,
+                                        isRefund: newType === 'income' ? next[idx].isRefund : false,
+                                      };
+                                      return next;
+                                    });
+                                  }
+                                }}
+                                className="bg-card/70 border border-border/70 rounded-lg px-2 py-1 text-xs font-semibold uppercase focus:ring-1 focus:ring-primary outline-none"
+                              >
+                                <option value="expense" className="bg-card text-card-foreground">Expense</option>
+                                <option value="income" className="bg-card text-card-foreground">Income</option>
+                                <option value="transfer" className="bg-card text-card-foreground">Transfer</option>
+                              </select>
+                              {item.isRefund && item.type === 'income' && (
+                                <span
+                                  data-testid={`csv-refund-badge-${idx}`}
+                                  className="px-1.5 py-0.5 rounded bg-positive/10 text-positive border border-positive/25 text-[10px] font-semibold"
+                                >
+                                  Refund
+                                </span>
+                              )}
+                            </div>
                           </td>
                           <td className="p-3">
                             {item.isLockedMonth ? (
@@ -420,8 +490,9 @@ export function CsvImportWizard({
 
         <div className="mt-6 flex justify-end gap-3 pt-4 border-t border-border/50">
           <button
+            disabled={isImportingCsv}
             onClick={() => setShowCsvWizard(false)}
-            className="px-6 py-2.5 rounded-xl font-bold hover:bg-card transition-colors border border-border"
+            className="px-6 py-2.5 rounded-xl font-bold hover:bg-card transition-colors border border-border disabled:opacity-50"
           >
             Cancel
           </button>
@@ -437,10 +508,10 @@ export function CsvImportWizard({
             <button
               onClick={handleCommitCsvImport}
               data-testid="csv-import-btn"
-              disabled={parsedCsvItems.filter(i => i.selected).length === 0}
+              disabled={isImportingCsv || parsedCsvItems.filter(i => i.selected).length === 0}
               className="px-6 py-2.5 rounded-xl bg-primary hover:opacity-90 text-primary-foreground font-semibold transition-opacity flex items-center gap-2 disabled:opacity-50 disabled:pointer-events-none"
             >
-              <Check className="w-5 h-5" /> Import Selected
+              <Check className="w-5 h-5" /> {isImportingCsv ? 'Importing…' : 'Import Selected'}
             </button>
           )}
         </div>

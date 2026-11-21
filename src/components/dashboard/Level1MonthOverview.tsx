@@ -10,7 +10,10 @@ import {
   pickDefaultLandingMonth,
 } from '../../utils/metrics';
 import type { CategorySummaryItem } from '../../utils/overviewCategories';
-import { isTransactionNeedsReview } from '../../utils/transactionTaxonomy';
+import {
+  isTransactionNeedsReview,
+  isOrphanPendingTransaction,
+} from '../../utils/transactionTaxonomy';
 import { dur, ease } from '../../theme/motion';
 import { OverviewTriageStrip } from '../overview/OverviewTriageStrip';
 import { OverviewHero } from '../overview/OverviewHero';
@@ -45,11 +48,13 @@ export interface Level1MonthOverviewProps {
   duplicateTxnIds?: Set<string>;
   isLockedMonth?: boolean;
   isMockMode?: boolean;
+  isSyncStale?: boolean;
   selectedBucket?: 'income' | 'fixed' | 'flexible' | 'non-monthly' | null;
   onSelectBucket?: (b: 'income' | 'fixed' | 'flexible' | 'non-monthly' | null) => void;
   onOpenBackfill?: () => void;
   onClassifyBuckets?: () => void;
   onOpenAddTxn?: () => void;
+  onOpenAddIncome?: () => void;
   onEditTxn?: (txn: Transaction) => void;
   onOpenCsvWizard?: () => void;
   onLoadSampleData?: () => void;
@@ -87,8 +92,10 @@ export const Level1MonthOverview: React.FC<Level1MonthOverviewProps> = ({
   duplicateTxnIds,
   isLockedMonth = false,
   isMockMode = false,
+  isSyncStale = false,
   onClassifyBuckets,
   onOpenAddTxn,
+  onOpenAddIncome,
   onEditTxn,
   onOpenCsvWizard,
   onLoadSampleData,
@@ -152,41 +159,63 @@ export const Level1MonthOverview: React.FC<Level1MonthOverviewProps> = ({
     };
   }, [compWindow, priorMonthKey, allTransactions, categories]);
 
-  const { activeMonthsCount, latestMonthWithData, reviewCount, hasRecordedActivity } =
-    useMemo(() => {
-      const txMonths = new Set<string>();
-      let revCount = 0;
-      let monthTxCount = 0;
+  const {
+    activeMonthsCount,
+    latestMonthWithData,
+    reviewCount,
+    otherMonthsReviewCount,
+    orphanPendingCount,
+    hasRecordedActivity,
+  } = useMemo(() => {
+    const txMonths = new Set<string>();
+    let revCount = 0;
+    let otherRevCount = 0;
+    let stalePendingCount = 0;
+    let monthTxCount = 0;
 
-      for (const t of allTransactions) {
-        if (t.type === 'transfer') continue;
-        if (t.date && t.date.length >= 7) {
-          const mk = t.date.slice(0, 7);
-          if (/^\d{4}-\d{2}$/.test(mk)) txMonths.add(mk);
-        }
-        const inSelected =
-          selectedMonth === 'all' || (t.date && t.date.startsWith(selectedMonth));
+    for (const t of allTransactions) {
+      const inSelected =
+        selectedMonth === 'all' || (t.date && t.date.startsWith(selectedMonth));
+
+      // Count flagged review items across ALL types (including transfers) so Overview matches TransactionsView
+      if (isTransactionNeedsReview(t, duplicateTxnIds)) {
         if (inSelected) {
-          monthTxCount += 1;
-          if (isTransactionNeedsReview(t, duplicateTxnIds)) {
-            revCount += 1;
-          }
+          revCount += 1;
+        } else {
+          otherRevCount += 1;
         }
       }
 
-      const txMonthArr = Array.from(txMonths);
-      const latest =
-        txMonthArr.length > 0
-          ? pickDefaultLandingMonth(txMonthArr, phaseInfo.currentLocalMonth)
-          : null;
+      // Watchdog: Pending rows older than 7 calendar days (shared calendar-day math with SettingsView)
+      if (isOrphanPendingTransaction(t)) {
+        stalePendingCount += 1;
+      }
 
-      return {
-        activeMonthsCount: txMonthArr.length,
-        latestMonthWithData: latest,
-        reviewCount: revCount,
-        hasRecordedActivity: monthTxCount > 0,
-      };
-    }, [allTransactions, selectedMonth, duplicateTxnIds, phaseInfo.currentLocalMonth]);
+      if (t.type === 'transfer') continue;
+      if (t.date && t.date.length >= 7) {
+        const mk = t.date.slice(0, 7);
+        if (/^\d{4}-\d{2}$/.test(mk)) txMonths.add(mk);
+      }
+      if (inSelected) {
+        monthTxCount += 1;
+      }
+    }
+
+    const txMonthArr = Array.from(txMonths);
+    const latest =
+      txMonthArr.length > 0
+        ? pickDefaultLandingMonth(txMonthArr, phaseInfo.currentLocalMonth)
+        : null;
+
+    return {
+      activeMonthsCount: txMonthArr.length,
+      latestMonthWithData: latest,
+      reviewCount: revCount,
+      otherMonthsReviewCount: otherRevCount,
+      orphanPendingCount: stalePendingCount,
+      hasRecordedActivity: monthTxCount > 0,
+    };
+  }, [allTransactions, selectedMonth, duplicateTxnIds, phaseInfo.currentLocalMonth]);
 
   return (
     <motion.div
@@ -201,6 +230,9 @@ export const Level1MonthOverview: React.FC<Level1MonthOverviewProps> = ({
           selectedMonth={selectedMonth}
           phase={phaseInfo.phase}
           reviewCount={reviewCount}
+          otherMonthsReviewCount={otherMonthsReviewCount}
+          orphanPendingCount={orphanPendingCount}
+          isSyncStale={isSyncStale}
           unclassifiedCount={unclassifiedCount}
           isLockedMonth={isLockedMonth}
           hasRecordedActivity={hasRecordedActivity}
@@ -229,6 +261,7 @@ export const Level1MonthOverview: React.FC<Level1MonthOverviewProps> = ({
         isLockedMonth={isLockedMonth}
         isMockMode={isMockMode}
         onOpenAddTxn={onOpenAddTxn}
+        onOpenAddIncome={onOpenAddIncome}
         onOpenCsvWizard={onOpenCsvWizard}
         onLoadSampleData={onLoadSampleData}
         onSelectMonth={onSelectMonth}

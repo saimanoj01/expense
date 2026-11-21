@@ -32,6 +32,7 @@ export interface OverviewHeroProps {
   isLockedMonth?: boolean;
   isMockMode?: boolean;
   onOpenAddTxn?: () => void;
+  onOpenAddIncome?: () => void;
   onOpenCsvWizard?: () => void;
   onLoadSampleData?: () => void;
   onSelectMonth?: (month: string) => void;
@@ -67,6 +68,7 @@ export const OverviewHero: React.FC<OverviewHeroProps> = ({
   isLockedMonth = false,
   isMockMode = false,
   onOpenAddTxn,
+  onOpenAddIncome,
   onOpenCsvWizard,
   onLoadSampleData,
   onSelectMonth,
@@ -265,12 +267,13 @@ export const OverviewHero: React.FC<OverviewHeroProps> = ({
               </span>
               <span className="text-faint">·</span>
               <span>Income $0.00</span>
-              {!isLockedMonth && onOpenAddTxn && (
+              {!isLockedMonth && (onOpenAddIncome || onOpenAddTxn) && (
                 <>
                   <span className="text-faint">·</span>
                   <button
                     type="button"
-                    onClick={onOpenAddTxn}
+                    data-testid="overview-add-income-btn"
+                    onClick={onOpenAddIncome || onOpenAddTxn}
                     className="text-foreground underline underline-offset-4 hover:opacity-80 font-medium"
                   >
                     Add income

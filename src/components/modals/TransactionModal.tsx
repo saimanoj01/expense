@@ -43,6 +43,9 @@ import {
   formatReviewBadgeLabel,
   getReviewDetailText,
 } from '../../utils/transactionTaxonomy';
+import { findSimilarTransactionsForSweep } from '../../utils/merchantSweep';
+import { useNavigation } from '../../hooks/useNavigation';
+import { showToast } from '../../utils/toast';
 
 interface TransactionModalProps {
   showTxnModal: boolean;
@@ -65,6 +68,11 @@ interface TransactionModalProps {
   isTxnLocked?: boolean;
   onDeleteTransaction?: (id: string) => void;
   onDismissReview?: (id: string) => void;
+  onApplyMerchantSweep?: (
+    matchingIds: string[],
+    categoryId: string,
+    subCategoryId?: string | null
+  ) => Promise<boolean>;
 }
 
 function isLegacyRefundCategory(cat?: string | null): boolean {
@@ -90,7 +98,9 @@ export function TransactionModal({
   isTxnLocked = false,
   onDeleteTransaction,
   onDismissReview,
+  onApplyMerchantSweep,
 }: TransactionModalProps) {
+  const { navigate } = useNavigation();
   const [txnType, setTxnType] = useState<'income' | 'expense' | 'transfer'>('expense');
   const [isRefund, setIsRefund] = useState(false);
   const [txnBucket, setTxnBucket] = useState<SpendingBucket>('flexible');
@@ -424,6 +434,50 @@ export function TransactionModal({
     });
     if (success) {
       setShowTxnModal(false);
+
+      const categoryChanged =
+        Boolean(editingTxnId) &&
+        (finalCategory !== (initialData?.category || '') ||
+          (txnSubCategory || null) !== (initialData?.subCategory || null));
+      if (categoryChanged && onApplyMerchantSweep) {
+        const candidate = findSimilarTransactionsForSweep(
+          newTxn,
+          finalCategory,
+          txnSubCategory,
+          transactions,
+          locks
+        );
+        if (candidate && candidate.matchingIds.length > 0) {
+          const parentObj = allCategories.find(c => c.id === finalCategory);
+          const subObj = txnSubCategory
+            ? allCategories.find(c => c.id === txnSubCategory)
+            : null;
+          const subLabel =
+            subObj?.name === 'Electricity' ? 'Electric Power' : subObj?.name;
+          const categoryLabel = subLabel
+            ? `${parentObj?.name || finalCategory} › ${subLabel}`
+            : parentObj?.name || finalCategory;
+          showToast(
+            `Apply ${categoryLabel} to ${candidate.matchingIds.length} other "${candidate.merchantDisplay}" transaction${candidate.matchingIds.length === 1 ? '' : 's'}?`,
+            'info',
+            {
+              duration: 8000,
+              toastTestId: 'merchant-sweep-toast',
+              action: {
+                label: `Apply to all (${candidate.matchingIds.length})`,
+                testId: 'modal-merchant-sweep-btn',
+                onClick: () => {
+                  void onApplyMerchantSweep(
+                    candidate.matchingIds,
+                    finalCategory,
+                    txnSubCategory
+                  );
+                },
+              },
+            }
+          );
+        }
+      }
     }
   };
 
@@ -541,9 +595,18 @@ export function TransactionModal({
             </span>
           )}
           {provenanceOrderId && (
-            <span className="px-1.5 py-0.5 rounded bg-background border border-border font-mono">
+            <button
+              type="button"
+              data-testid="modal-filter-order-btn"
+              title={`Filter all split items for order ${provenanceOrderId}`}
+              onClick={() => {
+                setShowTxnModal(false);
+                navigate(`#/transactions?month=all&q=${encodeURIComponent(provenanceOrderId)}`);
+              }}
+              className="px-1.5 py-0.5 rounded bg-background hover:bg-secondary border border-border font-mono text-foreground transition-colors cursor-pointer"
+            >
               Order {provenanceOrderId}
-            </span>
+            </button>
           )}
           {provenanceSources.length > 0 && (
             <span>Synced via {provenanceSources.join(', ')}</span>

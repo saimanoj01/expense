@@ -24,7 +24,7 @@ export function AppLayout({
 
       {/* Global Modern Toaster */}
       <Toaster
-        visibleToasts={1}
+        visibleToasts={2}
         position="bottom-right"
         className="toaster-wrapper"
         toastOptions={{

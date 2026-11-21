@@ -231,7 +231,7 @@ export function CategoryManagerModal({
             data-testid={`confirm-delete-category-btn-${cat.id}`}
             onClick={() => void handleConfirmDelete(cat)}
             disabled={isDeleting}
-            className="min-h-[32px] px-3 rounded-[8px] bg-negative text-white hover:opacity-90 font-semibold transition-opacity"
+            className="min-h-[32px] px-3 rounded-[8px] bg-negative text-destructive-foreground hover:opacity-90 font-semibold transition-opacity"
           >
             Confirm Delete
           </button>
@@ -341,7 +341,7 @@ export function CategoryManagerModal({
               <div className="col-span-2">
                 <input
                   type="text"
-                  maxLength={2}
+                  maxLength={12}
                   aria-label="Category Emoji"
                   data-testid={
                     editingCategory

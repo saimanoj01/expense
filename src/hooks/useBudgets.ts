@@ -22,10 +22,11 @@ import {
   computeSpendingHistory,
   countActiveTransactionMonths,
   getBudgetCatKey,
+  resolveEffectiveBudgetsForMonth,
 } from '../utils/budgetPlanning';
 import type { CategorySummary, SubCategorySummary } from '../utils/budgetPlanning';
 
-export { deriveCategoryBucket, isNonBudgetableCategory };
+export { deriveCategoryBucket, isNonBudgetableCategory, resolveEffectiveBudgetsForMonth };
 
 export function useBudgets(
   storageAdapter: StorageAdapter | null,
@@ -39,6 +40,7 @@ export function useBudgets(
 ) {
   const [persistedBudgets, setPersistedBudgets] = useState<Budget[]>([]);
   const [workingBudgets, setWorkingBudgets] = useState<Budget[]>([]);
+  const [budgetSnapshots, setBudgetSnapshots] = useState<Record<string, Budget[]>>({});
   const [categories, setCategories] = useState<Category[]>([]);
   const [budgetErrors, setBudgetErrors] = useState<Record<string, string>>({});
   const [budgetDrafts, setBudgetDrafts] = useState<Record<string, string>>({});
@@ -51,6 +53,7 @@ export function useBudgets(
     setPrevProjectId(activeProject?.id);
     setBudgetDrafts({});
     setBudgetErrors({});
+    setBudgetSnapshots({});
   }
 
   const activeProjectIdRef = useRef<string | null>(activeProject?.id ?? null);
@@ -81,8 +84,13 @@ export function useBudgets(
         const bgs = await storageAdapter.getBudgets(pid);
         const cats = await storageAdapter.getCategories(pid);
         const notes = await storageAdapter.getBudgetNotes(pid);
+        const snapshots =
+          typeof storageAdapter.getBudgetSnapshots === 'function'
+            ? await storageAdapter.getBudgetSnapshots(pid)
+            : {};
         if (activeProjectIdRef.current !== pid || refreshSeqRef.current !== seq) return;
         setPersistedBudgets(bgs);
+        setBudgetSnapshots(snapshots || {});
         if (options?.preserveWorkingDrafts) {
           if (options.deletedCategoryId) {
             const delLower = options.deletedCategoryId.toLowerCase();
@@ -117,6 +125,24 @@ export function useBudgets(
     [activeProject, storageAdapter, updateWorkingBudgets]
   );
 
+  const isUsingBudgetSnapshot = Boolean(
+    isLockedMonth &&
+      selectedMonth &&
+      selectedMonth !== 'all' &&
+      Array.isArray(budgetSnapshots[selectedMonth])
+  );
+
+  const effectiveSavedBudgets = useMemo(
+    () =>
+      resolveEffectiveBudgetsForMonth(
+        persistedBudgets,
+        budgetSnapshots,
+        selectedMonth,
+        isLockedMonth
+      ),
+    [persistedBudgets, budgetSnapshots, selectedMonth, isLockedMonth]
+  );
+
   const activeMonthsCount = useMemo(
     () => countActiveTransactionMonths(allTransactions),
     [allTransactions]
@@ -149,7 +175,7 @@ export function useBudgets(
         existingKeys.add('housing');
       }
 
-      const combinedBudgetPool = [...persistedBudgets, ...targetBudgets];
+      const combinedBudgetPool = [...effectiveSavedBudgets, ...targetBudgets];
       combinedBudgetPool.forEach(b => {
         const catKey = (b.category || '').trim().toLowerCase();
         if (b.category && !existingKeys.has(catKey) && !subCatKeys.has(catKey)) {
@@ -293,13 +319,17 @@ export function useBudgets(
 
       return items;
     },
-    [categories, persistedBudgets, monthTransactions, selectedMonth, activeMonthsCount]
+    [categories, effectiveSavedBudgets, monthTransactions, selectedMonth, activeMonthsCount]
   );
 
-  // Working summary & totalBudget drive #/budgets live planning preview
+  // Working summary & totalBudget drive #/budgets live planning preview (or frozen snapshot on locked months)
   const categorySummary = useMemo(
-    () => buildSummaryForBudgets(workingBudgets, { normalizeAllTime: true }),
-    [buildSummaryForBudgets, workingBudgets]
+    () =>
+      buildSummaryForBudgets(
+        isUsingBudgetSnapshot ? effectiveSavedBudgets : workingBudgets,
+        { normalizeAllTime: true }
+      ),
+    [buildSummaryForBudgets, isUsingBudgetSnapshot, effectiveSavedBudgets, workingBudgets]
   );
 
   const totalBudget = useMemo(() => {
@@ -311,8 +341,8 @@ export function useBudgets(
 
   // Saved summary & savedTotalBudget insulate Overview and Reports from uncommitted edits (Guardrail G1)
   const savedCategorySummary = useMemo(
-    () => buildSummaryForBudgets(persistedBudgets, { normalizeAllTime: false }),
-    [buildSummaryForBudgets, persistedBudgets]
+    () => buildSummaryForBudgets(effectiveSavedBudgets, { normalizeAllTime: false }),
+    [buildSummaryForBudgets, effectiveSavedBudgets]
   );
 
   const savedTotalBudget = useMemo(() => {
@@ -636,6 +666,9 @@ export function useBudgets(
 
   return {
     budgets: persistedBudgets,
+    effectiveSavedBudgets,
+    budgetSnapshots,
+    isUsingBudgetSnapshot,
     workingBudgets,
     setBudgets,
     categories,

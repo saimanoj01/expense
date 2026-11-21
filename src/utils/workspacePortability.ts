@@ -24,6 +24,7 @@ export interface NebulaWorkspaceSnapshotV1 {
   transactions: Transaction[]; // Chronological (date asc, id asc)
   categories: Category[];
   budgets: Budget[];
+  budgetSnapshots?: Record<string, Budget[]>;
   notes: Record<string, BudgetNote>;
   locks: MonthlyLock[];
   ingestState: IngestState;
@@ -45,6 +46,7 @@ export interface SnapshotValidationSummary {
 export interface IncludedSnapshotSections {
   categories: boolean;
   budgets: boolean;
+  budgetSnapshots?: boolean;
   notes: boolean;
   locks: boolean;
   ingestState: boolean;
@@ -115,10 +117,13 @@ export async function buildWorkspaceSnapshot(params: {
   const { project, storageAdapter } = params;
   const nowIso = params.exportedAt || new Date().toISOString();
 
-  const [rawTxns, rawCats, rawBudgets, rawNotes, rawLocks, rawIngest] = await Promise.all([
+  const [rawTxns, rawCats, rawBudgets, rawBudgetSnapshots, rawNotes, rawLocks, rawIngest] = await Promise.all([
     storageAdapter.getTransactions(project.id),
     storageAdapter.getCategories(project.id),
     storageAdapter.getBudgets(project.id),
+    storageAdapter.getBudgetSnapshots
+      ? storageAdapter.getBudgetSnapshots(project.id)
+      : Promise.resolve({} as Record<string, Budget[]>),
     storageAdapter.getBudgetNotes(project.id),
     storageAdapter.getLocks(project.id),
     storageAdapter.getIngestState
@@ -131,6 +136,15 @@ export async function buildWorkspaceSnapshot(params: {
   );
 
   const normalizedCategories = rawCats.map(normalizeCategoryRecord);
+
+  const cleanBudgetSnapshots: Record<string, Budget[]> = {};
+  for (const [month, list] of Object.entries(rawBudgetSnapshots || {})) {
+    if (!VALID_MONTH_RE.test(month) || !Array.isArray(list)) continue;
+    cleanBudgetSnapshots[month] = list.map(b => ({
+      category: b.category,
+      amount: Number(b.amount) || 0,
+    }));
+  }
 
   const cleanNotes: Record<string, BudgetNote> = {};
   for (const [key, note] of Object.entries(rawNotes || {})) {
@@ -177,6 +191,7 @@ export async function buildWorkspaceSnapshot(params: {
     transactions: sortedTransactions,
     categories: normalizedCategories,
     budgets: [...rawBudgets],
+    budgetSnapshots: cleanBudgetSnapshots,
     notes: cleanNotes,
     locks: cleanLocks,
     ingestState,
@@ -255,6 +270,9 @@ export function parseAndValidateWorkspaceSnapshot(
   if (hasProp('budgets') && !Array.isArray(raw.budgets)) {
     return { ok: false, error: 'Invalid snapshot: "budgets" must be an array.' };
   }
+  if (hasProp('budgetSnapshots') && !isPlainObject(raw.budgetSnapshots)) {
+    return { ok: false, error: 'Invalid snapshot: "budgetSnapshots" must be an object.' };
+  }
   if (hasProp('notes') && !isPlainObject(raw.notes)) {
     return { ok: false, error: 'Invalid snapshot: "notes" must be an object.' };
   }
@@ -268,6 +286,7 @@ export function parseAndValidateWorkspaceSnapshot(
   const includedSections: IncludedSnapshotSections = {
     categories: hasProp('categories'),
     budgets: hasProp('budgets'),
+    budgetSnapshots: hasProp('budgetSnapshots'),
     notes: hasProp('notes'),
     locks: hasProp('locks'),
     ingestState: hasProp('ingestState'),
@@ -416,6 +435,42 @@ export function parseAndValidateWorkspaceSnapshot(
     }
   }
 
+  // Validate lock-time budgetSnapshots when included
+  const budgetSnapshots: Record<string, Budget[]> = {};
+  if (includedSections.budgetSnapshots && isPlainObject(raw.budgetSnapshots)) {
+    for (const [monthKey, rawList] of Object.entries(raw.budgetSnapshots)) {
+      if (monthKey === '__proto__' || monthKey === 'constructor' || monthKey === 'prototype') {
+        continue;
+      }
+      if (!VALID_MONTH_RE.test(monthKey) || !Array.isArray(rawList)) {
+        return {
+          ok: false,
+          error: `Invalid budget snapshot for "${monthKey}": expected YYYY-MM key mapped to a budgets array.`,
+        };
+      }
+      const cleanedList: Budget[] = [];
+      for (let i = 0; i < rawList.length; i++) {
+        const b = rawList[i];
+        if (!isPlainObject(b)) {
+          return {
+            ok: false,
+            error: `Invalid budget snapshot entry for ${monthKey} at index ${i}.`,
+          };
+        }
+        const cat = typeof b.category === 'string' ? b.category.trim() : '';
+        const amt = typeof b.amount === 'number' ? b.amount : Number(b.amount);
+        if (!cat || !Number.isFinite(amt) || amt < 0) {
+          return {
+            ok: false,
+            error: `Invalid budget snapshot entry for ${monthKey} at index ${i}.`,
+          };
+        }
+        cleanedList.push({ category: cat, amount: amt });
+      }
+      budgetSnapshots[monthKey] = cleanedList;
+    }
+  }
+
   // Validate notes (stripping __meta_* keys per Guardrail G7 and prototype-pollution keys)
   const notes: Record<string, BudgetNote> = {};
   if (includedSections.notes && isPlainObject(raw.notes)) {
@@ -547,6 +602,7 @@ export function parseAndValidateWorkspaceSnapshot(
     transactions,
     categories,
     budgets,
+    ...(includedSections.budgetSnapshots ? { budgetSnapshots } : {}),
     notes,
     locks,
     ingestState,
@@ -666,9 +722,15 @@ export async function restoreWorkspaceSnapshot(
     });
   }
 
-  // 6. Save budgets when included
+  // 6. Save budgets and lock-time budget snapshots when included
   if (includedSections.budgets) {
     await storageAdapter.saveBudgets(projectId, snapshot.budgets);
+  }
+  if (includedSections.budgetSnapshots && storageAdapter.replaceBudgetSnapshots) {
+    await storageAdapter.replaceBudgetSnapshots(projectId, snapshot.budgetSnapshots || {});
+  } else if (includedSections.budgets && !includedSections.budgetSnapshots && storageAdapter.replaceBudgetSnapshots) {
+    // Legacy full snapshot without budgetSnapshots field: clear any pre-existing stale snapshots
+    await storageAdapter.replaceBudgetSnapshots(projectId, {});
   }
 
   // 7. Save ingestState when included
@@ -755,6 +817,10 @@ export async function clearWorkspaceData(
       if (key.startsWith('__meta_')) continue;
       await storageAdapter.deleteBudgetNote(projectId, key);
     }
+  }
+
+  if (storageAdapter.replaceBudgetSnapshots) {
+    await storageAdapter.replaceBudgetSnapshots(projectId, {});
   }
 
   await storageAdapter.saveBudgets(projectId, []);

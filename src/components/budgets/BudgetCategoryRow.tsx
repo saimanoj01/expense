@@ -218,7 +218,7 @@ export const BudgetCategoryRow: React.FC<BudgetCategoryRowProps> = ({
                 aria-label={`Monthly budget target for ${item.name}`}
                 data-testid={`budget-input-${catKey}`}
                 value={
-                  budgetDrafts[item.id] !== undefined
+                  !isSpecificLocked && budgetDrafts[item.id] !== undefined
                     ? budgetDrafts[item.id]
                     : item.budget === 0
                     ? '0'
@@ -251,7 +251,7 @@ export const BudgetCategoryRow: React.FC<BudgetCategoryRowProps> = ({
 
         {/* Line 2 on Tablet/Mobile (col-span-2) / Column 2 on Desktop: Semantic Progress + Pace Tick + Utilization/Remaining */}
         <div className="col-span-2 lg:col-span-1 lg:order-2 min-w-0">
-          {budgetErrors[item.id] ? (
+          {!isSpecificLocked && budgetErrors[item.id] ? (
             <p
               className={`text-label text-negative font-semibold budget-error-${catKey}`}
               data-testid="budget-error"
@@ -265,7 +265,7 @@ export const BudgetCategoryRow: React.FC<BudgetCategoryRowProps> = ({
                   data-testid={`budget-indicator-${catKey}`}
                   className={
                     status.isOverspent
-                      ? 'h-full rounded-full bg-negative bg-red-500 budget-overspent transition-all duration-200'
+                      ? 'h-full rounded-full bg-negative budget-overspent transition-all duration-200'
                       : 'h-full rounded-full transition-all duration-200'
                   }
                   style={{
@@ -557,7 +557,7 @@ export const BudgetCategoryRow: React.FC<BudgetCategoryRowProps> = ({
                                 aria-label={`Monthly budget target for ${sub.name}`}
                                 data-testid={`budget-input-${sub.id}`}
                                 value={
-                                  budgetDrafts[sub.id] !== undefined
+                                  !isSpecificLocked && budgetDrafts[sub.id] !== undefined
                                     ? budgetDrafts[sub.id]
                                     : sub.budget === 0
                                     ? '0'

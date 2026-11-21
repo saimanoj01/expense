@@ -84,17 +84,25 @@ export function DuplicateWarningModal({
 
 interface CsvDuplicateWarningModalProps {
   showModal: boolean;
+  isImporting?: boolean;
   onCancel: () => void;
   onProceed: () => void;
 }
 
-export function CsvDuplicateWarningModal({ showModal, onCancel, onProceed }: CsvDuplicateWarningModalProps) {
+export function CsvDuplicateWarningModal({
+  showModal,
+  isImporting = false,
+  onCancel,
+  onProceed,
+}: CsvDuplicateWarningModalProps) {
   if (!showModal) return null;
 
   return (
     <Modal
       isOpen={showModal}
-      onClose={onCancel}
+      onClose={() => {
+        if (!isImporting) onCancel();
+      }}
       title="Import Duplicates Detected"
       maxWidth="max-w-md"
       overlayClassName="z-[60]"
@@ -112,17 +120,19 @@ export function CsvDuplicateWarningModal({ showModal, onCancel, onProceed }: Csv
       <div className="flex gap-3">
         <button
           type="button"
+          disabled={isImporting}
           onClick={onCancel}
-          className="flex-1 px-4 py-3 rounded-xl font-bold bg-surface2 hover:bg-secondary border border-border transition-colors flex items-center justify-center gap-2 whitespace-nowrap"
+          className="flex-1 px-4 py-3 rounded-xl font-bold bg-surface2 hover:bg-secondary border border-border transition-colors flex items-center justify-center gap-2 whitespace-nowrap disabled:opacity-50"
         >
           <X className="w-4 h-4" /> Cancel
         </button>
         <button
           type="button"
+          disabled={isImporting}
           onClick={onProceed}
-          className="flex-1 px-4 py-3 rounded-xl bg-destructive hover:bg-destructive/90 text-destructive-foreground font-bold transition-colors flex items-center justify-center gap-2 whitespace-nowrap"
+          className="flex-1 px-4 py-3 rounded-xl bg-destructive hover:bg-destructive/90 text-destructive-foreground font-bold transition-colors flex items-center justify-center gap-2 whitespace-nowrap disabled:opacity-50"
         >
-          <Check className="w-4 h-4" /> Import Anyway
+          <Check className="w-4 h-4" /> {isImporting ? 'Importing…' : 'Import Anyway'}
         </button>
       </div>
     </Modal>

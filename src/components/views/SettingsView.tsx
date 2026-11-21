@@ -19,6 +19,7 @@ import {
   ChevronRight,
   FolderPlus,
   LogOut,
+  Activity,
 } from 'lucide-react';
 import type { User } from '../../context/AuthContext';
 import type {
@@ -32,6 +33,13 @@ import type {
 import { BUCKETS } from '../../theme/buckets';
 import { deriveCategoryBucket } from '../../utils/metrics';
 import { buildTransactionsCsvExport, getLocalTodayDate } from '../../utils/csv';
+import {
+  resolveTransactionAccount,
+  getCanonicalAccountKey,
+  formatAccountDisplay,
+  getCalendarDaysSince,
+  isOrphanPendingTransaction,
+} from '../../utils/transactionTaxonomy';
 import { showToast } from '../../utils/toast';
 import { useNavigation } from '../../hooks/useNavigation';
 import { Modal } from '../common/Modal';
@@ -163,6 +171,59 @@ export function SettingsView({
     () => categories.filter(c => !c.parentId),
     [categories]
   );
+
+  const recentRuns = useMemo(() => {
+    const runs = Array.isArray(ingestState?.recentRuns) ? ingestState!.recentRuns : [];
+    return [...runs].slice(-10).reverse();
+  }, [ingestState]);
+
+  const { accountLastSeen, orphanPendingCount } = useMemo(() => {
+    const todayStr = getLocalTodayDate();
+
+    const acctMap = new Map<
+      string,
+      { key: string; label: string; lastDate: string; count: number; daysQuiet: number }
+    >();
+    let orphanPending = 0;
+
+    for (const t of transactions) {
+      const dateStr = t.date || '';
+      const validDate = /^\d{4}-\d{2}-\d{2}/.test(dateStr);
+      const isoDate = validDate ? dateStr.slice(0, 10) : '';
+      const daysOld = validDate ? getCalendarDaysSince(isoDate, todayStr) ?? 0 : 0;
+
+      if (isOrphanPendingTransaction(t, todayStr)) {
+        orphanPending++;
+      }
+
+      const rawAcct = resolveTransactionAccount(t);
+      if (rawAcct) {
+        const key = getCanonicalAccountKey(rawAcct);
+        if (!key) continue;
+        const existing = acctMap.get(key);
+        if (!existing) {
+          acctMap.set(key, {
+            key,
+            label: formatAccountDisplay(rawAcct),
+            lastDate: isoDate,
+            count: 1,
+            daysQuiet: validDate ? daysOld : 999,
+          });
+        } else {
+          existing.count += 1;
+          if (validDate && (!existing.lastDate || isoDate > existing.lastDate)) {
+            existing.lastDate = isoDate;
+            existing.daysQuiet = daysOld;
+          }
+        }
+      }
+    }
+
+    const sortedAccounts = Array.from(acctMap.values()).sort((a, b) =>
+      (b.lastDate || '').localeCompare(a.lastDate || '') || a.label.localeCompare(b.label)
+    );
+    return { accountLastSeen: sortedAccounts, orphanPendingCount: orphanPending };
+  }, [transactions]);
 
   const handleStartRename = () => {
     setRenameDraft(activeProject?.name || '');
@@ -623,6 +684,150 @@ export function SettingsView({
         </div>
       </section>
 
+      {/* 2b. Sync Health, Ingestion Runs & Account Activity Watchdogs */}
+      <section
+        data-testid="settings-section-sync-health"
+        className="p-5 rounded-[14px] bg-card border border-border space-y-4"
+      >
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <Activity className="w-4 h-4 text-muted-foreground" />
+            <div>
+              <h2 className="text-heading text-foreground">Sync Health & Ingestion Runs</h2>
+              <p className="text-label text-muted-foreground">
+                Recent automated ingestion batches and per-account last-seen transaction activity
+              </p>
+            </div>
+          </div>
+          {orphanPendingCount > 0 && (
+            <button
+              type="button"
+              data-testid="sync-health-orphan-pending-btn"
+              onClick={() => navigate('#/transactions?month=all&pending=1')}
+              className="px-2.5 py-1 rounded-[8px] bg-warning/15 hover:bg-warning/25 border border-warning/30 text-warning text-label font-semibold tabular-nums num transition-colors"
+            >
+              {orphanPendingCount} pending &gt;7d →
+            </button>
+          )}
+        </div>
+
+        {/* Recent Runs Table */}
+        <div className="space-y-2">
+          <h3 className="text-label font-semibold text-muted-foreground uppercase tracking-wide">
+            Recent Ingestion Runs ({recentRuns.length})
+          </h3>
+          {recentRuns.length === 0 ? (
+            <p className="text-label text-muted-foreground py-2">
+              No automated ingestion runs recorded yet.
+            </p>
+          ) : (
+            <div className="overflow-x-auto border border-border rounded-[10px]">
+              <table className="w-full text-left border-collapse text-label" data-testid="sync-recent-runs-table">
+                <thead>
+                  <tr className="border-b border-border bg-surface2/60 text-muted-foreground">
+                    <th className="py-2 px-3 font-medium">Timestamp</th>
+                    <th className="py-2 px-3 font-medium">Source</th>
+                    <th className="py-2 px-2.5 font-medium text-right">Inserted</th>
+                    <th className="py-2 px-2.5 font-medium text-right">Flagged</th>
+                    <th className="py-2 px-2.5 font-medium text-right">Updated</th>
+                    <th className="py-2 px-2.5 font-medium text-right">Merged</th>
+                    <th className="py-2 px-2.5 font-medium text-right">Skipped</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/50 tabular-nums num">
+                  {recentRuns.map((run, idx) => {
+                    const runSource =
+                      run.sourceId ||
+                      (run as unknown as { source?: string }).source ||
+                      'sync';
+                    const parsedTs = run.timestamp ? Date.parse(run.timestamp) : NaN;
+                    const tsLabel = Number.isFinite(parsedTs)
+                      ? new Date(parsedTs).toLocaleString(undefined, {
+                          month: 'short',
+                          day: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })
+                      : run.timestamp
+                      ? run.timestamp.replace('T', ' ').slice(0, 16)
+                      : '—';
+                    return (
+                      <tr key={run.runId || `${run.timestamp}-${idx}`} className="hover:bg-surface2/40">
+                        <td
+                          title={run.timestamp || undefined}
+                          className="py-2 px-3 text-foreground whitespace-nowrap"
+                        >
+                          {tsLabel}
+                        </td>
+                        <td className="py-2 px-3 text-muted-foreground whitespace-nowrap">{runSource}</td>
+                        <td className="py-2 px-2.5 text-right font-medium text-foreground">
+                          {run.inserted ?? 0}
+                        </td>
+                        <td
+                          className={`py-2 px-2.5 text-right font-medium ${
+                            (run.flagged ?? 0) > 0 ? 'text-warning' : 'text-muted-foreground'
+                          }`}
+                        >
+                          {run.flagged ?? 0}
+                        </td>
+                        <td className="py-2 px-2.5 text-right text-muted-foreground">
+                          {run.updated ?? 0}
+                        </td>
+                        <td className="py-2 px-2.5 text-right text-muted-foreground">
+                          {run.merged ?? 0}
+                        </td>
+                        <td className="py-2 px-2.5 text-right text-muted-foreground">
+                          {run.skipped ?? 0}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {/* Per-Account Last-Seen Activity */}
+        {accountLastSeen.length > 0 && (
+          <div className="space-y-2 pt-2 border-t border-border/60">
+            <h3 className="text-label font-semibold text-muted-foreground uppercase tracking-wide">
+              Per-Account Last Seen
+            </h3>
+            <div
+              data-testid="sync-account-activity-list"
+              className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2"
+            >
+              {accountLastSeen.map(acct => {
+                const isQuiet = acct.daysQuiet > 14;
+                return (
+                  <button
+                    key={acct.key}
+                    type="button"
+                    onClick={() =>
+                      navigate(`#/transactions?month=all&account=${encodeURIComponent(acct.key)}`)
+                    }
+                    className="px-3 py-2 rounded-[10px] bg-surface2/70 hover:bg-surface2 border border-border/70 flex items-center justify-between gap-2 text-left transition-colors"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-label font-medium text-foreground truncate">{acct.label}</p>
+                      <p className="text-[11px] text-muted-foreground tabular-nums num">
+                        Last: {acct.lastDate || '—'} · {acct.count} txns
+                      </p>
+                    </div>
+                    {isQuiet && (
+                      <span className="px-1.5 py-0.5 rounded bg-warning/15 text-warning border border-warning/30 text-[10px] font-semibold whitespace-nowrap shrink-0">
+                        Quiet {acct.daysQuiet}d
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </section>
+
       {/* 3. Data Hygiene & Diagnostics + 4. Categories & Preferences */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
         {/* Section 3: Data Hygiene & Diagnostics */}
@@ -671,6 +876,13 @@ export function SettingsView({
                 count: hygiene.pendingCount,
                 href: '#/transactions?month=all&pending=1',
                 highlightTone: hygiene.pendingCount > 0 ? 'text-foreground font-semibold' : 'text-muted-foreground',
+              },
+              {
+                id: 'orphan-pending',
+                label: 'Stale pending (>7 days)',
+                count: orphanPendingCount,
+                href: '#/transactions?month=all&pending=1',
+                highlightTone: orphanPendingCount > 0 ? 'text-warning font-semibold' : 'text-muted-foreground',
               },
               {
                 id: 'uncategorized',

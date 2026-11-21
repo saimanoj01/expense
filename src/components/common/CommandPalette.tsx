@@ -21,12 +21,20 @@ import {
 import { useNavigation } from '../../hooks/useNavigation';
 import { formatMonthLabel, getCurrentLocalMonth } from '../../utils/navigation';
 import { isNonBudgetableCategory } from '../../utils/metrics';
-import type { Category } from '../../services/storage';
+import {
+  resolveTransactionAccount,
+  getCanonicalAccountKey,
+  formatAccountDisplay,
+  getVisibleUserTags,
+} from '../../utils/transactionTaxonomy';
+import { normalizeMerchantPayee } from '../../utils/trendsAnalytics';
+import type { Category, Transaction } from '../../services/storage';
 
 export interface CommandPaletteProps {
   isOpen: boolean;
   onClose: () => void;
   categories: Category[];
+  transactions?: Transaction[];
   onOpenAddTxn: () => void;
   onOpenCsvImport: () => void;
   onToggleTheme: () => void;
@@ -43,7 +51,7 @@ interface CommandItem {
   title: string;
   subtitle?: string;
   icon: React.ComponentType<{ className?: string }>;
-  category: 'Views' | 'Drill Down' | 'Categories' | 'Actions';
+  category: 'Views' | 'Drill Down' | 'Categories' | 'Merchants' | 'Accounts & Tags' | 'Actions';
   action: () => void;
   keywords?: string[];
 }
@@ -52,6 +60,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
   isOpen,
   onClose,
   categories,
+  transactions = [],
   onOpenAddTxn,
   onOpenCsvImport,
   onToggleTheme,
@@ -331,6 +340,83 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
       });
     });
 
+    // Dynamic Ledger Jump Index: Accounts, #Tags, and top Merchants
+    if (transactions.length > 0) {
+      const accountMap = new Map<string, { label: string; count: number }>();
+      const tagMap = new Map<string, number>();
+      const merchantMap = new Map<string, { display: string; count: number }>();
+
+      for (const t of transactions) {
+        const rawAcct = resolveTransactionAccount(t);
+        if (rawAcct) {
+          const key = getCanonicalAccountKey(rawAcct);
+          if (key) {
+            const prev = accountMap.get(key);
+            if (prev) prev.count += 1;
+            else accountMap.set(key, { label: formatAccountDisplay(rawAcct), count: 1 });
+          }
+        }
+        for (const tag of getVisibleUserTags(t)) {
+          tagMap.set(tag, (tagMap.get(tag) || 0) + 1);
+        }
+        const mName = normalizeMerchantPayee(t.description || '');
+        if (mName && mName !== 'Unspecified') {
+          const mKey = mName.toLowerCase();
+          const prevM = merchantMap.get(mKey);
+          if (prevM) prevM.count += 1;
+          else merchantMap.set(mKey, { display: mName, count: 1 });
+        }
+      }
+
+      Array.from(accountMap.entries())
+        .sort((a, b) => b[1].count - a[1].count)
+        .slice(0, 20)
+        .forEach(([key, info]) => {
+          list.push({
+            id: `acct-${key}`,
+            title: `Account: ${info.label}`,
+            subtitle: `Filter ${info.count} transaction${info.count === 1 ? '' : 's'} on ${info.label}`,
+            icon: Receipt,
+            category: 'Accounts & Tags',
+            keywords: ['account', 'card', key, info.label.toLowerCase()],
+            action: () =>
+              navigate(`#/transactions?month=all&account=${encodeURIComponent(key)}`),
+          });
+        });
+
+      Array.from(tagMap.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 30)
+        .forEach(([tag, count]) => {
+          list.push({
+            id: `tag-${tag}`,
+            title: `#${tag}`,
+            subtitle: `Filter ${count} transaction${count === 1 ? '' : 's'} tagged #${tag}`,
+            icon: Tags,
+            category: 'Accounts & Tags',
+            keywords: ['tag', `#${tag}`, tag.toLowerCase()],
+            action: () =>
+              navigate(`#/transactions?month=all&tag=${encodeURIComponent(tag)}`),
+          });
+        });
+
+      Array.from(merchantMap.entries())
+        .sort((a, b) => b[1].count - a[1].count)
+        .slice(0, 60)
+        .forEach(([mKey, info]) => {
+          list.push({
+            id: `merchant-${mKey}`,
+            title: info.display,
+            subtitle: `Search ${info.count} transaction${info.count === 1 ? '' : 's'} across all time`,
+            icon: Search,
+            category: 'Merchants',
+            keywords: ['merchant', 'payee', mKey],
+            action: () =>
+              navigate(`#/transactions?month=all&q=${encodeURIComponent(info.display)}`),
+          });
+        });
+    }
+
     return list;
   }, [
     activeMonth,
@@ -346,10 +432,16 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({
     onToggleLockMonth,
     isMonthLocked,
     categories,
+    transactions,
   ]);
 
   const filteredItems = useMemo(() => {
-    if (!query.trim()) return items;
+    if (!query.trim()) {
+      // Keep default unfiltered palette concise (hide dynamic merchant/account/tag index until typing)
+      return items.filter(
+        item => item.category !== 'Merchants' && item.category !== 'Accounts & Tags'
+      );
+    }
     const q = query.toLowerCase().trim();
     return items.filter(item => {
       if (item.title.toLowerCase().includes(q)) return true;

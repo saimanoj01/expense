@@ -505,15 +505,28 @@ export const Level3CategoryView: React.FC<Level3CategoryViewProps> = ({
                   </span>
                 </div>
                 <div className="space-y-0.5">
-                  {group.txns.map(t => (
+                  {group.txns.map(t => {
+                    const isPending = Boolean(
+                      t.meta?.provisional ||
+                        /\bpending\b/i.test(`${t.notes || ''} ${t.description || ''}`)
+                    );
+                    const isSplit = Boolean(t.meta?.orderId);
+                    const needsReview = Boolean(
+                      (Array.isArray(t.labels) &&
+                        t.labels.some(l => l.trim().toLowerCase() === 'needs-review')) ||
+                        (t.meta?.review && !t.meta.review.resolvedAt)
+                    );
+                    return (
                     <div
                       key={t.id}
-                      role="button"
                       tabIndex={0}
                       data-testid={`category-txn-${t.id}`}
                       onClick={() => onEditTxn?.(t)}
                       onKeyDown={e => {
-                        if (e.key === 'Enter' || e.key === ' ') {
+                        if (
+                          e.target === e.currentTarget &&
+                          (e.key === 'Enter' || e.key === ' ')
+                        ) {
                           e.preventDefault();
                           onEditTxn?.(t);
                         }
@@ -525,8 +538,25 @@ export const Level3CategoryView: React.FC<Level3CategoryViewProps> = ({
                           {category.emoji}
                         </div>
                         <div className="min-w-0 flex-1">
-                          <div className="text-body font-medium text-foreground truncate">
-                            {t.description || category.name}
+                          <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+                            <span className="text-body font-medium text-foreground truncate">
+                              {t.description || category.name}
+                            </span>
+                            {isPending && (
+                              <span className="px-1.5 py-0.5 rounded text-[11px] font-medium bg-surface2 text-muted-foreground border border-border shrink-0">
+                                Pending
+                              </span>
+                            )}
+                            {isSplit && (
+                              <span className="px-1.5 py-0.5 rounded text-[11px] font-medium bg-surface2 text-muted-foreground border border-border shrink-0">
+                                Split
+                              </span>
+                            )}
+                            {needsReview && (
+                              <span className="px-1.5 py-0.5 rounded text-[11px] font-medium bg-warning/15 text-warning border border-warning/30 shrink-0">
+                                Needs Review
+                              </span>
+                            )}
                           </div>
                           {(() => {
                             const subObj = t.subCategory
@@ -595,7 +625,8 @@ export const Level3CategoryView: React.FC<Level3CategoryViewProps> = ({
                         )}
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             ))}

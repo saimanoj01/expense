@@ -8,6 +8,23 @@ import {
 } from './metrics';
 import type { MonthPhaseInfo } from './metrics';
 
+export function resolveEffectiveBudgetsForMonth(
+  persistedBudgets: Budget[],
+  budgetSnapshots: Record<string, Budget[]>,
+  selectedMonth: string,
+  isLockedMonth: boolean
+): Budget[] {
+  if (
+    isLockedMonth &&
+    selectedMonth &&
+    selectedMonth !== 'all' &&
+    Array.isArray(budgetSnapshots[selectedMonth])
+  ) {
+    return budgetSnapshots[selectedMonth];
+  }
+  return persistedBudgets;
+}
+
 export interface SubCategorySummary {
   id: string;
   name: string;
